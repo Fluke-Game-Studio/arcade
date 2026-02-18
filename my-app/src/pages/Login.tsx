@@ -5,23 +5,30 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../auth/AuthContext";
 import M from "materialize-css";
-
-type Particle = { x: number; y: number; vx: number; vy: number; r: number };
-type PointerState = { x: number; y: number; active: boolean };
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
+import * as THREE from "three";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const rafRef = useRef<number | null>(null);
 
-  const particlesRef = useRef<Particle[]>([]);
-  const pointerRef = useRef<PointerState>({ x: 0, y: 0, active: false });
+  const rafRef = useRef<number | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+
+  const tubeGroupRef = useRef<THREE.Group | null>(null);
+  const particleGroupRef = useRef<THREE.Group | null>(null);
+  const lightsRef = useRef<{
+    light1: THREE.PointLight;
+    light2: THREE.PointLight;
+    light3: THREE.PointLight;
+    ambient: THREE.AmbientLight;
+  } | null>(null);
+
+  const mouseRef = useRef({ x: 0, y: 0 });
+  const timeRef = useRef(0);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -38,169 +45,225 @@ export default function Login() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    // --- Scene setup ---
+    const scene = new THREE.Scene();
+    sceneRef.current = scene;
 
-    const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      2000
+    );
+    camera.position.z = 25;
+    cameraRef.current = camera;
 
-    function seedParticles(w: number, h: number) {
-      const target = clamp(Math.floor((w * h) / 18000), 45, 110);
-      const arr: Particle[] = [];
-      for (let i = 0; i < target; i++) {
-        arr.push({
-          x: Math.random() * w,
-          y: Math.random() * h,
-          vx: (Math.random() - 0.5) * 0.55,
-          vy: (Math.random() - 0.5) * 0.55,
-          r: 1.2 + Math.random() * 1.8,
-        });
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance",
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 1);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    rendererRef.current = renderer;
+
+    // --- Groups ---
+    const tubeGroup = new THREE.Group();
+    tubeGroupRef.current = tubeGroup;
+    scene.add(tubeGroup);
+
+    const particleGroup = new THREE.Group();
+    particleGroupRef.current = particleGroup;
+    scene.add(particleGroup);
+
+    // --- Create tube rings (tunnel) ---
+    function createTubeRing(radius: number, depth: number, rotation = 0) {
+      const points: THREE.Vector3[] = [];
+      const segments = 64;
+
+      for (let i = 0; i < segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        points.push(new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0));
       }
-      particlesRef.current = arr;
+      points.push(points[0].clone());
+
+      const curve = new THREE.CatmullRomCurve3(points, true);
+      const tubeGeometry = new THREE.TubeGeometry(curve, segments, 0.8, 8, true);
+
+      const hue = Math.random() * 0.3 + 0.5;
+      const material = new THREE.MeshPhongMaterial({
+        color: new THREE.Color().setHSL(hue, 1, 0.6),
+        emissive: new THREE.Color().setHSL(hue, 1, 0.3),
+        shininess: 100,
+        wireframe: false,
+      });
+
+      const tube = new THREE.Mesh(tubeGeometry, material);
+      tube.castShadow = true;
+      tube.receiveShadow = true;
+      tube.position.z = depth;
+      tube.rotation.z = rotation;
+
+      return tube;
     }
 
-    function resizeWith(c: HTMLCanvasElement, context: CanvasRenderingContext2D) {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-
-      c.width = Math.floor(w * DPR);
-      c.height = Math.floor(h * DPR);
-      c.style.width = `${w}px`;
-      c.style.height = `${h}px`;
-
-      context.setTransform(DPR, 0, 0, DPR, 0, 0);
-      seedParticles(w, h);
+    const isMobile = window.innerWidth < 520;
+    const tubeCount = isMobile ? 11 : 15;
+    for (let i = 0; i < tubeCount; i++) {
+      const tube = createTubeRing(8 + i * 1.5, -50 + i * 7, i * 0.1);
+      tubeGroup.add(tube);
     }
 
-    function drawWith(context: CanvasRenderingContext2D) {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
+    // --- Particles ---
+    const particleGeometry = new THREE.IcosahedronGeometry(0.3, 2);
+    const particleCount = isMobile ? 200 : 300;
 
-      context.clearRect(0, 0, w, h);
+    for (let i = 0; i < particleCount; i++) {
+      const hue = Math.random() * 0.2 + 0.5;
+      const material = new THREE.MeshPhongMaterial({
+        color: new THREE.Color().setHSL(hue, 1, 0.7),
+        emissive: new THREE.Color().setHSL(hue, 1, 0.4),
+        shininess: 80,
+      });
 
-      const g = context.createRadialGradient(
-        w * 0.2,
-        h * 0.15,
-        0,
-        w * 0.5,
-        h * 0.5,
-        Math.max(w, h) * 0.85
+      const particle = new THREE.Mesh(particleGeometry, material);
+
+      const angle = Math.random() * Math.PI * 2;
+      const rad = 5 + Math.random() * 8;
+
+      particle.position.set(
+        Math.cos(angle) * rad,
+        Math.sin(angle) * rad,
+        -40 + Math.random() * 80
       );
-      g.addColorStop(0, "rgba(100, 200, 255, 0.10)");
-      g.addColorStop(0.45, "rgba(0, 255, 136, 0.05)");
-      g.addColorStop(1, "rgba(0, 0, 0, 0.90)");
-      context.fillStyle = g;
-      context.fillRect(0, 0, w, h);
 
-      const pts = particlesRef.current;
+      const s = Math.random() * 0.6 + 0.3;
+      particle.scale.set(s, s, s);
+      particle.castShadow = true;
 
-      for (const p of pts) {
-        p.x += p.vx;
-        p.y += p.vy;
+      // store velocity in userData
+      particle.userData.vz = Math.random() * 0.3 + 0.1;
 
-        if (p.x < -20) p.x = w + 20;
-        if (p.x > w + 20) p.x = -20;
-        if (p.y < -20) p.y = h + 20;
-        if (p.y > h + 20) p.y = -20;
-      }
-
-      const maxDist = 140;
-      for (let i = 0; i < pts.length; i++) {
-        for (let j = i + 1; j < pts.length; j++) {
-          const a = pts[i];
-          const b = pts[j];
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d > maxDist) continue;
-
-          const t = 1 - d / maxDist;
-
-          context.strokeStyle = `rgba(100, 200, 255, ${0.12 * t})`;
-          context.lineWidth = 1;
-          context.beginPath();
-          context.moveTo(a.x, a.y);
-          context.lineTo(b.x, b.y);
-          context.stroke();
-
-          if ((i + j) % 9 === 0) {
-            context.strokeStyle = `rgba(0, 255, 136, ${0.08 * t})`;
-            context.lineWidth = 1;
-            context.beginPath();
-            context.moveTo(a.x, a.y);
-            context.lineTo(b.x, b.y);
-            context.stroke();
-          }
-        }
-      }
-
-      const ptr = pointerRef.current;
-      if (ptr.active) {
-        for (const p of pts) {
-          const dx = ptr.x - p.x;
-          const dy = ptr.y - p.y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < 180 && d > 0.0001) {
-            const pull = (1 - d / 180) * 0.015;
-            p.vx += (dx / d) * pull;
-            p.vy += (dy / d) * pull;
-            p.vx = clamp(p.vx, -1.2, 1.2);
-            p.vy = clamp(p.vy, -1.2, 1.2);
-          }
-        }
-
-        const rg = context.createRadialGradient(ptr.x, ptr.y, 0, ptr.x, ptr.y, 220);
-        rg.addColorStop(0, "rgba(100, 200, 255, 0.18)");
-        rg.addColorStop(0.5, "rgba(0, 255, 136, 0.08)");
-        rg.addColorStop(1, "rgba(0,0,0,0)");
-        context.fillStyle = rg;
-        context.beginPath();
-        context.arc(ptr.x, ptr.y, 220, 0, Math.PI * 2);
-        context.fill();
-      }
-
-      for (const p of pts) {
-        context.shadowBlur = 12;
-        context.shadowColor = "rgba(100,200,255,0.35)";
-        context.fillStyle = "rgba(100, 200, 255, 0.75)";
-        context.beginPath();
-        context.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        context.fill();
-
-        if (p.r > 2.2) {
-          context.shadowBlur = 18;
-          context.shadowColor = "rgba(0,255,136,0.20)";
-          context.fillStyle = "rgba(0, 255, 136, 0.25)";
-          context.beginPath();
-          context.arc(p.x, p.y, p.r + 0.8, 0, Math.PI * 2);
-          context.fill();
-        }
-      }
-      context.shadowBlur = 0;
-
-      rafRef.current = window.requestAnimationFrame(() => drawWith(context));
+      particleGroup.add(particle);
     }
 
-    function onPointerMove(e: PointerEvent) {
-      pointerRef.current = { x: e.clientX, y: e.clientY, active: true };
+    // --- Lighting ---
+    const light1 = new THREE.PointLight(0x00ff88, 2, 200);
+    light1.position.set(20, 20, 20);
+    light1.castShadow = true;
+    scene.add(light1);
+
+    const light2 = new THREE.PointLight(0x64c8ff, 2, 200);
+    light2.position.set(-20, -20, 20);
+    light2.castShadow = true;
+    scene.add(light2);
+
+    const light3 = new THREE.PointLight(0xff0080, 1.5, 150);
+    light3.position.set(0, 30, -30);
+    light3.castShadow = true;
+    scene.add(light3);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.15);
+    scene.add(ambient);
+
+    lightsRef.current = { light1, light2, light3, ambient };
+
+    // --- Events ---
+    function onMouseMove(e: PointerEvent) {
+      mouseRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseRef.current.y = -(e.clientY / window.innerHeight) * 2 + 1;
     }
-    function onPointerLeave() {
-      pointerRef.current.active = false;
+
+    function onResize() {
+      const cam = cameraRef.current;
+      const r = rendererRef.current;
+      if (!cam || !r) return;
+
+      cam.aspect = window.innerWidth / window.innerHeight;
+      cam.updateProjectionMatrix();
+      r.setSize(window.innerWidth, window.innerHeight);
+      r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     }
 
-    resizeWith(canvas, ctx);
-    rafRef.current = window.requestAnimationFrame(() => drawWith(ctx));
-
-    const onResize = () => resizeWith(canvas, ctx);
-
+    window.addEventListener("pointermove", onMouseMove, { passive: true });
     window.addEventListener("resize", onResize);
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerleave", onPointerLeave);
 
+    // --- Animation loop ---
+    function animate() {
+      rafRef.current = requestAnimationFrame(animate);
+      timeRef.current += 0.001;
+
+      const t = timeRef.current;
+
+      // Rotate tube group + move forward
+      tubeGroup.rotation.z += 0.0005;
+      tubeGroup.position.z += 0.05;
+      if (tubeGroup.position.z > 100) tubeGroup.position.z = -100;
+
+      // Update particles
+      for (const obj of particleGroup.children) {
+        const p = obj as THREE.Mesh;
+        p.position.z += p.userData.vz || 0.15;
+        p.rotation.x += 0.005;
+        p.rotation.y += 0.008;
+
+        if (p.position.z > 50) p.position.z = -100;
+
+        // gentle emissive variation (avoid multiplying to 0 over time)
+        const mat = p.material as THREE.MeshPhongMaterial;
+        const base = (p.userData.baseEm || (p.userData.baseEm = mat.emissive.clone())) as THREE.Color;
+        const k = 0.65 + 0.35 * Math.sin(t * 6 + p.position.x * 0.1 + p.position.y * 0.1);
+        mat.emissive.copy(base).multiplyScalar(k);
+      }
+
+      // Animate lights
+      light1.position.x = 20 + Math.sin(t * 2) * 10;
+      light1.position.y = 20 + Math.cos(t * 1.5) * 10;
+
+      light2.position.x = -20 + Math.cos(t * 1.8) * 10;
+      light2.position.y = -20 + Math.sin(t * 2.2) * 10;
+
+      // Camera interaction
+      const mx = mouseRef.current.x;
+      const my = mouseRef.current.y;
+
+      camera.position.x += (mx * 3 - camera.position.x) * 0.08;
+      camera.position.y += (my * 3 - camera.position.y) * 0.08;
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // --- Cleanup ---
     return () => {
+      window.removeEventListener("pointermove", onMouseMove);
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerleave", onPointerLeave);
-      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+      // dispose objects
+      scene.traverse((obj) => {
+        const anyObj = obj as any;
+        if (anyObj.geometry) anyObj.geometry.dispose?.();
+        if (anyObj.material) {
+          if (Array.isArray(anyObj.material)) anyObj.material.forEach((m: any) => m.dispose?.());
+          else anyObj.material.dispose?.();
+        }
+      });
+
+      renderer.dispose();
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      tubeGroupRef.current = null;
+      particleGroupRef.current = null;
+      lightsRef.current = null;
     };
   }, []);
 
@@ -229,6 +292,8 @@ export default function Login() {
 
   const styles = (
     <style>{`
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
       .cpWrap { position: relative; min-height: calc(100vh - 64px); overflow: hidden; background: #000; }
       .cpCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
@@ -245,12 +310,22 @@ export default function Login() {
       .cpCard {
         width: 92%;
         max-width: 460px;
-        background: rgba(10, 10, 25, 0.88);
+        background: rgba(10, 10, 25, 0.90);
         backdrop-filter: blur(20px);
-        padding: 46px 46px 34px;
+        padding: 50px;
         border-radius: 25px;
-        border: 2px solid rgba(100, 200, 255, 0.28);
-        box-shadow: 0 0 100px rgba(100, 200, 255, 0.18), inset 0 0 50px rgba(100, 200, 255, 0.05);
+        border: 2px solid rgba(100, 200, 255, 0.30);
+        box-shadow: 0 0 100px rgba(100, 200, 255, 0.20), inset 0 0 50px rgba(100, 200, 255, 0.05);
+        animation: glowPulse 3s ease-in-out infinite;
+      }
+
+      @keyframes glowPulse {
+        0%, 100% {
+          box-shadow: 0 0 100px rgba(100, 200, 255, 0.20), inset 0 0 50px rgba(100, 200, 255, 0.05);
+        }
+        50% {
+          box-shadow: 0 0 150px rgba(100, 200, 255, 0.40), inset 0 0 80px rgba(100, 200, 255, 0.10);
+        }
       }
 
       .cpTitle {
@@ -267,8 +342,8 @@ export default function Login() {
       .cpSub {
         text-align: center;
         color: #94a3b8;
-        margin: 0 0 30px 0;
-        font-size: 13px;
+        margin: 0 0 35px 0;
+        font-size: 15px;
         text-transform: uppercase;
         letter-spacing: 1px;
         font-weight: 700;
@@ -285,16 +360,17 @@ export default function Login() {
         margin-bottom: 18px;
       }
 
-      .cpGroup { margin-bottom: 22px; }
+      .cpGroup { margin-bottom: 25px; }
       .cpLabel {
         display: block;
         color: #64c8ff;
-        font-size: 12px;
+        font-size: 13px;
         margin-bottom: 10px;
-        font-weight: 800;
+        font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 1px;
       }
+
       .cpInputWrap { position: relative; }
       .cpInput {
         width: 100%;
@@ -304,14 +380,15 @@ export default function Login() {
         border-radius: 12px;
         color: #ffffff;
         font-size: 15px;
-        transition: all 0.35s ease;
+        transition: all 0.4s ease;
+        box-shadow: inset 0 0 20px rgba(100, 200, 255, 0.02);
         outline: none;
       }
       .cpInput::placeholder { color: #4a7a99; }
       .cpInput:focus {
         background: rgba(100, 200, 255, 0.10);
         border-color: rgba(100, 200, 255, 0.60);
-        box-shadow: 0 0 40px rgba(100, 200, 255, 0.28);
+        box-shadow: inset 0 0 20px rgba(100, 200, 255, 0.10), 0 0 40px rgba(100, 200, 255, 0.30);
       }
       .cpInput:disabled { opacity: 0.65; cursor: not-allowed; }
 
@@ -340,23 +417,33 @@ export default function Login() {
         border: none;
         border-radius: 12px;
         color: #000000;
-        font-size: 15px;
+        font-size: 16px;
         font-weight: 900;
         cursor: pointer;
-        margin-top: 10px;
+        transition: all 0.4s ease;
+        margin-top: 15px;
         text-transform: uppercase;
         letter-spacing: 1.5px;
+        box-shadow: 0 0 40px rgba(0, 255, 136, 0.40), 0 10px 30px rgba(100, 200, 255, 0.20);
       }
-      .cpBtn:disabled { opacity: 0.7; cursor: not-allowed; }
+      .cpBtn:hover { transform: translateY(-4px); box-shadow: 0 0 60px rgba(0, 255, 136, 0.60), 0 20px 50px rgba(100, 200, 255, 0.40); }
+      .cpBtn:active { transform: translateY(-1px); }
+      .cpBtn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
 
       .cpFoot {
         text-align: center;
-        margin-top: 22px;
+        margin-top: 25px;
         color: #64a3c8;
-        font-size: 13px;
+        font-size: 14px;
         font-weight: 800;
       }
-      .cpFoot a { color: #00ff88; text-decoration: none; font-weight: 900; }
+      .cpFoot a {
+        color: #00ff88;
+        text-decoration: none;
+        font-weight: 900;
+        transition: all 0.3s;
+      }
+      .cpFoot a:hover { color: #64c8ff; text-shadow: 0 0 20px rgba(100, 200, 255, 0.60); }
 
       @media (max-width: 480px) {
         .cpCard { padding: 34px 22px 26px; border-radius: 20px; }
@@ -371,6 +458,7 @@ export default function Login() {
       {styles}
 
       <div className="cpWrap">
+        {/* THREE background */}
         <canvas ref={canvasRef} className="cpCanvas" />
 
         <div className="cpCenter">
@@ -380,7 +468,10 @@ export default function Login() {
 
             {errMsg ? (
               <div className="cpErr">
-                <i className="material-icons" style={{ fontSize: 18, verticalAlign: "middle", marginRight: 8 }}>
+                <i
+                  className="material-icons"
+                  style={{ fontSize: 18, verticalAlign: "middle", marginRight: 8 }}
+                >
                   error
                 </i>
                 {errMsg}
@@ -389,7 +480,9 @@ export default function Login() {
 
             <form onSubmit={handleSubmit}>
               <div className="cpGroup">
-                <label className="cpLabel" htmlFor="username">Username / Email</label>
+                <label className="cpLabel" htmlFor="username">
+                  Username / Email
+                </label>
                 <div className="cpInputWrap">
                   <input
                     id="username"
@@ -408,7 +501,9 @@ export default function Login() {
               </div>
 
               <div className="cpGroup">
-                <label className="cpLabel" htmlFor="password">Password</label>
+                <label className="cpLabel" htmlFor="password">
+                  Password
+                </label>
                 <div className="cpInputWrap">
                   <input
                     id="password"
@@ -447,7 +542,10 @@ export default function Login() {
                 href="#help"
                 onClick={(e) => {
                   e.preventDefault();
-                  M.toast({ html: "Contact your project lead for access.", classes: "blue-grey darken-1" });
+                  M.toast({
+                    html: "Contact your project lead for access.",
+                    classes: "blue-grey darken-1",
+                  });
                 }}
               >
                 Contact your project lead
