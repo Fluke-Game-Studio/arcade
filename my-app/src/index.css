@@ -1,0 +1,256 @@
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+/* Smooth, single-line ticker */
+.ticker {
+  overflow: hidden;
+  white-space: nowrap;
+  border-radius: 6px;
+  background: #f5f5f5;
+  padding: 6px 0;
+}
+.ticker-track {
+  display: inline-block;
+  padding-left: 100%;
+  animation: ticker-move 18s linear infinite;
+}
+.ticker-item {
+  display: inline-block;
+  margin: 0 24px;
+  color: #555;
+}
+@keyframes ticker-move {
+  0% { transform: translate3d(0,0,0); }
+  100% { transform: translate3d(-100%,0,0); }
+}
+
+/* Scrollable Updates box (if you don’t already have this) */
+.scroll-box {
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+/* Make carousel images look nicer */
+.carousel .carousel-item img {
+  border-radius: 8px;
+}
+/* ---- Banner ---- */
+.banner {
+  width: 100%;
+  height: 200px;
+  background-size: cover;
+  background-position: center;
+  border-radius: 8px 8px 0 0;
+  position: relative;
+}
+.banner-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px;
+  background: linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0));
+  color: white;
+}
+.banner-overlay h5 {
+  margin: 0;
+  font-weight: 600;
+}
+.banner-overlay p {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+/* ===== Showcase (creative banner) ===== */
+.showcase-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.showcase-border {
+  position: absolute;
+  inset: -2px;
+  background: conic-gradient(from 180deg at 50% 50%,
+    #00e5ff, #7c4dff, #ff4081, #00e5ff);
+  filter: blur(8px);
+  opacity: .25;
+  animation: spin 12s linear infinite;
+  z-index: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Mosaic grid (auto-crops with object-position) */
+.showcase-mosaic {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1.1fr;
+  grid-template-rows: 120px 120px;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+}
+.showcase-mosaic .tile {
+  background-size: cover;
+  background-position: center;
+  border-radius: 10px;
+  filter: saturate(1.1) contrast(1.05);
+}
+.showcase-mosaic .t1 { grid-column: 1 / span 1; grid-row: 1 / span 2; }
+.showcase-mosaic .t2 { grid-column: 2; grid-row: 1; }
+.showcase-mosaic .t3 { grid-column: 3; grid-row: 1; }
+.showcase-mosaic .t4 { grid-column: 2; grid-row: 2; }
+.showcase-mosaic .t5 { grid-column: 3; grid-row: 2; }
+.showcase-mosaic .t6 { display: none; } /* spare slot for future */
+
+.showcase-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 100%);
+  z-index: 2;
+}
+
+.showcase-glass {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 12px;
+  z-index: 3;
+  backdrop-filter: blur(6px);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #fff;
+}
+
+.showcase-head { margin-bottom: 8px; }
+.showcase-title { font-weight: 800; letter-spacing: .2px; }
+.showcase-sub { font-size: 12px; }
+
+.showcase-row {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px;
+}
+
+.time-stack { display: flex; gap: 8px; align-items: center; }
+.timebox {
+  background: rgba(255,255,255,.18);
+  padding: 6px 10px;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 56px;
+}
+.timebox-value { font-weight: 700; font-size: 18px; line-height: 1; }
+.timebox-label { font-size: 10px; opacity: .95; letter-spacing: .3px; }
+
+.live-pill {
+  background: #ff5252; color: white; font-weight: 700;
+  padding: 6px 10px; border-radius: 999px;
+}
+
+.quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.quick-actions .chip { border-radius: 999px; box-shadow: none; }
+
+.badges { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+.badge.pill {
+  background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 999px; padding: 4px 8px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+
+/* Responsive tweaks */
+@media (max-width: 600px) {
+  .showcase-mosaic { grid-template-columns: 1fr 1fr; grid-template-rows: 100px 100px; }
+  .showcase-mosaic .t1 { grid-column: 1 / span 2; grid-row: 1; }
+  .showcase-mosaic .t2 { grid-column: 1; grid-row: 2; }
+  .showcase-mosaic .t3 { grid-column: 2; grid-row: 2; }
+  .showcase-mosaic .t4, .showcase-mosaic .t5 { display: none; }
+}
+/* Scroll area for docs */
+.doc-scroll { max-height: 260px; overflow: auto; padding-right: 6px; }
+
+/* List layout */
+.doc-list { list-style: none; margin: 0; padding: 0; }
+.doc-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 4px; border-bottom: 1px solid #eee;
+}
+.doc-row:last-child { border-bottom: none; }
+
+.doc-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #eee; display: flex; align-items: center; justify-content: center;
+}
+.doc-icon .material-icons { font-size: 20px; color: #616161; }
+
+.doc-meta { flex: 1; min-width: 0; }
+.doc-title { font-weight: 700; }
+.doc-sub { font-size: 12px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-open { opacity: .8; }
+.doc-scroll { max-height: 320px; overflow-y: auto; padding-right: 6px; -webkit-overflow-scrolling: touch; }

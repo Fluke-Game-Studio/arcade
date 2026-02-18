@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Internal Portal</title>
+    <!-- Materialize CSS & Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Optional: style tweak for Google button container -->
+    <style>
+      .g-btn { display: inline-block; }
+      .avatar {
+        width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+        background: #e3f2fd; display:inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <!-- Materialize JS -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+    <!-- Google Sign-in button can also be rendered by script, but we render in React -->
+    <div id="gsi-client-id" data-client_id="795367262906-dk93nfkpo7v5fnnlt1g8nh0iralh8i8m.apps.googleusercontent.com"></div>
+  </body>
+</html>

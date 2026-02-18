@@ -1,0 +1,296 @@
+/* src/pages/employees.css */
+/* Smart + interactive makeover (Materialize-friendly, no JS required) */
+
+/* ---------- Tokens ---------- */
+:root {
+  --emp-bg: #ffffff;
+  --emp-surface: #ffffff;
+  --emp-border: #e6edf2;
+  --emp-border-2: #eef2f7;
+  --emp-text: #0f172a;
+  --emp-muted: #607d8b;
+  --emp-muted-2: #90a4ae;
+
+  --emp-primary: #2563eb;
+  --emp-primary-soft: rgba(37, 99, 235, 0.14);
+
+  --emp-success: #16a34a;
+  --emp-success-soft: rgba(22, 163, 74, 0.12);
+
+  --emp-warn: #f59e0b;
+  --emp-warn-soft: rgba(245, 158, 11, 0.12);
+
+  --emp-danger: #ef4444;
+  --emp-danger-soft: rgba(239, 68, 68, 0.12);
+
+  --emp-radius: 14px;
+  --emp-radius-sm: 12px;
+  --emp-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
+  --emp-shadow-soft: 0 8px 18px rgba(0, 0, 0, 0.06);
+}
+
+/* ---------- Collection wrapper ---------- */
+.emp-collection {
+  margin-top: 10px;
+  border: 1px solid var(--emp-border) !important;
+  border-radius: var(--emp-radius) !important;
+  overflow: hidden;
+  background: var(--emp-surface);
+}
+
+/* ---------- Row / item ---------- */
+/* Use on your <li class="collection-item emp-row"> */
+.emp-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px !important;
+  position: relative;
+  border-bottom: 1px solid var(--emp-border-2) !important;
+  background: linear-gradient(135deg, #ffffff 0%, #fbfdff 55%, #f7fafc 100%);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 160ms ease;
+}
+
+/* Remove bottom border on last */
+.emp-row:last-child {
+  border-bottom: none !important;
+}
+
+/* Hover lift */
+.emp-row:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--emp-shadow-soft);
+  border-color: rgba(37, 99, 235, 0.24) !important;
+  background: #ffffff;
+}
+
+/* Focus-within (keyboard users) */
+.emp-row:focus-within {
+  outline: 2px solid rgba(37, 99, 235, 0.28);
+  outline-offset: -2px;
+}
+
+/* Left accent bar on hover */
+.emp-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 160ms ease;
+}
+.emp-row:hover::before,
+.emp-row:focus-within::before {
+  background: rgba(37, 99, 235, 0.65);
+}
+
+/* ---------- Avatar ---------- */
+.emp-avatar {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 14px;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px; /* icon fallback */
+  color: var(--emp-muted);
+  background: #eef2f7;
+  border: 1px solid var(--emp-border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Subtle ring on hover */
+.emp-row:hover .emp-avatar,
+.emp-row:focus-within .emp-avatar {
+  border-color: rgba(37, 99, 235, 0.28);
+}
+
+/* If you use a letter fallback inside avatar */
+.emp-avatar.emp-initials {
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  color: #0f172a;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(34, 197, 94, 0.10));
+}
+
+/* ---------- Meta + text truncation ---------- */
+.emp-meta {
+  flex: 1;
+  min-width: 0; /* enables truncation */
+}
+
+/* name line (supports a badge/chip on same row) */
+.emp-name {
+  font-weight: 900;
+  line-height: 1.2;
+  color: var(--emp-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* sub line */
+.emp-sub {
+  margin-top: 3px;
+  line-height: 1.2;
+  color: var(--emp-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* email */
+.emp-email {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--emp-muted-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Right side actions (optional) ---------- */
+/* Put buttons/links inside a container: <div class="emp-actions">...</div> */
+.emp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Icon buttons that feel modern but still Materialize-friendly */
+.emp-iconbtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid var(--emp-border);
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
+  cursor: pointer;
+}
+
+.emp-iconbtn i.material-icons {
+  font-size: 18px;
+  color: #546e7a;
+}
+
+.emp-iconbtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.10);
+  border-color: rgba(37, 99, 235, 0.26);
+  background: #fbfdff;
+}
+
+.emp-iconbtn:active {
+  transform: translateY(0px);
+  box-shadow: none;
+}
+
+/* Reveal actions only on hover (optional behavior) */
+.emp-actions.reveal {
+  opacity: 0;
+  transform: translateY(2px);
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+.emp-row:hover .emp-actions.reveal,
+.emp-row:focus-within .emp-actions.reveal {
+  opacity: 1;
+  transform: translateY(0px);
+  pointer-events: auto;
+}
+
+/* ---------- Status chips (optional) ---------- */
+/* Add next to name: <span class="emp-chip emp-chip--success">Active</span> */
+.emp-chip {
+  height: 24px;
+  line-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  border: 1px solid var(--emp-border);
+  background: #f8fafc;
+  color: #334155;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.emp-chip--success {
+  background: var(--emp-success-soft);
+  border-color: rgba(22, 163, 74, 0.22);
+  color: #166534;
+}
+
+.emp-chip--warn {
+  background: var(--emp-warn-soft);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: #92400e;
+}
+
+.emp-chip--danger {
+  background: var(--emp-danger-soft);
+  border-color: rgba(239, 68, 68, 0.22);
+  color: #991b1b;
+}
+
+.emp-chip--primary {
+  background: var(--emp-primary-soft);
+  border-color: rgba(37, 99, 235, 0.22);
+  color: #1e40af;
+}
+
+/* ---------- “Clickable row” support ---------- */
+/* If your row is actually an <a> tag, keep it clean */
+.emp-row.emp-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* ---------- Mobile tweaks ---------- */
+@media (max-width: 600px) {
+  .emp-row {
+    gap: 12px;
+    padding: 12px 12px !important;
+  }
+
+  .emp-avatar {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border-radius: 12px;
+  }
+
+  .emp-actions {
+    gap: 6px;
+  }
+
+  .emp-iconbtn {
+    width: 32px;
+    height: 32px;
+    border-radius: 12px;
+  }
+}
+
+/* ---------- Reduced motion accessibility ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .emp-row,
+  .emp-row::before,
+  .emp-iconbtn,
+  .emp-actions.reveal {
+    transition: none !important;
+  }
+}

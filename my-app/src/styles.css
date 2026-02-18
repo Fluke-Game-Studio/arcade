@@ -1,0 +1,52 @@
+/* height of Materialize nav ~64px on desktop */
+:root { --nav-h: 64px; }
+
+/* make left/right panels stick under the navbar */
+.sticky-panel {
+  position: sticky;
+  top: var(--nav-h);
+}
+
+/* unify media cards */
+.media-card iframe,
+.media-card img,
+.media-card video {
+  width: 100%;
+  height: auto;
+  border: 0;
+  border-radius: 8px;
+}
+
+/* scrolling text area */
+.scroll-box {
+  max-height: 260px;
+  overflow: auto;
+}
+
+/* subtle divider spacing */
+.section-gap { margin-top: 16px; }
+/* Make Materialize collection list stack vertically again */
+.collection { display: block !important; }
+.collection .collection-item { display: block !important; clear: both; }
+
+/* Ensure avatar rows look like Materialize expects */
+.collection .collection-item.avatar { min-height: 84px; }
+.collection .collection-item .title { display: block; font-weight: 600; }
+.collection .collection-item p { margin: 0; }
+.collection .secondary-content { top: 16px; }
+.table-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.table-initials {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e3f2fd;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}

@@ -1,0 +1,71 @@
+name: Deploy Arcade (Vite dist only)
+
+on:
+  push:
+    branches: ["main", "dev", "qa"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: my-app/package-lock.json
+
+      - name: Install deps
+        working-directory: my-app
+        run: npm ci
+
+      - name: Build (Vite -> dist)
+        working-directory: my-app
+        run: npm run build
+
+      - name: Choose remote folder
+        id: target
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "REMOTE_DIR=public_html" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" = "dev" ]; then
+            echo "REMOTE_DIR=public_html/dev" >> $GITHUB_OUTPUT
+          else
+            echo "REMOTE_DIR=public_html/qa" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install SSH key from base64
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SFTP_KEY_B64 }}" | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Ensure target dir exists
+        env:
+          SFTP_HOST: ${{ secrets.SFTP_HOST }}
+          SFTP_USER: ${{ secrets.SFTP_USER }}
+          SFTP_PORT: ${{ secrets.SFTP_PORT }}
+          REMOTE_DIR: ${{ steps.target.outputs.REMOTE_DIR }}
+        run: |
+          ssh -p "$SFTP_PORT" \
+            -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o PreferredAuthentications=publickey \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "$SFTP_USER@$SFTP_HOST" "mkdir -p ~/${REMOTE_DIR}"
+
+      - name: Deploy dist only (sync + deletions)
+        env:
+          SFTP_HOST: ${{ secrets.SFTP_HOST }}
+          SFTP_USER: ${{ secrets.SFTP_USER }}
+          SFTP_PORT: ${{ secrets.SFTP_PORT }}
+          REMOTE_DIR: ${{ steps.target.outputs.REMOTE_DIR }}
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${SFTP_PORT} -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            my-app/dist/ "${SFTP_USER}@${SFTP_HOST}:~/${REMOTE_DIR}/"
