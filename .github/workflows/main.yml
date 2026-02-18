@@ -31,11 +31,11 @@ jobs:
         id: target
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "REMOTE_DIR=public_html" >> $GITHUB_OUTPUT
+            echo "REMOTE_DIR=arcade.flukegamestudio.com" >> $GITHUB_OUTPUT
           elif [ "${{ github.ref_name }}" = "dev" ]; then
-            echo "REMOTE_DIR=public_html/dev" >> $GITHUB_OUTPUT
+            echo "REMOTE_DIR=arcade.flukegamestudio.com/dev" >> $GITHUB_OUTPUT
           else
-            echo "REMOTE_DIR=public_html/qa" >> $GITHUB_OUTPUT
+            echo "REMOTE_DIR=arcade.flukegamestudio.com/qa" >> $GITHUB_OUTPUT
           fi
 
       - name: Install SSH key from base64
