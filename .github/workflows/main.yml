@@ -7,7 +7,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,12 +29,13 @@ jobs:
       - name: Choose remote folder
         id: target
         run: |
+          BASE="arcade.flukegamestudio.com"
           if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "REMOTE_DIR=arcade.flukegamestudio.com" >> $GITHUB_OUTPUT
+            echo "REMOTE_DIR=${BASE}" >> $GITHUB_OUTPUT
           elif [ "${{ github.ref_name }}" = "dev" ]; then
-            echo "REMOTE_DIR=arcade.flukegamestudio.com/dev" >> $GITHUB_OUTPUT
+            echo "REMOTE_DIR=${BASE}/dev" >> $GITHUB_OUTPUT
           else
-            echo "REMOTE_DIR=arcade.flukegamestudio.com/qa" >> $GITHUB_OUTPUT
+            echo "REMOTE_DIR=${BASE}/qa" >> $GITHUB_OUTPUT
           fi
 
       - name: Install SSH key from base64
@@ -54,12 +54,11 @@ jobs:
           ssh -p "$SFTP_PORT" \
             -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
-            -o PreferredAuthentications=publickey \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
             "$SFTP_USER@$SFTP_HOST" "mkdir -p ~/${REMOTE_DIR}"
 
-      - name: Deploy dist only (sync + deletions)
+      - name: Deploy dist only (safe delete inside target only)
         env:
           SFTP_HOST: ${{ secrets.SFTP_HOST }}
           SFTP_USER: ${{ secrets.SFTP_USER }}
