@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 declare const M: any;
 
@@ -320,9 +320,6 @@ export default function RightRail() {
   const [genreFilter, setGenreFilter] = useState<string>("ALL");
   const [platformFilter, setPlatformFilter] = useState<string>("ALL");
   const [query, setQuery] = useState("");
-
-  const liked = useMemo(() => new Set<number>(tryJsonParse<number[]>(localStorage.getItem(RR_KEY.likedGames), [])), []);
-  const saved = useMemo(() => new Set<number>(tryJsonParse<number[]>(localStorage.getItem(RR_KEY.savedGames), [])), []);
 
   const [likedIds, setLikedIds] = useState<number[]>(() => tryJsonParse<number[]>(localStorage.getItem(RR_KEY.likedGames), []));
   const [savedIds, setSavedIds] = useState<number[]>(() => tryJsonParse<number[]>(localStorage.getItem(RR_KEY.savedGames), []));
@@ -1579,7 +1576,7 @@ export default function RightRail() {
                 <div className="c">{notes.length}</div>
               </div>
               <div className="rrLaneBody">
-                {Object.entries(lanes).flatMap(([lane, list]) =>
+                {Object.entries(lanes).flatMap(([_lane, list]) =>
                   list.map((n) => (
                     <div key={n.id} className="rrNote">
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
