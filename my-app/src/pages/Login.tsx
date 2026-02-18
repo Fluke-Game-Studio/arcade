@@ -87,7 +87,9 @@ export default function Login() {
 
       for (let i = 0; i < segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
-        points.push(new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0));
+        points.push(
+          new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0)
+        );
       }
       points.push(points[0].clone());
 
@@ -215,8 +217,10 @@ export default function Login() {
 
         // gentle emissive variation (avoid multiplying to 0 over time)
         const mat = p.material as THREE.MeshPhongMaterial;
-        const base = (p.userData.baseEm || (p.userData.baseEm = mat.emissive.clone())) as THREE.Color;
-        const k = 0.65 + 0.35 * Math.sin(t * 6 + p.position.x * 0.1 + p.position.y * 0.1);
+        const base = (p.userData.baseEm ||
+          (p.userData.baseEm = mat.emissive.clone())) as THREE.Color;
+        const k =
+          0.65 + 0.35 * Math.sin(t * 6 + p.position.x * 0.1 + p.position.y * 0.1);
         mat.emissive.copy(base).multiplyScalar(k);
       }
 
@@ -248,11 +252,15 @@ export default function Login() {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
       // dispose objects
-      scene.traverse((obj) => {
-        const anyObj = obj as any;
-        if (anyObj.geometry) anyObj.geometry.dispose?.();
+      scene.traverse((obj: THREE.Object3D) => {
+        const anyObj = obj as unknown as {
+          geometry?: { dispose?: () => void };
+          material?: { dispose?: () => void } | Array<{ dispose?: () => void }>;
+        };
+
+        if (anyObj.geometry?.dispose) anyObj.geometry.dispose();
         if (anyObj.material) {
-          if (Array.isArray(anyObj.material)) anyObj.material.forEach((m: any) => m.dispose?.());
+          if (Array.isArray(anyObj.material)) anyObj.material.forEach((m) => m.dispose?.());
           else anyObj.material.dispose?.();
         }
       });
@@ -307,9 +315,73 @@ export default function Login() {
         padding: 28px 14px 60px;
       }
 
+      /* --- Flip card --- */
+      .flipStage { perspective: 1200px; width: 92%; max-width: 460px; }
+      .flipInner {
+        position: relative;
+        width: 100%;
+        transform-style: preserve-3d;
+        transition: transform 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      .flipStage:hover .flipInner,
+      .flipStage:focus-within .flipInner { transform: rotateY(180deg); }
+
+      .flipFace {
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        transform-style: preserve-3d;
+      }
+
+      .flipFront {
+        position: absolute;
+        inset: 0;
+        transform: rotateY(0deg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .flipBack {
+        transform: rotateY(180deg);
+      }
+
+      .logoWrap {
+        width: 100%;
+        background: rgba(10, 10, 25, 0.90);
+        backdrop-filter: blur(20px);
+        padding: 50px;
+        border-radius: 25px;
+        border: 2px solid rgba(100, 200, 255, 0.30);
+        box-shadow: 0 0 100px rgba(100, 200, 255, 0.20), inset 0 0 50px rgba(100, 200, 255, 0.05);
+        animation: glowPulse 3s ease-in-out infinite;
+        text-align: center;
+        min-height: 440px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 16px;
+      }
+
+      .logoImg {
+        width: 280px;
+        max-width: 70%;
+        height: auto;
+        filter: drop-shadow(0 0 24px rgba(100,200,255,0.35));
+        opacity: 0.95;
+        user-select: none;
+        pointer-events: none;
+      }
+
+      .logoHint {
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 800;
+        font-size: 12px;
+      }
+
       .cpCard {
-        width: 92%;
-        max-width: 460px;
+        width: 100%;
         background: rgba(10, 10, 25, 0.90);
         backdrop-filter: blur(20px);
         padding: 50px;
@@ -447,10 +519,15 @@ export default function Login() {
 
       @media (max-width: 480px) {
         .cpCard { padding: 34px 22px 26px; border-radius: 20px; }
+        .logoWrap { padding: 34px 22px 26px; border-radius: 20px; min-height: 410px; }
         .cpTitle { font-size: 28px; }
       }
     `}</style>
   );
+
+  // Put your logo here (place file in /public or import from assets)
+  // If you put it in /public, use "/logo.png"
+  const LOGO_SRC = "/logos/FlukeGames_TM.png";
 
   return (
     <>
@@ -458,100 +535,116 @@ export default function Login() {
       {styles}
 
       <div className="cpWrap">
-        {/* THREE background */}
         <canvas ref={canvasRef} className="cpCanvas" />
 
         <div className="cpCenter">
-          <div className="cpCard">
-            <h1 className="cpTitle">ARCADE</h1>
-            <p className="cpSub">Enter the portal</p>
-
-            {errMsg ? (
-              <div className="cpErr">
-                <i
-                  className="material-icons"
-                  style={{ fontSize: 18, verticalAlign: "middle", marginRight: 8 }}
-                >
-                  error
-                </i>
-                {errMsg}
-              </div>
-            ) : null}
-
-            <form onSubmit={handleSubmit}>
-              <div className="cpGroup">
-                <label className="cpLabel" htmlFor="username">
-                  Username / Email
-                </label>
-                <div className="cpInputWrap">
-                  <input
-                    id="username"
-                    className="cpInput"
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="you@fluke… or username"
-                    required
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoComplete="username"
-                    disabled={loading}
-                  />
+          {/* Flip container */}
+          <div className="flipStage" aria-label="Login card">
+            <div className="flipInner">
+              {/* FRONT: Logo */}
+              <div className="flipFace flipFront">
+                <div className="logoWrap">
+                  <img className="logoImg" style={{ display: "block", margin: "0 auto" }} src={LOGO_SRC} alt="Fluke Games Logo" />
+                  <div className="logoHint">Hover to access</div>
                 </div>
               </div>
 
-              <div className="cpGroup">
-                <label className="cpLabel" htmlFor="password">
-                  Password
-                </label>
-                <div className="cpInputWrap">
-                  <input
-                    id="password"
-                    className="cpInput"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    autoComplete="current-password"
-                    disabled={loading}
-                  />
-                  <button
-                    type="button"
-                    className="cpIconBtn"
-                    onClick={() => setShowPassword((s) => !s)}
-                    disabled={loading}
-                    title={showPassword ? "Hide password" : "Show password"}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    <i className="material-icons" style={{ fontSize: 20 }}>
-                      {showPassword ? "visibility_off" : "visibility"}
-                    </i>
-                  </button>
+              {/* BACK: Login form (shown after flip) */}
+              <div className="flipFace flipBack">
+                <div className="cpCard">
+                  <h1 className="cpTitle">ARCADE</h1>
+                  <p className="cpSub">Enter the portal</p>
+
+                  {errMsg ? (
+                    <div className="cpErr">
+                      <i
+                        className="material-icons"
+                        style={{ fontSize: 18, verticalAlign: "middle", marginRight: 8 }}
+                      >
+                        error
+                      </i>
+                      {errMsg}
+                    </div>
+                  ) : null}
+
+                  <form onSubmit={handleSubmit}>
+                    <div className="cpGroup">
+                      <label className="cpLabel" htmlFor="username">
+                        Username / Email
+                      </label>
+                      <div className="cpInputWrap">
+                        <input
+                          id="username"
+                          className="cpInput"
+                          type="text"
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          placeholder="you@fluke… or username"
+                          required
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          autoComplete="username"
+                          disabled={loading}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="cpGroup">
+                      <label className="cpLabel" htmlFor="password">
+                        Password
+                      </label>
+                      <div className="cpInputWrap">
+                        <input
+                          id="password"
+                          className="cpInput"
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                          autoComplete="current-password"
+                          disabled={loading}
+                        />
+                        <button
+                          type="button"
+                          className="cpIconBtn"
+                          onClick={() => setShowPassword((s) => !s)}
+                          disabled={loading}
+                          title={showPassword ? "Hide password" : "Show password"}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          <i className="material-icons" style={{ fontSize: 20 }}>
+                            {showPassword ? "visibility_off" : "visibility"}
+                          </i>
+                        </button>
+                      </div>
+                    </div>
+
+                    <button className="cpBtn" type="submit" disabled={!canSubmit}>
+                      {loading ? "Signing in…" : "Access"}
+                    </button>
+                  </form>
+
+                  <div className="cpFoot">
+                    Having trouble?{" "}
+                    <a
+                      href="#help"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        M.toast({
+                          html: "Contact your project lead for access.",
+                          classes: "blue-grey darken-1",
+                        });
+                      }}
+                    >
+                      Contact your project lead
+                    </a>
+                  </div>
                 </div>
               </div>
-
-              <button className="cpBtn" type="submit" disabled={!canSubmit}>
-                {loading ? "Signing in…" : "Access"}
-              </button>
-            </form>
-
-            <div className="cpFoot">
-              Having trouble?{" "}
-              <a
-                href="#help"
-                onClick={(e) => {
-                  e.preventDefault();
-                  M.toast({
-                    html: "Contact your project lead for access.",
-                    classes: "blue-grey darken-1",
-                  });
-                }}
-              >
-                Contact your project lead
-              </a>
             </div>
           </div>
+          {/* /Flip container */}
         </div>
       </div>
     </>
