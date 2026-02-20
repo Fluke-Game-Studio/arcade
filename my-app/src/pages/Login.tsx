@@ -20,12 +20,6 @@ export default function Login() {
 
   const tubeGroupRef = useRef<THREE.Group | null>(null);
   const particleGroupRef = useRef<THREE.Group | null>(null);
-  const lightsRef = useRef<{
-    light1: THREE.PointLight;
-    light2: THREE.PointLight;
-    light3: THREE.PointLight;
-    ambient: THREE.AmbientLight;
-  } | null>(null);
 
   const mouseRef = useRef({ x: 0, y: 0 });
   const timeRef = useRef(0);
@@ -64,11 +58,19 @@ export default function Login() {
       alpha: true,
       powerPreference: "high-performance",
     });
+
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setClearColor(0x000000, 1);
+
+    // ✅ Make highlights actually look “shiny”
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+
     rendererRef.current = renderer;
 
     // --- Groups ---
@@ -94,13 +96,16 @@ export default function Login() {
       points.push(points[0].clone());
 
       const curve = new THREE.CatmullRomCurve3(points, true);
-      const tubeGeometry = new THREE.TubeGeometry(curve, segments, 0.8, 8, true);
+      const tubeGeometry = new THREE.TubeGeometry(curve, segments, 0.8, 12, true);
 
       const hue = Math.random() * 0.3 + 0.5;
+
+      // ✅ Strong specular highlight + higher shininess = more 3D “metal/gloss”
       const material = new THREE.MeshPhongMaterial({
-        color: new THREE.Color().setHSL(hue, 1, 0.6),
-        emissive: new THREE.Color().setHSL(hue, 1, 0.3),
-        shininess: 100,
+        color: new THREE.Color().setHSL(hue, 1, 0.55),
+        emissive: new THREE.Color().setHSL(hue, 1, 0.20),
+        specular: new THREE.Color(0xffffff),
+        shininess: 160,
         wireframe: false,
       });
 
@@ -129,7 +134,8 @@ export default function Login() {
       const material = new THREE.MeshPhongMaterial({
         color: new THREE.Color().setHSL(hue, 1, 0.7),
         emissive: new THREE.Color().setHSL(hue, 1, 0.4),
-        shininess: 80,
+        specular: new THREE.Color(0xffffff),
+        shininess: 140,
       });
 
       const particle = new THREE.Mesh(particleGeometry, material);
@@ -147,32 +153,34 @@ export default function Login() {
       particle.scale.set(s, s, s);
       particle.castShadow = true;
 
-      // store velocity in userData
       particle.userData.vz = Math.random() * 0.3 + 0.1;
 
       particleGroup.add(particle);
     }
 
     // --- Lighting ---
-    const light1 = new THREE.PointLight(0x00ff88, 2, 200);
+    const light1 = new THREE.PointLight(0x00ff88, 2.2, 240);
     light1.position.set(20, 20, 20);
     light1.castShadow = true;
     scene.add(light1);
 
-    const light2 = new THREE.PointLight(0x64c8ff, 2, 200);
+    const light2 = new THREE.PointLight(0x64c8ff, 2.2, 240);
     light2.position.set(-20, -20, 20);
     light2.castShadow = true;
     scene.add(light2);
 
-    const light3 = new THREE.PointLight(0xff0080, 1.5, 150);
+    const light3 = new THREE.PointLight(0xff0080, 1.6, 170);
     light3.position.set(0, 30, -30);
     light3.castShadow = true;
     scene.add(light3);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.15);
-    scene.add(ambient);
+    // ✅ This “raking” light is what makes the tubes read as 3D
+    const key = new THREE.DirectionalLight(0xffffff, 0.55);
+    key.position.set(0.6, 1.0, 0.8);
+    scene.add(key);
 
-    lightsRef.current = { light1, light2, light3, ambient };
+    const ambient = new THREE.AmbientLight(0xffffff, 0.10);
+    scene.add(ambient);
 
     // --- Events ---
     function onMouseMove(e: PointerEvent) {
@@ -215,12 +223,11 @@ export default function Login() {
 
         if (p.position.z > 50) p.position.z = -100;
 
-        // gentle emissive variation (avoid multiplying to 0 over time)
         const mat = p.material as THREE.MeshPhongMaterial;
         const base = (p.userData.baseEm ||
           (p.userData.baseEm = mat.emissive.clone())) as THREE.Color;
-        const k =
-          0.65 + 0.35 * Math.sin(t * 6 + p.position.x * 0.1 + p.position.y * 0.1);
+
+        const k = 0.65 + 0.35 * Math.sin(t * 6 + p.position.x * 0.1 + p.position.y * 0.1);
         mat.emissive.copy(base).multiplyScalar(k);
       }
 
@@ -234,7 +241,6 @@ export default function Login() {
       // Camera interaction
       const mx = mouseRef.current.x;
       const my = mouseRef.current.y;
-
       camera.position.x += (mx * 3 - camera.position.x) * 0.08;
       camera.position.y += (my * 3 - camera.position.y) * 0.08;
       camera.lookAt(0, 0, 0);
@@ -251,7 +257,6 @@ export default function Login() {
 
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
-      // dispose objects
       scene.traverse((obj: THREE.Object3D) => {
         const anyObj = obj as unknown as {
           geometry?: { dispose?: () => void };
@@ -271,7 +276,6 @@ export default function Login() {
       cameraRef.current = null;
       tubeGroupRef.current = null;
       particleGroupRef.current = null;
-      lightsRef.current = null;
     };
   }, []);
 
@@ -341,9 +345,7 @@ export default function Login() {
         justify-content: center;
       }
 
-      .flipBack {
-        transform: rotateY(180deg);
-      }
+      .flipBack { transform: rotateY(180deg); }
 
       .logoWrap {
         width: 100%;
@@ -370,6 +372,8 @@ export default function Login() {
         opacity: 0.95;
         user-select: none;
         pointer-events: none;
+        display: block;
+        margin: 0 auto;
       }
 
       .logoHint {
@@ -525,8 +529,6 @@ export default function Login() {
     `}</style>
   );
 
-  // Put your logo here (place file in /public or import from assets)
-  // If you put it in /public, use "/logo.png"
   const LOGO_SRC = "/logos/FlukeGames_TM.png";
 
   return (
@@ -538,18 +540,15 @@ export default function Login() {
         <canvas ref={canvasRef} className="cpCanvas" />
 
         <div className="cpCenter">
-          {/* Flip container */}
           <div className="flipStage" aria-label="Login card">
             <div className="flipInner">
-              {/* FRONT: Logo */}
               <div className="flipFace flipFront">
                 <div className="logoWrap">
-                  <img className="logoImg" style={{ display: "block", margin: "0 auto" }} src={LOGO_SRC} alt="Fluke Games Logo" />
+                  <img className="logoImg" src={LOGO_SRC} alt="Fluke Games Logo" />
                   <div className="logoHint">Hover to access</div>
                 </div>
               </div>
 
-              {/* BACK: Login form (shown after flip) */}
               <div className="flipFace flipBack">
                 <div className="cpCard">
                   <h1 className="cpTitle">ARCADE</h1>
@@ -644,7 +643,6 @@ export default function Login() {
               </div>
             </div>
           </div>
-          {/* /Flip container */}
         </div>
       </div>
     </>
