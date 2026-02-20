@@ -20,24 +20,24 @@ jobs:
         run: |
           ssh-keygen -y -f ~/.ssh/deploy_key | ssh-keygen -lf -
 
-      - name: Choose remote folder
+      - name: Choose remote folder (NO public_html)
         id: target
         run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "REMOTE_DIR=public_html" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref_name }}" = "dev" ]; then
-            echo "REMOTE_DIR=public_html/dev" >> $GITHUB_OUTPUT
-          else
-            echo "REMOTE_DIR=public_html/qa" >> $GITHUB_OUTPUT
-          fi
+          case "${{ github.ref_name }}" in
+            main) echo "REMOTE_DIR=arcade.flukegamestudio.com" >> $GITHUB_OUTPUT ;;
+            dev)  echo "REMOTE_DIR=arcade.flukegamestudio.com/dev" >> $GITHUB_OUTPUT ;;
+            qa)   echo "REMOTE_DIR=arcade.flukegamestudio.com/qa" >> $GITHUB_OUTPUT ;;
+            *)    echo "REMOTE_DIR=arcade.flukegamestudio.com" >> $GITHUB_OUTPUT ;;
+          esac
 
-      - name: SSH preflight
+      - name: SSH preflight + ensure remote dir exists
         env:
           SFTP_HOST: ${{ secrets.SFTP_HOST }}
           SFTP_USER: ${{ secrets.SFTP_USER }}
           SFTP_PORT: ${{ secrets.SFTP_PORT }}
+          REMOTE_DIR: ${{ steps.target.outputs.REMOTE_DIR }}
         run: |
-          ssh -vvv -p "$SFTP_PORT" \
+          ssh -p "$SFTP_PORT" \
             -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
             -o PreferredAuthentications=publickey \
@@ -46,7 +46,8 @@ jobs:
             -o BatchMode=yes \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            "$SFTP_USER@$SFTP_HOST" "echo SSH_OK && whoami"
+            "$SFTP_USER@$SFTP_HOST" \
+            "echo SSH_OK && whoami && pwd && ls -la && mkdir -p ~/${REMOTE_DIR} && ls -la ~/${REMOTE_DIR}"
 
       - name: Rsync deploy (replace/update only - no deletions)
         env:
@@ -62,10 +63,6 @@ jobs:
             "--exclude=node_modules/"
             "--exclude=README*"
           )
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            EXCLUDES+=("--exclude=dev/")
-            EXCLUDES+=("--exclude=qa/")
-          fi
 
           rsync -az \
             "${EXCLUDES[@]}" \
