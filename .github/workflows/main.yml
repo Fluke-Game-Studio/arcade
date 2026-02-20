@@ -1,4 +1,4 @@
-name: Deploy to Namecheap (rsync)
+name: Deploy to Namecheap (build + rsync)
 
 on:
   push:
@@ -7,9 +7,45 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
+      # ----------------------------
+      # Build (edit APP_DIR/DIST_DIR if needed)
+      # ----------------------------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        env:
+          APP_DIR: "."     # change if your app is in a subfolder (e.g. "my-app")
+        run: |
+          cd "$APP_DIR"
+          npm ci
+
+      - name: Build
+        env:
+          APP_DIR: "."     # change if your app is in a subfolder (e.g. "my-app")
+        run: |
+          cd "$APP_DIR"
+          npm run build
+
+      - name: Ensure build output exists
+        env:
+          APP_DIR: "."
+          DIST_DIR: "dist" # change if your build output is "build"
+        run: |
+          test -d "${APP_DIR}/${DIST_DIR}" || (echo "Build output not found at ${APP_DIR}/${DIST_DIR}" && ls -la "${APP_DIR}" && exit 1)
+          echo "Build output:"
+          ls -la "${APP_DIR}/${DIST_DIR}"
+
+      # ----------------------------
+      # SSH setup
+      # ----------------------------
       - name: Install SSH key from base64
         run: |
           mkdir -p ~/.ssh
@@ -20,7 +56,13 @@ jobs:
         run: |
           ssh-keygen -y -f ~/.ssh/deploy_key | ssh-keygen -lf -
 
-      - name: Choose remote folder (NO public_html)
+      # ----------------------------
+      # Target folder mapping
+      # prod: arcade.flukegamestudio.com
+      # dev : arcade.flukegamestudio.com/dev
+      # qa  : arcade.flukegamestudio.com/qa
+      # ----------------------------
+      - name: Choose remote folder
         id: target
         run: |
           case "${{ github.ref_name }}" in
@@ -29,6 +71,11 @@ jobs:
             qa)   echo "REMOTE_DIR=arcade.flukegamestudio.com/qa" >> $GITHUB_OUTPUT ;;
             *)    echo "REMOTE_DIR=arcade.flukegamestudio.com" >> $GITHUB_OUTPUT ;;
           esac
+
+      - name: Print deploy target
+        run: |
+          echo "BRANCH=${{ github.ref_name }}"
+          echo "REMOTE_DIR=${{ steps.target.outputs.REMOTE_DIR }}"
 
       - name: SSH preflight + ensure remote dir exists
         env:
@@ -47,24 +94,26 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
             "$SFTP_USER@$SFTP_HOST" \
-            "echo SSH_OK && whoami && pwd && ls -la && mkdir -p ~/${REMOTE_DIR} && ls -la ~/${REMOTE_DIR}"
+            "echo SSH_OK && whoami && pwd && mkdir -p ~/${REMOTE_DIR} && ls -la ~/${REMOTE_DIR}"
 
-      - name: Rsync deploy (replace/update only - no deletions)
+      # ----------------------------
+      # Deploy build output (NO deletions)
+      # ----------------------------
+      - name: Rsync deploy build output (replace/update only)
         env:
           SFTP_HOST: ${{ secrets.SFTP_HOST }}
           SFTP_USER: ${{ secrets.SFTP_USER }}
           SFTP_PORT: ${{ secrets.SFTP_PORT }}
           REMOTE_DIR: ${{ steps.target.outputs.REMOTE_DIR }}
+          APP_DIR: "."
+          DIST_DIR: "dist"
         run: |
           set -e
-          EXCLUDES=(
-            "--exclude=.git/"
-            "--exclude=.github/"
-            "--exclude=node_modules/"
-            "--exclude=README*"
-          )
+
+          SRC="${APP_DIR}/${DIST_DIR}/"
+          echo "Deploying from: ${SRC}"
+          echo "Deploying to: ${SFTP_USER}@${SFTP_HOST}:~/${REMOTE_DIR}/"
 
           rsync -az \
-            "${EXCLUDES[@]}" \
             -e "ssh -p ${SFTP_PORT} -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-            ./ "${SFTP_USER}@${SFTP_HOST}:~/${REMOTE_DIR}/"
+            "${SRC}" "${SFTP_USER}@${SFTP_HOST}:~/${REMOTE_DIR}/"
