@@ -1,296 +1,339 @@
-/* src/pages/employees.css */
-/* Smart + interactive makeover (Materialize-friendly, no JS required) */
+/* =========================================================
+   UPLIFT PACK (drop-in add-on)
+   - Big “hero” avatar + badges
+   - Modern search bar
+   - Cleaner list header + counters
+   - Still Materialize-friendly
+   ========================================================= */
 
-/* ---------- Tokens ---------- */
-:root {
-  --emp-bg: #ffffff;
-  --emp-surface: #ffffff;
-  --emp-border: #e6edf2;
-  --emp-border-2: #eef2f7;
-  --emp-text: #0f172a;
-  --emp-muted: #607d8b;
-  --emp-muted-2: #90a4ae;
-
-  --emp-primary: #2563eb;
-  --emp-primary-soft: rgba(37, 99, 235, 0.14);
-
-  --emp-success: #16a34a;
-  --emp-success-soft: rgba(22, 163, 74, 0.12);
-
-  --emp-warn: #f59e0b;
-  --emp-warn-soft: rgba(245, 158, 11, 0.12);
-
-  --emp-danger: #ef4444;
-  --emp-danger-soft: rgba(239, 68, 68, 0.12);
-
-  --emp-radius: 14px;
-  --emp-radius-sm: 12px;
-  --emp-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
-  --emp-shadow-soft: 0 8px 18px rgba(0, 0, 0, 0.06);
+/* ---------- Page shell (optional wrapper) ----------
+   <div class="emp-shell"> ... </div>
+*/
+.emp-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 18px 14px 26px;
 }
 
-/* ---------- Collection wrapper ---------- */
-.emp-collection {
-  margin-top: 10px;
-  border: 1px solid var(--emp-border) !important;
-  border-radius: var(--emp-radius) !important;
-  overflow: hidden;
-  background: var(--emp-surface);
-}
-
-/* ---------- Row / item ---------- */
-/* Use on your <li class="collection-item emp-row"> */
-.emp-row {
+/* ---------- Top header strip (optional) ----------
+   <div class="emp-head">
+     <div class="emp-headLeft">
+       <div class="emp-headTitle">Employees</div>
+       <div class="emp-headSub">Directory & quick actions</div>
+     </div>
+     <div class="emp-headRight"> ... chips ... </div>
+   </div>
+*/
+.emp-head {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px !important;
-  position: relative;
-  border-bottom: 1px solid var(--emp-border-2) !important;
-  background: linear-gradient(135deg, #ffffff 0%, #fbfdff 55%, #f7fafc 100%);
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 160ms ease;
-}
-
-/* Remove bottom border on last */
-.emp-row:last-child {
-  border-bottom: none !important;
-}
-
-/* Hover lift */
-.emp-row:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--emp-shadow-soft);
-  border-color: rgba(37, 99, 235, 0.24) !important;
-  background: #ffffff;
-}
-
-/* Focus-within (keyboard users) */
-.emp-row:focus-within {
-  outline: 2px solid rgba(37, 99, 235, 0.28);
-  outline-offset: -2px;
-}
-
-/* Left accent bar on hover */
-.emp-row::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 999px;
-  background: transparent;
-  transition: background 160ms ease;
-}
-.emp-row:hover::before,
-.emp-row:focus-within::before {
-  background: rgba(37, 99, 235, 0.65);
-}
-
-/* ---------- Avatar ---------- */
-.emp-avatar {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  border-radius: 14px;
-  object-fit: cover;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px; /* icon fallback */
-  color: var(--emp-muted);
-  background: #eef2f7;
-  border: 1px solid var(--emp-border);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
-  position: relative;
-}
-
-/* Subtle ring on hover */
-.emp-row:hover .emp-avatar,
-.emp-row:focus-within .emp-avatar {
-  border-color: rgba(37, 99, 235, 0.28);
-}
-
-/* If you use a letter fallback inside avatar */
-.emp-avatar.emp-initials {
-  font-weight: 900;
-  letter-spacing: 0.6px;
-  color: #0f172a;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(34, 197, 94, 0.10));
-}
-
-/* ---------- Meta + text truncation ---------- */
-.emp-meta {
-  flex: 1;
-  min-width: 0; /* enables truncation */
-}
-
-/* name line (supports a badge/chip on same row) */
-.emp-name {
-  font-weight: 900;
-  line-height: 1.2;
-  color: var(--emp-text);
-  display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
-
-/* sub line */
-.emp-sub {
+.emp-headTitle {
+  font-weight: 950;
+  letter-spacing: -0.4px;
+  color: var(--emp-text);
+  font-size: 22px;
+  line-height: 1.1;
+}
+.emp-headSub {
   margin-top: 3px;
-  line-height: 1.2;
   color: var(--emp-muted);
   font-size: 12.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 700;
 }
-
-/* email */
-.emp-email {
-  margin-top: 3px;
-  font-size: 12.5px;
-  color: var(--emp-muted-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ---------- Right side actions (optional) ---------- */
-/* Put buttons/links inside a container: <div class="emp-actions">...</div> */
-.emp-actions {
+.emp-headRight {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
 }
 
-/* Icon buttons that feel modern but still Materialize-friendly */
-.emp-iconbtn {
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
+/* ---------- Fancy search bar ----------
+   <div class="emp-search">
+     <i class="material-icons">search</i>
+     <input class="emp-searchInput" />
+     <button class="emp-searchBtn">…</button>
+   </div>
+*/
+.emp-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #ffffff 0%, #fbfdff 55%, #f7fafc 100%);
   border: 1px solid var(--emp-border);
-  background: #ffffff;
+  border-radius: 16px;
+  padding: 10px 12px;
+  box-shadow: var(--emp-shadow-soft);
+}
+.emp-search i.material-icons {
+  font-size: 20px;
+  color: #546e7a;
+  opacity: 0.95;
+}
+.emp-searchInput {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  margin: 0 !important;
+  height: 28px !important;
+  font-size: 14px !important;
+  font-weight: 800;
+  color: var(--emp-text);
+  min-width: 0;
+  flex: 1;
+}
+.emp-searchInput::placeholder {
+  color: #90a4ae;
+  font-weight: 800;
+}
+.emp-search:focus-within {
+  border-color: rgba(37, 99, 235, 0.36);
+  box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.12), var(--emp-shadow-soft);
+}
+.emp-searchBtn {
+  border: 1px solid var(--emp-border);
+  background: #fff;
+  border-radius: 14px;
+  height: 34px;
+  padding: 0 12px;
+  font-weight: 900;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
   transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
-  cursor: pointer;
 }
-
-.emp-iconbtn i.material-icons {
+.emp-searchBtn i.material-icons {
   font-size: 18px;
-  color: #546e7a;
+  color: #1e40af;
 }
-
-.emp-iconbtn:hover {
+.emp-searchBtn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.10);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.1);
   border-color: rgba(37, 99, 235, 0.26);
   background: #fbfdff;
 }
 
-.emp-iconbtn:active {
-  transform: translateY(0px);
-  box-shadow: none;
+/* ---------- Collection header row (optional) ----------
+   <div class="emp-listTop">
+     <div class="emp-listTopLeft">
+       <span class="emp-listPill">Showing 24</span>
+     </div>
+     <div class="emp-listTopRight"> ... filters ... </div>
+   </div>
+*/
+.emp-listTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+.emp-listPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--emp-border);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 950;
+  color: #334155;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
 }
 
-/* Reveal actions only on hover (optional behavior) */
-.emp-actions.reveal {
-  opacity: 0;
-  transform: translateY(2px);
-  pointer-events: none;
-  transition: opacity 140ms ease, transform 140ms ease;
-}
-.emp-row:hover .emp-actions.reveal,
-.emp-row:focus-within .emp-actions.reveal {
-  opacity: 1;
-  transform: translateY(0px);
-  pointer-events: auto;
+/* =========================================================
+   BIG AVATAR ROW STYLE (swap/override your existing sizes)
+   ========================================================= */
+
+/* If you want BIG profile pics on list rows */
+.emp-row.emp-big {
+  gap: 16px;
+  padding: 14px 14px !important;
 }
 
-/* ---------- Status chips (optional) ---------- */
-/* Add next to name: <span class="emp-chip emp-chip--success">Active</span> */
-.emp-chip {
-  height: 24px;
-  line-height: 24px;
+/* BIG avatar (use .emp-avatar with .emp-bigAvatar) */
+.emp-avatar.emp-bigAvatar {
+  width: 72px;
+  height: 72px;
+  min-width: 72px;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.12);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(34, 197, 94, 0.1));
+}
+
+/* Add a “ring glow” on hover */
+.emp-row:hover .emp-avatar.emp-bigAvatar,
+.emp-row:focus-within .emp-avatar.emp-bigAvatar {
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.16), 0 0 0 6px rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+/* Optional online dot for avatar */
+.emp-avatar .emp-dot {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--emp-success);
+  border: 2px solid rgba(15, 23, 42, 0.9);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
+}
+
+/* =========================================================
+   NAME + BADGES LAYOUT (more “cool”)
+   ========================================================= */
+
+.emp-name {
+  font-size: 15.5px;
+  letter-spacing: -0.2px;
+}
+
+/* Put badges near the name: <div class="emp-badges">...</div> */
+.emp-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Badge variants (denser + nicer) */
+.emp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
   padding: 0 10px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 950;
   letter-spacing: 0.3px;
   border: 1px solid var(--emp-border);
-  background: #f8fafc;
+  background: #fff;
   color: #334155;
   white-space: nowrap;
-  flex: 0 0 auto;
+}
+.emp-badge i.material-icons {
+  font-size: 16px;
+  opacity: 0.9;
 }
 
-.emp-chip--success {
-  background: var(--emp-success-soft);
-  border-color: rgba(22, 163, 74, 0.22);
-  color: #166534;
-}
-
-.emp-chip--warn {
-  background: var(--emp-warn-soft);
-  border-color: rgba(245, 158, 11, 0.22);
-  color: #92400e;
-}
-
-.emp-chip--danger {
-  background: var(--emp-danger-soft);
-  border-color: rgba(239, 68, 68, 0.22);
-  color: #991b1b;
-}
-
-.emp-chip--primary {
-  background: var(--emp-primary-soft);
+/* Role badges */
+.emp-badge--super {
+  background: rgba(37, 99, 235, 0.14);
   border-color: rgba(37, 99, 235, 0.22);
   color: #1e40af;
 }
-
-/* ---------- “Clickable row” support ---------- */
-/* If your row is actually an <a> tag, keep it clean */
-.emp-row.emp-link {
-  text-decoration: none;
-  color: inherit;
+.emp-badge--admin {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: #92400e;
+}
+.emp-badge--employee {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.22);
+  color: #166534;
 }
 
-/* ---------- Mobile tweaks ---------- */
+/* Extra “ID” badge */
+.emp-badge--id {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.22);
+  color: #334155;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* =========================================================
+   Sub-lines: make them look intentional + modern
+   ========================================================= */
+
+.emp-sub {
+  font-weight: 800;
+  color: #526a78;
+}
+
+.emp-sub .emp-dotSep {
+  margin: 0 8px;
+  opacity: 0.5;
+}
+
+.emp-email {
+  font-weight: 800;
+}
+
+/* =========================================================
+   Action buttons: make them more “portal” feeling
+   ========================================================= */
+
+.emp-actions {
+  gap: 10px;
+}
+
+/* Bigger action icons */
+.emp-iconbtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
+}
+.emp-iconbtn i.material-icons {
+  font-size: 19px;
+}
+
+/* Primary action */
+.emp-iconbtn.emp-iconbtn--primary {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: rgba(37, 99, 235, 0.10);
+}
+.emp-iconbtn.emp-iconbtn--primary i.material-icons {
+  color: #1e40af;
+}
+
+/* Danger action */
+.emp-iconbtn.emp-iconbtn--danger {
+  border-color: rgba(239, 68, 68, 0.20);
+  background: rgba(239, 68, 68, 0.10);
+}
+.emp-iconbtn.emp-iconbtn--danger i.material-icons {
+  color: #991b1b;
+}
+
+/* =========================================================
+   Mobile: keep big avatar but slightly smaller
+   ========================================================= */
 @media (max-width: 600px) {
-  .emp-row {
-    gap: 12px;
-    padding: 12px 12px !important;
+  .emp-avatar.emp-bigAvatar {
+    width: 60px;
+    height: 60px;
+    min-width: 60px;
+    border-radius: 18px;
   }
-
-  .emp-avatar {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    border-radius: 12px;
+  .emp-name {
+    font-size: 15px;
   }
-
-  .emp-actions {
-    gap: 6px;
+  .emp-badge {
+    height: 24px;
+    padding: 0 9px;
   }
-
-  .emp-iconbtn {
-    width: 32px;
-    height: 32px;
-    border-radius: 12px;
+  .emp-search {
+    padding: 10px 10px;
   }
 }
 
-/* ---------- Reduced motion accessibility ---------- */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .emp-row,
-  .emp-row::before,
-  .emp-iconbtn,
-  .emp-actions.reveal {
+  .emp-search,
+  .emp-searchBtn,
+  .emp-avatar.emp-bigAvatar {
     transition: none !important;
   }
 }
