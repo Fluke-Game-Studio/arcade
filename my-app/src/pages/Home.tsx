@@ -1,3 +1,4 @@
+// src/pages/Home.tsx
 import { useEffect, useMemo, useState } from "react";
 import ProfileCard from "../components/ProfileCard";
 import RightRail from "../components/RightRail";
@@ -24,9 +25,17 @@ type UpdateItem = {
 export default function Home() {
   const [docQuery, setDocQuery] = useState("");
 
-  // ------------------------------------------------------------
-  // Docs (employee-relevant: keep admin items but badge them clearly)
-  // ------------------------------------------------------------
+  // Day/Night (persisted)
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = (localStorage.getItem("fg_theme") || "").toLowerCase();
+    return saved === "dark" ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("fg_theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
   const docs: DocLink[] = [
     { title: "Onboarding Guide", sub: "Accounts, tools, and first-week checklist", icon: "menu_book", href: "#", badge: "Start" },
     { title: "Security Policies", sub: "MFA, credentials, data handling rules", icon: "lock", href: "#", badge: "Required" },
@@ -39,8 +48,6 @@ export default function Home() {
     { title: "Email Templates", sub: "Standard comms formats used by the team", icon: "mail", href: "#" },
     { title: "Access & Roles", sub: "Auth, roles, and account lifecycle", icon: "verified_user", href: "#" },
     { title: "Data Retention", sub: "Backups, privacy, retention policy", icon: "inventory_2", href: "#" },
-
-    // If you keep admin-only docs, tag them clearly:
     { title: "Applicants Admin", sub: "Hiring pipeline and email actions", icon: "group_add", href: "#", badge: "Admin" },
   ];
 
@@ -53,11 +60,8 @@ export default function Home() {
         d.sub.toLowerCase().includes(q) ||
         (d.badge || "").toLowerCase().includes(q)
     );
-  }, [docQuery]);
+  }, [docQuery, docs]);
 
-  // ------------------------------------------------------------
-  // Updates
-  // ------------------------------------------------------------
   const updates: UpdateItem[] = [
     { icon: "group_add", title: "Applicants pipeline upgraded", detail: "Stage-based flow (Intro → Tech → NDA → Offer → Welcome) with email history + previews.", when: "Feb 2026" },
     { icon: "mail", title: "Doc emails now include PDFs", detail: "NDA / Offer / Experience / Welcome emails support PDF attachments with shared vars + optional CC.", when: "Feb 2026" },
@@ -67,9 +71,6 @@ export default function Home() {
     { icon: "admin_panel_settings", title: "Admin panel improved", detail: "Employee management (CRUD) + project/manager assignment + certificate composer consolidated.", when: "Feb 2026" },
   ];
 
-  // ------------------------------------------------------------
-  // Materialize init
-  // ------------------------------------------------------------
   useEffect(() => {
     if (typeof M === "undefined") return;
 
@@ -90,22 +91,193 @@ export default function Home() {
     return () => window.clearTimeout(t);
   }, []);
 
+  function toastRouteNotWired() {
+    if (typeof M !== "undefined") M.toast({ html: "Route not wired yet.", classes: "blue-grey darken-1" });
+  }
+
   return (
     <>
       <style>{`
         :root{
-          --cardR: 18px;
-          --border: rgba(2,6,23,0.08);
-          --muted: rgba(2,6,23,0.60);
-          --bg: #f6f8fb;
+          --bg: #f7f9fc;
+          --bg2: #ffffff;
+          --card: rgba(255,255,255,0.88);
+          --cardSolid: #ffffff;
+
+          --text: #0f172a;
+          --muted: rgba(15,23,42,0.62);
+
+          --border: rgba(2,6,23,0.10);
+          --shadow: 0 16px 50px rgba(2,6,23,0.08);
+
+          --blue: #2563eb;
+          --blue2: #60a5fa;
+
+          --chipBg: rgba(37,99,235,0.10);
+          --chipBd: rgba(37,99,235,0.20);
+
+          --ring: 0 0 0 3px rgba(37,99,235,0.22);
+
+          --r: 18px;
         }
 
-        body { background: var(--bg); }
+        [data-theme="dark"]{
+          --bg: #070b15;
+          --bg2: #0a1020;
+          --card: rgba(10,16,32,0.70);
+          --cardSolid: rgba(10,16,32,0.95);
+
+          --text: rgba(255,255,255,0.92);
+          --muted: rgba(148,163,184,0.88);
+
+          --border: rgba(148,163,184,0.18);
+          --shadow: 0 22px 70px rgba(0,0,0,0.55);
+
+          --chipBg: rgba(96,165,250,0.14);
+          --chipBd: rgba(96,165,250,0.24);
+
+          --ring: 0 0 0 3px rgba(96,165,250,0.22);
+        }
+
+        body{
+          background: var(--bg) !important;
+          color: var(--text) !important;
+        }
+
+        .portalBg{
+          position: fixed;
+          inset: 0;
+          z-index: -10;
+          background:
+            radial-gradient(900px 420px at 15% 10%, rgba(37,99,235,0.10), transparent 60%),
+            radial-gradient(800px 420px at 85% 25%, rgba(96,165,250,0.10), transparent 62%),
+            linear-gradient(180deg, var(--bg2) 0%, var(--bg) 70%, var(--bg) 100%);
+        }
+        [data-theme="dark"] .portalBg{
+          background:
+            radial-gradient(900px 420px at 15% 10%, rgba(96,165,250,0.14), transparent 60%),
+            radial-gradient(800px 420px at 85% 25%, rgba(37,99,235,0.12), transparent 62%),
+            linear-gradient(180deg, var(--bg2) 0%, var(--bg) 70%, var(--bg) 100%);
+        }
 
         .portalWrap { padding: 18px 0 28px; }
-        .portalGridGap { margin-top: 6px; }
+        .portalGridGap { margin-top: 10px; }
+        .stack, .stackTight { display: grid; gap: 12px; }
 
-        .pCard { border-radius: var(--cardR); overflow: hidden; border: 1px solid var(--border); box-shadow: 0 14px 36px rgba(2,6,23,0.06); }
+        @media (min-width: 993px) {
+          .stickyCol { position: sticky; top: 12px; }
+        }
+
+        /* ✅ FIX: Theme pill moved OUT of left column flow so it doesn't push the
+           left stack down and break alignment with the center column. */
+        .portalTopBar{
+          display:flex;
+          justify-content:flex-end;
+          align-items:center;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+        @media (max-width: 600px){
+          .portalTopBar{ justify-content: stretch; }
+        }
+
+        .themePill {
+          display:flex;
+          align-items:center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 10px 12px;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          background: rgba(255,255,255,0.70);
+          backdrop-filter: blur(10px);
+          box-shadow: 0 10px 26px rgba(2,6,23,0.06);
+          width: 100%;
+          max-width: 420px;
+        }
+        [data-theme="dark"] .themePill{
+          background: rgba(10,16,32,0.60);
+          box-shadow: 0 20px 55px rgba(0,0,0,0.40);
+        }
+
+        .themePillLeft{
+          display:flex;
+          align-items:center;
+          gap: 10px;
+          min-width: 0;
+          flex: 1 1 auto;
+        }
+        .themeDot{
+          width: 34px; height: 34px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: linear-gradient(135deg, var(--blue), var(--blue2));
+          box-shadow: 0 12px 30px rgba(37,99,235,0.20);
+          display:flex; align-items:center; justify-content:center;
+          color: white;
+          flex: 0 0 auto;
+        }
+        .themeTitle{
+          font-weight: 950;
+          font-size: 12px;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          color: var(--text);
+          opacity: 0.92;
+          line-height: 1.1;
+        }
+        .themeSub{
+          font-size: 12px;
+          color: var(--muted);
+          font-weight: 800;
+          margin-top: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .themeBtn{
+          border: 1px solid var(--border);
+          background: var(--cardSolid);
+          color: var(--text);
+          border-radius: 999px;
+          padding: 9px 12px;
+          font-weight: 950;
+          cursor: pointer;
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+          flex: 0 0 auto;
+          min-width: 112px; /* keeps the pill stable between Day/Night */
+          justify-content: center;
+          white-space: nowrap;
+        }
+        .themeBtn:hover{
+          transform: translateY(-1px);
+          border-color: rgba(37,99,235,0.28);
+          box-shadow: 0 18px 40px rgba(37,99,235,0.10);
+        }
+        .themeBtn:focus{
+          outline: none;
+          box-shadow: var(--ring);
+        }
+
+        /* Cards */
+        .pCard {
+          border-radius: var(--r);
+          overflow: hidden;
+          border: 1px solid var(--border);
+          background: var(--card);
+          backdrop-filter: blur(14px);
+          box-shadow: var(--shadow);
+        }
+        .pCard:hover {
+          border-color: rgba(37,99,235,0.22);
+          box-shadow: 0 20px 60px rgba(37,99,235,0.10), var(--shadow);
+          transform: translateY(-1px);
+          transition: all 180ms ease;
+        }
         .pCard .card-content { padding: 18px 18px; }
         .pCardTight .card-content { padding: 14px 16px; }
 
@@ -113,28 +285,32 @@ export default function Home() {
           padding: 16px 18px 14px;
           border-bottom: 1px solid var(--border);
           background:
-            radial-gradient(800px 240px at 10% 0%, rgba(59,130,246,0.12), transparent 55%),
-            radial-gradient(680px 240px at 90% 50%, rgba(34,197,94,0.10), transparent 60%),
-            linear-gradient(135deg, #ffffff, #fbfdff);
+            radial-gradient(700px 240px at 10% 0%, rgba(37,99,235,0.10), transparent 60%),
+            radial-gradient(600px 240px at 90% 50%, rgba(96,165,250,0.10), transparent 60%),
+            linear-gradient(135deg, rgba(255,255,255,0.90), rgba(255,255,255,0.70));
+        }
+        [data-theme="dark"] .pHeader{
+          background:
+            radial-gradient(700px 240px at 10% 0%, rgba(96,165,250,0.14), transparent 60%),
+            radial-gradient(600px 240px at 90% 50%, rgba(37,99,235,0.12), transparent 60%),
+            linear-gradient(135deg, rgba(10,16,32,0.92), rgba(10,16,32,0.65));
         }
 
         .pTitleRow { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
-        .pTitle { font-weight: 950; font-size: 18px; color: #0f172a; letter-spacing: -0.2px; }
-        .pSub { font-size: 12px; color: var(--muted); margin-top: 4px; font-weight: 800; }
-
-        .pSectionTitle { font-weight: 950; font-size: 16px; color:#0f172a; }
-        .pTiny { font-size: 12px; color: var(--muted); font-weight: 800; }
-
-        .softDivider { height: 1px; background: var(--border); margin: 12px 0; }
+        .pTitle { font-weight: 950; font-size: 18px; color: var(--text); letter-spacing: -0.2px; }
+        .pSub { font-size: 12px; color: var(--muted); margin-top: 4px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+        .pTiny { font-size: 12px; color: var(--muted); font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
 
         .mediaFrame {
-          position: relative; width: 100%;
+          position: relative;
+          width: 100%;
           padding-top: 56.25%;
           border-radius: 16px;
           overflow: hidden;
           border: 1px solid var(--border);
           background: rgba(2,6,23,0.02);
         }
+        [data-theme="dark"] .mediaFrame{ background: rgba(0,0,0,0.28); }
         .mediaFrame iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
 
         .kpiGrid { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -143,26 +319,40 @@ export default function Home() {
         .kpiCard {
           border-radius: 16px;
           border: 1px solid var(--border);
-          background: #fff;
+          background: var(--card);
+          backdrop-filter: blur(14px);
           padding: 14px 14px;
           display:flex;
           align-items:center;
-          justify-content:space-between;
           gap: 12px;
-          box-shadow: 0 10px 26px rgba(2,6,23,0.06);
+          box-shadow: 0 14px 36px rgba(2,6,23,0.06);
         }
+        [data-theme="dark"] .kpiCard{ box-shadow: 0 22px 55px rgba(0,0,0,0.45); }
         .kpiLeft { display:flex; align-items:center; gap: 12px; min-width:0; }
         .kpiIcon {
           width: 40px; height: 40px;
           border-radius: 14px;
           border: 1px solid var(--border);
-          background: rgba(2,6,23,0.04);
+          background: rgba(37,99,235,0.10);
           display:flex; align-items:center; justify-content:center;
           flex: 0 0 auto;
         }
-        .kpiIcon i { font-size: 22px; opacity: 0.78; }
-        .kpiValue { font-weight: 950; font-size: 18px; color:#0f172a; }
-        .kpiLabel { font-size: 12px; font-weight: 900; color: var(--muted); }
+        .kpiIcon i { font-size: 22px; opacity: 0.88; color: var(--blue); }
+        [data-theme="dark"] .kpiIcon i { color: rgba(255,255,255,0.92); opacity: 0.92; }
+        .kpiValue { font-weight: 950; font-size: 18px; color: var(--text); }
+        .kpiLabel { font-size: 12px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+
+        .carousel .carousel-item img {
+          border-radius: 14px !important;
+          border: 1px solid var(--border);
+          box-shadow: 0 18px 40px rgba(2,6,23,0.08);
+        }
+
+        .tabs { background: transparent; }
+        .tabs .tab a { font-weight: 950; color: rgba(15,23,42,0.70); }
+        [data-theme="dark"] .tabs .tab a { color: rgba(148,163,184,0.88); }
+        .tabs .tab a.active { color: var(--blue) !important; }
+        .tabs .indicator { height: 3px; background: linear-gradient(135deg, var(--blue), var(--blue2)); }
 
         .docList { list-style:none; margin:0; padding:0; }
         .docRow {
@@ -171,42 +361,80 @@ export default function Home() {
           border-bottom: 1px solid var(--border);
         }
         .docRow:last-child { border-bottom: 0; }
+
         .docIco {
           width: 38px; height: 38px; border-radius: 14px;
           border: 1px solid var(--border);
-          background: rgba(2,6,23,0.04);
+          background: rgba(37,99,235,0.08);
           display:flex; align-items:center; justify-content:center;
           flex: 0 0 auto;
         }
-        .docIco i { font-size: 20px; opacity: 0.78; }
+        .docIco i { font-size: 20px; opacity: 0.88; color: var(--blue); }
+        [data-theme="dark"] .docIco i { color: rgba(255,255,255,0.92); opacity: 0.92; }
+
         .docMain { flex:1; min-width:0; }
-        .docTitle { font-weight: 950; color:#0f172a; display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+        .docTitle { font-weight: 950; color: var(--text); display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
         .docSub { margin-top: 3px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow:hidden; text-overflow: ellipsis; }
-        .chip.tiny { height: 22px; line-height: 22px; font-size: 11px; font-weight: 900; }
+
+        .chip.tiny {
+          height: 22px; line-height: 22px;
+          font-size: 11px;
+          font-weight: 950;
+          border-radius: 999px;
+          padding: 0 10px;
+          background: var(--chipBg);
+          border: 1px solid var(--chipBd);
+          color: var(--blue);
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+        }
+        [data-theme="dark"] .chip.tiny{ color: rgba(255,255,255,0.92); }
+
         .docOpen {
-          width: 34px; height: 34px;
-          border-radius: 12px;
+          width: 36px; height: 36px;
+          border-radius: 14px;
           border: 1px solid var(--border);
-          background:#fff;
+          background: var(--cardSolid);
           display:flex; align-items:center; justify-content:center;
         }
-        .docOpen i { font-size: 18px; opacity: 0.75; }
+        .docOpen i { font-size: 18px; opacity: 0.78; color: var(--text); }
+        .docOpen:hover { border-color: rgba(37,99,235,0.28); box-shadow: 0 14px 30px rgba(37,99,235,0.10); }
 
-        .updatesBox { border: 1px solid var(--border); border-radius: 16px; overflow:hidden; background:#fff; }
+        .input-field input {
+          border-bottom: 1px solid rgba(2,6,23,0.20) !important;
+          color: var(--text) !important;
+        }
+        [data-theme="dark"] .input-field input{
+          border-bottom: 1px solid rgba(148,163,184,0.28) !important;
+        }
+        .input-field input:focus {
+          border-bottom: 1px solid rgba(37,99,235,0.80) !important;
+          box-shadow: 0 1px 0 0 rgba(37,99,235,0.80) !important;
+        }
+
+        .updatesBox {
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          overflow:hidden;
+          background: var(--card);
+          backdrop-filter: blur(14px);
+        }
         .uRow { padding: 14px 14px; border-bottom: 1px solid var(--border); display:flex; gap: 12px; align-items:flex-start; }
         .uRow:last-child { border-bottom: 0; }
         .uIco {
           width: 36px; height: 36px;
           border-radius: 14px;
           border: 1px solid var(--border);
-          background: rgba(2,6,23,0.04);
+          background: rgba(37,99,235,0.08);
           display:flex; align-items:center; justify-content:center;
           flex: 0 0 auto;
         }
-        .uIco i { font-size: 18px; opacity: 0.78; }
-        .uTitle { font-weight: 950; color:#0f172a; }
-        .uDetail { margin-top: 4px; font-size: 13px; color: var(--muted); line-height: 1.45; }
-        .uWhen { margin-top: 8px; display:flex; align-items:center; gap:6px; font-size: 12px; color: var(--muted); font-weight: 900; }
+        .uIco i { font-size: 18px; opacity: 0.88; color: var(--blue); }
+        [data-theme="dark"] .uIco i { color: rgba(255,255,255,0.92); opacity: 0.92; }
+
+        .uTitle { font-weight: 950; color: var(--text); }
+        .uDetail { margin-top: 4px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+        .uWhen { margin-top: 8px; display:flex; align-items:center; gap:6px; font-size: 12px; color: var(--muted); font-weight: 950; text-transform: uppercase; letter-spacing: 1px; }
 
         .scrollBox {
           max-height: 260px;
@@ -214,35 +442,62 @@ export default function Home() {
           padding: 10px 12px;
           border-radius: 14px;
           border: 1px solid var(--border);
-          background:#fff;
+          background: var(--cardSolid);
         }
+        [data-theme="dark"] .scrollBox{ background: rgba(10,16,32,0.62); }
 
-        .tabs { background: transparent; }
-        .tabs .tab a { font-weight: 950; }
-        .tabs .indicator { height: 3px; }
-
-        /* make center column feel less “tall” */
-        .stack { display: grid; gap: 12px; }
-
-        /* keep Materialize forms clean */
-        .input-field input { border-bottom: 1px solid rgba(2,6,23,0.20) !important; }
-        .input-field input:focus { border-bottom: 1px solid rgba(37,99,235,0.80) !important; box-shadow: 0 1px 0 0 rgba(37,99,235,0.80) !important; }
+        .collapsible { border: 1px solid var(--border); border-radius: 16px; overflow:hidden; }
+        .collapsible-header { background: transparent !important; color: var(--text) !important; font-weight: 950 !important; }
+        .collapsible-body { background: transparent !important; color: var(--muted) !important; }
       `}</style>
 
+      <div className="portalBg" />
+
       <div className="container portalWrap">
+        {/* ✅ Theme toggle is now global (doesn't affect column alignment) */}
+        <div className="portalTopBar">
+          <div className="themePill">
+            <div className="themePillLeft">
+              <div className="themeDot" aria-hidden="true">
+                <i className="material-icons" style={{ fontSize: 18 }}>
+                  {theme === "dark" ? "dark_mode" : "light_mode"}
+                </i>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div className="themeTitle">Theme</div>
+                <div className="themeSub">
+                  {theme === "dark" ? "Night mode" : "Day mode"} • click to toggle
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="themeBtn"
+              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+              aria-label="Toggle day/night mode"
+              title="Toggle day/night mode"
+            >
+              <i className="material-icons" style={{ fontSize: 18 }}>
+                {theme === "dark" ? "wb_sunny" : "nightlight_round"}
+              </i>
+              {theme === "dark" ? "Day" : "Night"}
+            </button>
+          </div>
+        </div>
+
         <div className="row portalGridGap">
           {/* LEFT */}
           <div className="col s12 m3">
-            <div className="stack">
+            <div className="stack stickyCol">
               <ProfileCard />
-              {/* EmployeeActions should be employee-friendly now (not admin-only). */}
               <EmployeeActions />
             </div>
           </div>
 
           {/* CENTER */}
           <div className="col s12 m6">
-            <div className="stack">
+            <div className="stackTight">
               <EventHero />
 
               {/* Featured Trailer */}
@@ -312,22 +567,23 @@ export default function Home() {
                     ].map((x, idx) => (
                       <a className="carousel-item" key={idx} href="#!" onClick={(e) => e.preventDefault()}>
                         <div style={{ position: "relative" }}>
-                          <img src={`https://picsum.photos/seed/${x.seed}/600/360`} alt={x.title} style={{ borderRadius: 14 }} />
+                          <img src={`https://picsum.photos/seed/${x.seed}/600/360`} alt={x.title} />
                           <div
                             style={{
                               position: "absolute",
                               left: 10,
                               bottom: 10,
                               right: 10,
-                              padding: "8px 10px",
+                              padding: "9px 10px",
                               borderRadius: 14,
-                              background: "rgba(2,6,23,0.62)",
-                              color: "white",
-                              border: "1px solid rgba(255,255,255,0.10)",
+                              background: theme === "dark" ? "rgba(10,16,32,0.72)" : "rgba(255,255,255,0.78)",
+                              color: "var(--text)",
+                              border: "1px solid var(--border)",
+                              backdropFilter: "blur(12px)",
                             }}
                           >
                             <div style={{ fontWeight: 950, fontSize: 13 }}>{x.title}</div>
-                            <div style={{ fontSize: 12, opacity: 0.92 }}>{x.sub}</div>
+                            <div style={{ fontSize: 12, opacity: 0.92, color: "var(--muted)" }}>{x.sub}</div>
                           </div>
                         </div>
                       </a>
@@ -366,7 +622,9 @@ export default function Home() {
                         <div className="card pCard pCardTight hoverable">
                           <div className="card-image">
                             <img src={`https://picsum.photos/seed/media${i}/600/340`} alt={`media-${i}`} />
-                            <span className="card-title" style={{ fontWeight: 950 }}>Portal Album {i}</span>
+                            <span className="card-title" style={{ fontWeight: 950 }}>
+                              Portal Album {i}
+                            </span>
                           </div>
                           <div className="card-content">
                             <p className="pTiny" style={{ margin: 0 }}>
@@ -390,7 +648,7 @@ export default function Home() {
                     <label htmlFor="doc-search" className="active">Search</label>
                   </div>
 
-                  <div style={{ borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden", background: "#fff" }}>
+                  <div style={{ borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden", background: "var(--cardSolid)" }}>
                     <ul className="docList">
                       {filteredDocs.map((d) => (
                         <li key={d.title} className="docRow">
@@ -411,7 +669,7 @@ export default function Home() {
                             onClick={(e) => {
                               if (d.href === "#") {
                                 e.preventDefault();
-                                if (typeof M !== "undefined") M.toast({ html: "Route not wired yet.", classes: "blue-grey darken-1" });
+                                toastRouteNotWired();
                               }
                             }}
                             style={{ textDecoration: "none" }}
@@ -531,7 +789,9 @@ export default function Home() {
 
           {/* RIGHT */}
           <div className="col s12 m3">
-            <RightRail />
+            <div className="stickyCol">
+              <RightRail />
+            </div>
           </div>
         </div>
       </div>
