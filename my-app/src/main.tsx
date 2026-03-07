@@ -18,8 +18,6 @@ import JobsAdmin from "./pages/JobsAdmin";
 import WeeklyUpdate from "./pages/WeeklyUpdate";
 import RetroBoard from "./pages/RetroBoard";
 import { UpdatesProvider } from "./pages/UpdatesContext";
-
-// ✅ NEW PAGE
 import Applicants from "./pages/Applicants";
 
 const router = createBrowserRouter([
@@ -35,7 +33,7 @@ const router = createBrowserRouter([
       { path: "/employees", element: <Employees /> },
       { path: "/account", element: <Account /> },
 
-      // ✅ applicants (recommend admin+super only)
+      // applicants (recommend admin+super only)
       {
         path: "/applicants",
         element: (
