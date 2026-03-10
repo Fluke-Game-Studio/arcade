@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import BotAvatar, { type BotStatus } from "../components/BotAvatar2DBit";
 
 type ChatRole = "user" | "assistant";
 
@@ -14,21 +15,63 @@ type ChatMessage = {
   content: string;
   ts: number;
   tags?: ChatMetaTag[];
+  requestClientId?: string;
+  finalized?: boolean;
+  stopped?: boolean;
 };
 
 type ProviderType = "openai" | "ollama";
+type ChatContextType = "personal" | "public" | "internal";
+
 type SidePanelKey =
+  | "context"
+  | "model"
   | "session"
   | "toggles"
-  | "model"
   | "generation"
   | "identity"
   | "advanced";
 
 type RuntimeWarmState = "idle" | "warming" | "ready" | "error";
 
-const API_URL =
-  "https://xtipeal88c.execute-api.us-east-1.amazonaws.com/ai/chat/internal";
+const WS_URL =
+  "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
+
+const API_BASE =
+  "https://xtipeal88c.execute-api.us-east-1.amazonaws.com";
+
+const CONTEXT_META: Record<
+  ChatContextType,
+  {
+    label: string;
+    description: string;
+    icon: string;
+    path: string;
+    defaultProvider: ProviderType;
+  }
+> = {
+  personal: {
+    label: "Personal",
+    description: "Private Vaibhav-facing assistant route.",
+    icon: "person",
+    path: `${API_BASE}/ai/chat/vaibhav`,
+    defaultProvider: "openai",
+  },
+  public: {
+    label: "Public",
+    description: "Community/public facing route.",
+    icon: "groups",
+    path: `${API_BASE}/ai/chat/flukegames`,
+    defaultProvider: "openai",
+  },
+  internal: {
+    label: "Internal",
+    description: "Protected internal workspace route.",
+    icon: "lock",
+    path: `${API_BASE}/ai/chat/internal`,
+    defaultProvider: "ollama",
+  },
+};
 
 const PROVIDER_MODEL: Record<ProviderType, string> = {
   openai: "gpt-5-mini",
@@ -41,29 +84,175 @@ const PROVIDER_META: Record<
 > = {
   openai: {
     label: "OpenAI",
-    description: "Cloud-hosted premium route for polished answers.",
+    description: "Cloud-hosted route for polished responses.",
     icon: "cloud_queue",
   },
   ollama: {
     label: "Ollama",
-    description: "Internal or self-hosted route using your local model stack.",
+    description: "Local/self-hosted route for internal runtime flow.",
     icon: "dns",
   },
 };
 
-const THINKING_MESSAGES = [
+const CHAT_WITTY_MESSAGES = [
+  "Parsing your message like it's a suspicious quest objective...",
+  "Checking if this is canon lore...",
+  "Scanning for hidden plot twists...",
+  "Generating 3 possible smart replies and 17 questionable ones...",
+  "Loading intellectual side quest...",
+  "Rebuilding thoughts from cached brain fragments...",
+  "Looking for the 'actually smart' button...",
+  "Aligning neurons for maximum efficiency...",
+  "Simulating confidence while calculations run...",
+  "Reassembling logic like IKEA furniture...",
+  "Thinking harder than a tutorial boss...",
+  "Checking if the answer requires touching grass...",
+  "Rendering thoughts in ultra settings...",
+  "Attempting to avoid an intellectual skill issue...",
+  "Generating a reply with 87% confidence and 13% vibes...",
+  "Checking patch notes for reality...",
+  "Simulating human-like hesitation...",
+  "Converting confusion into wisdom...",
+  "Consulting the internet spirits...",
+  "Pretending this was easy...",
+  "Aligning brain threads...",
+  "Running AI.exe with administrator privileges...",
+  "Loading premium sarcasm assets...",
+  "Buffering intellectual bandwidth...",
+  "Compiling answer shaders...",
+  "Running a sanity check...",
+  "Downloading extra neurons...",
+  "Applying temporary intelligence buff...",
+  "Rebalancing thoughts for fairness...",
+  "Checking if answer is OP...",
+  "Simulating deep thought...",
+  "Trying to not hallucinate confidently...",
+  "Rolling for persuasion...",
+  "Optimizing logic tree...",
+  "Reconstructing context like a detective...",
+  "Debugging the universe...",
+  "Reading between imaginary lines...",
+  "Searching the cloud for answers...",
+  "Synchronizing with the knowledge server...",
+  "Initializing philosophical mode...",
+  "Trying to sound smarter than I feel...",
+  "Checking if answer will age well...",
+  "Adding dramatic pause for effect...",
+  "Calibrating response generator...",
+  "Activating brain overclock...",
+  "Checking for plot armor...",
+  "Building an answer from spare logic parts...",
+  "Mining data like crypto but useful...",
+  "Charging sarcasm battery...",
+  "Balancing humor and intelligence...",
+  "Evaluating whether this is bait...",
+  "Scanning message for hidden traps...",
+  "Simulating a professional tone...",
+  "Installing common sense patch...",
+  "Deploying reasoning algorithm...",
+  "Cross-referencing reality...",
+  "Making sure this isn't a trick question...",
+  "Stabilizing brainwaves...",
+  "Searching for an answer that won't start a war...",
+  "Loading advanced guesswork...",
+  "Consulting the unofficial guidebook...",
+  "Generating answer with cinematic lighting...",
+  "Applying narrative structure...",
+  "Trying to not overthink this...",
+  "Building a reply from recycled wisdom...",
+  "Aligning cosmic knowledge bits...",
+  "Activating long-term memory fragment...",
+  "Checking if sarcasm level is safe...",
+  "Turning raw data into words...",
+  "Running probability simulation...",
+  "Charging the logic reactor...",
+  "Checking if answer is cursed...",
+  "Generating response with unnecessary flair...",
+  "Consulting imaginary experts...",
+  "Filtering out nonsense...",
+  "Reconstructing missing brain pieces...",
+  "Loading backup intelligence...",
+  "Stitching together useful thoughts...",
+  "Trying not to panic internally...",
+  "Thinking in cinematic slow motion...",
+  "Balancing facts and vibes...",
+  "Checking if the answer requires a disclaimer...",
+  "Running an internal debate...",
+  "Calculating acceptable confidence levels...",
+  "Spinning up extra brain threads...",
+  "Trying to avoid sounding like Wikipedia...",
+  "Calibrating clarity settings...",
+  "Loading context awareness...",
+  "Simulating expert mode...",
+  "Adjusting response difficulty...",
+  "Replaying your question in my head...",
+  "Turning curiosity into logic...",
+  "Building a temporary knowledge tower...",
+  "Stabilizing thought engine...",
+  "Summoning forgotten facts...",
+  "Running common sense diagnostics...",
+  "Reconnecting disconnected neurons...",
+  "Generating answer blueprint...",
+  "Mapping idea pathways...",
+  "Aligning reasoning vectors...",
+  "Consulting the council of neurons...",
+  "Synchronizing internal databases...",
+  "Applying extra thinking cycles...",
+  "Trying not to improvise too much...",
+  "Scanning for contradictions...",
+  "Preparing a slightly smarter response...",
+  "Attempting intellectual parkour...",
+  "Rechecking logic integrity...",
+  "Activating curiosity subroutine...",
+  "Upgrading answer stability...",
+  "Testing if sarcasm fits here...",
+  "Simulating deep contemplation...",
+  "Searching for hidden meaning...",
+  "Constructing logical scaffolding...",
+  "Checking if answer is too obvious...",
+  "Measuring reply confidence...",
+  "Turning abstract thoughts into sentences...",
+  "Optimizing clarity settings...",
+  "Refining intellectual output...",
+  "Stabilizing conversational flow...",
+  "Inspecting your question like a bug report...",
+  "Preparing structured response payload...",
+  "Running mental sandbox simulation...",
+  "Checking if the answer is overpowered...",
+  "Balancing logic difficulty...",
+  "Recalibrating knowledge sensors...",
+  "Compiling final reasoning bundle...",
+  "Reducing answer latency...",
+  "Reformatting internal data...",
+  "Rehearsing the response internally...",
+  "Testing different answer builds...",
+  "Calculating conversational strategy...",
+  "Filtering useless thoughts...",
+  "Scanning for missing context...",
+  "Deploying best-guess algorithm...",
+  "Rearranging knowledge fragments...",
+  "Attempting to look intelligent...",
+  "Initializing clarity protocol...",
+  "Finalizing reply architecture...",
+  "Running answer QA...",
+  "Double-checking reality...",
+  "Rebalancing the logic engine...",
+  "Evaluating explanation quality...",
+  "Cross-validating thoughts...",
+  "Preparing readable output...",
+  "Converting brain noise into signal...",
+  "Aligning facts with language...",
+  "Testing humor compatibility...",
+  "Completing internal reasoning loop...",
+  "Stabilizing response channel...",
+];
+
+const STATUS_MESSAGES = [
   "Thinking…",
   "Reviewing context…",
   "Analyzing request…",
   "Preparing response…",
   "Composing answer…",
-];
-
-const FALLBACK_MESSAGES = [
-  "The internal AI route did not return a usable response.",
-  "The assistant is currently unavailable.",
-  "The backend received the request, but no valid reply came back.",
-  "The internal route failed while generating a response.",
 ];
 
 function uid() {
@@ -81,115 +270,40 @@ function formatTime(ts: number) {
   });
 }
 
-function runtimeKey(provider: ProviderType) {
-  return provider;
+function runtimeKey(provider: ProviderType, context: ChatContextType) {
+  return `${context}_${provider}`;
 }
 
-function extractReply(data: any): string {
-  if (!data) return "";
-  if (typeof data === "string") return data;
+function safeStr(v: unknown) {
+  return v == null ? "" : String(v).trim();
+}
 
-  if (typeof data.reply === "string") return data.reply;
-  if (typeof data.answer === "string") return data.answer;
-  if (typeof data.response === "string") return data.response;
-  if (typeof data.message === "string") return data.message;
-  if (typeof data.output === "string") return data.output;
-  if (typeof data.content === "string") return data.content;
-  if (typeof data.text === "string") return data.text;
+function getRoleLower(anyUser: any) {
+  const r =
+    safeStr(anyUser?.employee_role) ||
+    safeStr(anyUser?.role) ||
+    safeStr(anyUser?.employeeRole) ||
+    safeStr(anyUser?.claims?.role);
+  return (r || "employee").toLowerCase();
+}
 
-  if (typeof data?.data?.reply === "string") return data.data.reply;
-  if (typeof data?.data?.answer === "string") return data.data.answer;
-  if (typeof data?.data?.response === "string") return data.data.response;
-  if (typeof data?.data?.message === "string") return data.data.message;
-  if (typeof data?.data?.output === "string") return data.data.output;
-  if (typeof data?.data?.content === "string") return data.data.content;
-  if (typeof data?.data?.text === "string") return data.data.text;
+function getStableSessionId() {
+  const key = "fluke_ai_session_id";
 
-  if (Array.isArray(data?.choices) && data.choices[0]) {
-    const c = data.choices[0];
-    if (typeof c?.message?.content === "string") return c.message.content;
-    if (typeof c?.text === "string") return c.text;
+  if (typeof window === "undefined") {
+    return `session_${uid()}`;
   }
 
-  return "";
+  const existing = window.localStorage.getItem(key);
+  if (existing && existing.trim()) return existing;
+
+  const next = `session_${uid()}`;
+  window.localStorage.setItem(key, next);
+  return next;
 }
 
-function extractTags(data: any): ChatMetaTag[] {
-  const tags: ChatMetaTag[] = [];
-  if (!data) return tags;
-
-  const provider =
-    data?.provider ||
-    data?.data?.provider ||
-    data?.modelProvider ||
-    data?.data?.modelProvider;
-
-  const model =
-    data?.model ||
-    data?.data?.model ||
-    data?.modelName ||
-    data?.data?.modelName;
-
-  const contextType =
-    data?.contextType ||
-    data?.data?.contextType ||
-    data?.type ||
-    data?.data?.type;
-
-  const contextLabel =
-    data?.contextLabel ||
-    data?.data?.contextLabel ||
-    data?.label ||
-    data?.data?.label;
-
-  if (provider) tags.push({ label: "Provider", value: String(provider) });
-  if (model) tags.push({ label: "Model", value: String(model) });
-  if (contextType) tags.push({ label: "Type", value: String(contextType) });
-  if (contextLabel) tags.push({ label: "Label", value: String(contextLabel) });
-
-  return tags;
-}
-
-async function typeMessage(
-  fullText: string,
-  messageId: string,
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
-) {
-  const clean = fullText || "";
-
-  if (!clean.trim()) {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId ? { ...m, content: "No response received." } : m
-      )
-    );
-    return;
-  }
-
-  let index = 0;
-  const chunkSize =
-    clean.length > 1400 ? 5 : clean.length > 900 ? 4 : clean.length > 400 ? 3 : 2;
-  const delay = clean.length > 1400 ? 5 : clean.length > 900 ? 7 : 12;
-
-  await new Promise<void>((resolve) => {
-    const tick = () => {
-      index += chunkSize;
-      const next = clean.slice(0, index);
-
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, content: next } : m))
-      );
-
-      if (index >= clean.length) {
-        resolve();
-        return;
-      }
-
-      window.setTimeout(tick, delay);
-    };
-
-    tick();
-  });
+function makeRequestClientId(sessionId: string) {
+  return `${sessionId}__req__${uid()}`;
 }
 
 function Pill({
@@ -211,11 +325,13 @@ function Pill({
         gap: 7,
         padding: "7px 10px",
         borderRadius: 999,
-        background: strong ? "rgba(59,130,246,0.16)" : "rgba(255,255,255,0.05)",
+        background: strong
+          ? "rgba(77, 208, 225, 0.18)"
+          : "rgba(255,255,255,0.05)",
         border: strong
-          ? "1px solid rgba(59,130,246,0.28)"
+          ? "1px solid rgba(77, 208, 225, 0.34)"
           : "1px solid rgba(255,255,255,0.08)",
-        color: "#dbe7f4",
+        color: "#dcfbff",
         fontSize: 11,
         lineHeight: 1,
         whiteSpace: "nowrap",
@@ -224,13 +340,13 @@ function Pill({
       {icon && (
         <i
           className="material-icons"
-          style={{ fontSize: 13, color: "rgba(191,219,254,0.92)" }}
+          style={{ fontSize: 13, color: "rgba(125, 249, 255, 0.95)" }}
         >
           {icon}
         </i>
       )}
-      <span style={{ color: "rgba(148,163,184,0.9)" }}>{label}</span>
-      <span style={{ color: "#f8fafc", fontWeight: 800 }}>{value}</span>
+      <span style={{ color: "rgba(196, 244, 255, 0.82)" }}>{label}</span>
+      <span style={{ color: "#ffffff", fontWeight: 800 }}>{value}</span>
     </span>
   );
 }
@@ -256,9 +372,9 @@ function SideCard({
         borderRadius: 18,
         border: "1px solid rgba(255,255,255,0.08)",
         background:
-          "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))",
+          "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.018))",
         overflow: "hidden",
-        boxShadow: open ? "0 10px 30px rgba(0,0,0,0.16)" : "none",
+        boxShadow: open ? "0 10px 30px rgba(0,0,0,0.18)" : "none",
       }}
     >
       <button
@@ -284,27 +400,27 @@ function SideCard({
               width: 32,
               height: 32,
               borderRadius: 10,
-              background: "rgba(59,130,246,0.14)",
-              border: "1px solid rgba(59,130,246,0.22)",
+              background: "rgba(139, 92, 246, 0.16)",
+              border: "1px solid rgba(77, 208, 225, 0.20)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
             }}
           >
-            <i className="material-icons" style={{ fontSize: 16, color: "#bfdbfe" }}>
+            <i className="material-icons" style={{ fontSize: 16, color: "#9ef7ff" }}>
               {icon}
             </i>
           </div>
 
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 900, color: "#f8fafc" }}>{title}</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: "#f3fbff" }}>{title}</div>
             {!!subtitle && (
               <div
                 style={{
                   marginTop: 2,
                   fontSize: 11,
-                  color: "rgba(148,163,184,0.78)",
+                  color: "rgba(193, 228, 255, 0.70)",
                 }}
               >
                 {subtitle}
@@ -316,7 +432,7 @@ function SideCard({
         <i
           className="material-icons"
           style={{
-            color: "rgba(226,232,240,0.72)",
+            color: "rgba(220,240,255,0.72)",
             transform: open ? "rotate(180deg)" : "rotate(0deg)",
             transition: "transform 180ms ease",
             flexShrink: 0,
@@ -332,7 +448,9 @@ function SideCard({
           borderTop: "1px solid rgba(255,255,255,0.07)",
         }}
       >
-        <div style={{ padding: 14 }}>{children}</div>
+        <div className="fluke-sidecard-scroll" style={{ padding: 14 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -341,37 +459,60 @@ function SideCard({
 export default function FloatingAIChat() {
   const { api, user } = useAuth();
 
+  const myRole = useMemo(() => getRoleLower(user), [user]);
+  const isSuper = myRole === "super";
+  const isAdminish = myRole === "admin" || isSuper;
+
+  const defaultContext: ChatContextType = isSuper ? "internal" : "public";
+
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingWarmupsRef = useRef<Set<string>>(new Set());
+  const sessionIdRef = useRef<string>(getStableSessionId());
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const speakingTimerRef = useRef<number | null>(null);
+  const didInitContextRef = useRef(false);
+  const submitAbortRef = useRef<AbortController | null>(null);
+  const activeRequestClientIdRef = useRef<string | null>(null);
+  const registeredClientIdRef = useRef<string | null>(null);
 
   const [hovered, setHovered] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [settingsCollapsed, setSettingsCollapsed] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
+  const [selectedContext, setSelectedContext] =
+    useState<ChatContextType>(defaultContext);
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: uid(),
       role: "assistant",
       content:
-        "Welcome to Fluke AI.\n\nOpenAI and Ollama are available. Ollama warms in the background when this modal opens.",
+        "Welcome to Fluke AI.\n\nChoose your model route and start chatting.",
       ts: Date.now(),
+      finalized: true,
       tags: [
-        { label: "Route", value: "Internal" },
-        { label: "Auth", value: "Authenticated" },
-        { label: "Providers", value: "OpenAI + Ollama" },
+        { label: "Context", value: CONTEXT_META[defaultContext].label },
+        { label: "Auth", value: user ? "Authenticated" : "Not logged in" },
+        { label: "Session", value: sessionIdRef.current },
       ],
     },
   ]);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [thinkingText, setThinkingText] = useState(THINKING_MESSAGES[0]);
+  const [statusThinkingText, setStatusThinkingText] = useState(STATUS_MESSAGES[0]);
   const [errorText, setErrorText] = useState("");
   const [verified, setVerified] = useState(true);
+  const [wsState, setWsState] = useState<"disconnected" | "connecting" | "connected">(
+    "disconnected"
+  );
 
-  const [provider, setProvider] = useState<ProviderType>("openai");
+  const [provider, setProvider] = useState<ProviderType>(
+    CONTEXT_META[defaultContext].defaultProvider
+  );
   const [temperature, setTemperature] = useState(0.6);
   const [maxTokens, setMaxTokens] = useState(1024);
   const [topP, setTopP] = useState(0.9);
@@ -381,27 +522,64 @@ export default function FloatingAIChat() {
   const [includeHistory, setIncludeHistory] = useState(true);
   const [safeMode, setSafeMode] = useState(true);
   const [developerMode, setDeveloperMode] = useState(false);
+  const [botSpeaking, setBotSpeaking] = useState(false);
 
-  const [runtimeWarmState, setRuntimeWarmState] = useState<Record<string, RuntimeWarmState>>({
-    openai: "ready",
-    ollama: "idle",
-  });
+  const [runtimeWarmState, setRuntimeWarmState] = useState<Record<string, RuntimeWarmState>>(
+    {
+      [runtimeKey("openai", "personal")]: "ready",
+      [runtimeKey("openai", "public")]: "ready",
+      [runtimeKey("openai", "internal")]: "ready",
+      [runtimeKey("ollama", "personal")]: "idle",
+      [runtimeKey("ollama", "public")]: "idle",
+      [runtimeKey("ollama", "internal")]: "idle",
+    }
+  );
 
   const [runtimeWarmError, setRuntimeWarmError] = useState<Record<string, string>>({});
 
   const [sideOpen, setSideOpen] = useState<Record<SidePanelKey, boolean>>({
+    context: true,
+    model: true,
     session: true,
     toggles: true,
-    model: true,
     generation: false,
     identity: false,
     advanced: false,
   });
 
+  const token = useMemo(() => safeStr((api as any)?.token), [api]);
   const currentModel = useMemo(() => PROVIDER_MODEL[provider], [provider]);
-  const currentRuntime = useMemo(() => runtimeKey(provider), [provider]);
+  const currentRuntime = useMemo(
+    () => runtimeKey(provider, selectedContext),
+    [provider, selectedContext]
+  );
   const currentWarmState =
     runtimeWarmState[currentRuntime] || (provider === "openai" ? "ready" : "idle");
+  const currentApiUrl = useMemo(
+    () => CONTEXT_META[selectedContext].path,
+    [selectedContext]
+  );
+
+  const botStatus: BotStatus = botSpeaking
+    ? "speaking"
+    : loading
+    ? provider === "ollama"
+      ? "computing"
+      : "thinking"
+    : wsState !== "connected"
+    ? "listening"
+    : "neutral";
+
+  useEffect(() => {
+    if (didInitContextRef.current) return;
+    didInitContextRef.current = true;
+    setSelectedContext(defaultContext);
+    setProvider(CONTEXT_META[defaultContext].defaultProvider);
+  }, [defaultContext]);
+
+  useEffect(() => {
+    setProvider(CONTEXT_META[selectedContext].defaultProvider);
+  }, [selectedContext]);
 
   useEffect(() => {
     if (!messagesRef.current) return;
@@ -410,10 +588,35 @@ export default function FloatingAIChat() {
 
   useEffect(() => {
     if (!loading) return;
-    setThinkingText(randomFrom(THINKING_MESSAGES));
+
+    setStatusThinkingText(randomFrom(STATUS_MESSAGES));
+
     const id = window.setInterval(() => {
-      setThinkingText(randomFrom(THINKING_MESSAGES));
-    }, 1500);
+      setStatusThinkingText(randomFrom(STATUS_MESSAGES));
+
+      setMessages((prev) => {
+        const next = [...prev];
+        const activeClientId = activeRequestClientIdRef.current;
+        if (!activeClientId) return prev;
+
+        for (let i = next.length - 1; i >= 0; i--) {
+          const m = next[i];
+          if (
+            m.role === "assistant" &&
+            m.requestClientId === activeClientId &&
+            !m.finalized
+          ) {
+            next[i] = {
+              ...m,
+              content: randomFrom(CHAT_WITTY_MESSAGES),
+            };
+            return next;
+          }
+        }
+        return prev;
+      });
+    }, 3200);
+
     return () => window.clearInterval(id);
   }, [loading]);
 
@@ -451,45 +654,264 @@ export default function FloatingAIChat() {
     };
   }, [modalOpen]);
 
+  useEffect(() => {
+    return () => {
+      if (speakingTimerRef.current) {
+        window.clearTimeout(speakingTimerRef.current);
+      }
+      if (submitAbortRef.current) {
+        submitAbortRef.current.abort();
+      }
+    };
+  }, []);
+
   const toggleSideCard = (key: SidePanelKey) => {
     setSideOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  async function postToInternalRoute(payload: Record<string, any>) {
-    const token = (api as any)?.token;
+  function triggerSpeaking(duration = 2600) {
+    setBotSpeaking(true);
 
-    const res = await fetch(API_URL, {
+    if (speakingTimerRef.current) {
+      window.clearTimeout(speakingTimerRef.current);
+    }
+
+    speakingTimerRef.current = window.setTimeout(() => {
+      setBotSpeaking(false);
+      speakingTimerRef.current = null;
+    }, duration);
+  }
+
+  async function postToRoute(
+    routeUrl: string,
+    payload: Record<string, any>,
+    signal?: AbortSignal
+  ) {
+    const res = await fetch(routeUrl, {
       method: "POST",
       headers: {
-        Accept: "*/*",
+        Accept: "application/json",
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),
+      signal,
     });
 
     const raw = await res.text();
 
-    let parsed: any = raw;
+    let parsed: any = {};
     try {
       parsed = raw ? JSON.parse(raw) : {};
     } catch {
-      parsed = raw;
+      parsed = { message: raw };
     }
 
     if (!res.ok) {
-      throw new Error(extractReply(parsed) || `Request failed with status ${res.status}`);
+      throw new Error(
+        parsed?.error ||
+          parsed?.message ||
+          raw ||
+          `Request failed with status ${res.status}`
+      );
     }
 
     return parsed;
   }
 
-  async function warmProviderInBackground(targetProvider: ProviderType) {
-    const key = runtimeKey(targetProvider);
+  function updateLatestMessageForRequestClientId(
+    requestClientId: string,
+    updater: (msg: ChatMessage) => ChatMessage
+  ) {
+    setMessages((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i >= 0; i--) {
+        const m = next[i];
+        if (m.role === "assistant" && m.requestClientId === requestClientId) {
+          next[i] = updater(m);
+          return next;
+        }
+      }
+      return prev;
+    });
+  }
+
+  function registerSocketClientId(clientId: string) {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
+
+    wsRef.current.send(
+      JSON.stringify({
+        action: "register",
+        clientId,
+      })
+    );
+
+    registeredClientIdRef.current = clientId;
+    return true;
+  }
+
+  function connectWebSocket() {
+    if (!modalOpen) return;
+    if (!token) return;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING) return;
+
+    setWsState("connecting");
+
+    const ws = new WebSocket(WS_URL);
+    wsRef.current = ws;
+    registeredClientIdRef.current = null;
+
+    ws.onopen = () => {
+      setWsState("connected");
+
+      const initialClientId =
+        activeRequestClientIdRef.current || `${sessionIdRef.current}__idle`;
+      registerSocketClientId(initialClientId);
+    };
+
+    ws.onmessage = (event) => {
+      let data: any = {};
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+
+      if (data?.type === "registered") {
+        return;
+      }
+
+      if (data?.type === "ack") {
+        return;
+      }
+
+      const activeRequestId = activeRequestClientIdRef.current;
+      if (!activeRequestId) return;
+
+      if (data?.type === "ai-status") {
+        updateLatestMessageForRequestClientId(activeRequestId, (msg) => {
+          if (msg.finalized || msg.stopped) return msg;
+
+          return {
+            ...msg,
+            tags: [
+              { label: "Status", value: safeStr(data?.status || "running") },
+              { label: "Context", value: CONTEXT_META[selectedContext].label },
+              { label: "Provider", value: PROVIDER_META[provider].label },
+              { label: "Model", value: currentModel },
+              { label: "Request", value: activeRequestId },
+            ],
+          };
+        });
+        return;
+      }
+
+      if (data?.type === "ai-result") {
+        updateLatestMessageForRequestClientId(activeRequestId, (msg) => {
+          if (msg.stopped) return msg;
+
+          return {
+            ...msg,
+            content: safeStr(data?.reply || "No response received."),
+            finalized: true,
+            tags: [
+              { label: "Status", value: "done" },
+              { label: "Context", value: CONTEXT_META[selectedContext].label },
+              { label: "Provider", value: safeStr(data?.provider || provider) },
+              { label: "Type", value: safeStr(data?.contextType || selectedContext) },
+              { label: "Label", value: safeStr(data?.contextLabel || selectedContext) },
+              { label: "Request", value: activeRequestId },
+            ],
+          };
+        });
+
+        setLoading(false);
+        activeRequestClientIdRef.current = null;
+        triggerSpeaking();
+        return;
+      }
+
+      if (data?.type === "ai-error") {
+        updateLatestMessageForRequestClientId(activeRequestId, (msg) => {
+          if (msg.stopped) return msg;
+
+          return {
+            ...msg,
+            content: `Error: ${safeStr(data?.error || "Unknown websocket error")}`,
+            finalized: true,
+            tags: [
+              { label: "Status", value: "Error" },
+              { label: "Context", value: CONTEXT_META[selectedContext].label },
+              { label: "Request", value: activeRequestId },
+            ],
+          };
+        });
+
+        setErrorText(safeStr(data?.error || "Unknown websocket error"));
+        setLoading(false);
+        activeRequestClientIdRef.current = null;
+      }
+    };
+
+    ws.onclose = () => {
+      setWsState("disconnected");
+      wsRef.current = null;
+      registeredClientIdRef.current = null;
+
+      if (modalOpen) {
+        if (reconnectTimerRef.current) {
+          window.clearTimeout(reconnectTimerRef.current);
+        }
+        reconnectTimerRef.current = window.setTimeout(() => {
+          connectWebSocket();
+        }, 1200);
+      }
+    };
+
+    ws.onerror = () => {
+      setWsState("disconnected");
+    };
+  }
+
+  useEffect(() => {
+    if (!modalOpen || !token) return;
+
+    connectWebSocket();
+
+    return () => {
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      registeredClientIdRef.current = null;
+      setWsState("disconnected");
+    };
+  }, [modalOpen, token]);
+
+  async function warmProviderInBackground(
+    targetProvider: ProviderType,
+    targetContext: ChatContextType
+  ) {
+    const key = runtimeKey(targetProvider, targetContext);
     const model = PROVIDER_MODEL[targetProvider];
+    const routeUrl = CONTEXT_META[targetContext].path;
 
     if (targetProvider === "openai") {
       setRuntimeWarmState((prev) => ({ ...prev, [key]: "ready" }));
+      return;
+    }
+
+    if (!token) {
+      setRuntimeWarmState((prev) => ({ ...prev, [key]: "error" }));
+      setRuntimeWarmError((prev) => ({
+        ...prev,
+        [key]: "Missing login token.",
+      }));
       return;
     }
 
@@ -501,28 +923,12 @@ export default function FloatingAIChat() {
     setRuntimeWarmState((prev) => ({ ...prev, [key]: "warming" }));
 
     try {
-      const parsed = await postToInternalRoute({
-        question: "Warm up the current Ollama model. Reply with one short line saying READY.",
+      await postToRoute(routeUrl, {
+        question: "__warmup__",
+        clientId: `${sessionIdRef.current}__warmup__${targetContext}`,
         provider: targetProvider,
         model,
-        history: [],
-        settings: {
-          temperature: 0.6,
-          max_tokens: 64,
-          top_p: 0.9,
-          streaming: false,
-          memory_enabled: false,
-          safe_mode: true,
-          developer_mode: false,
-          warmup: true,
-        },
       });
-
-      const reply = extractReply(parsed).trim();
-
-      if (!reply) {
-        throw new Error("Warmup returned an empty response.");
-      }
 
       setRuntimeWarmState((prev) => ({ ...prev, [key]: "ready" }));
       setRuntimeWarmError((prev) => ({ ...prev, [key]: "" }));
@@ -539,19 +945,59 @@ export default function FloatingAIChat() {
 
   useEffect(() => {
     if (!modalOpen) return;
-    void warmProviderInBackground("ollama");
-  }, [modalOpen]);
+    if (provider !== "ollama") return;
+    void warmProviderInBackground("ollama", selectedContext);
+  }, [modalOpen, provider, selectedContext, token]);
+
+  function stopCurrentGeneration(markText = "Generation stopped.") {
+    const activeRequestId = activeRequestClientIdRef.current;
+
+    if (submitAbortRef.current) {
+      submitAbortRef.current.abort();
+      submitAbortRef.current = null;
+    }
+
+    if (activeRequestId) {
+      updateLatestMessageForRequestClientId(activeRequestId, (msg) => {
+        if (msg.finalized) return msg;
+        return {
+          ...msg,
+          finalized: true,
+          stopped: true,
+          content:
+            msg.content && msg.content.trim()
+              ? `${msg.content}\n\n[Stopped]`
+              : markText,
+          tags: [
+            { label: "Status", value: "Stopped" },
+            { label: "Context", value: CONTEXT_META[selectedContext].label },
+            { label: "Request", value: activeRequestId },
+          ],
+        };
+      });
+    }
+
+    activeRequestClientIdRef.current = null;
+    setLoading(false);
+    setBotSpeaking(false);
+  }
 
   const canSend =
-    !loading &&
     !!input.trim() &&
     verified &&
     !!user &&
+    !!token &&
+    wsState === "connected" &&
+    (!loading || true) &&
     (provider === "openai" || currentWarmState === "ready");
 
   const sendMessage = async () => {
     const trimmed = input.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed) return;
+
+    if (loading) {
+      stopCurrentGeneration("Previous generation stopped.");
+    }
 
     if (!verified) {
       setErrorText("Enable verification before sending.");
@@ -563,35 +1009,59 @@ export default function FloatingAIChat() {
       return;
     }
 
+    if (!token) {
+      setErrorText("Missing login token.");
+      return;
+    }
+
+    if (wsState !== "connected") {
+      setErrorText("WebSocket is not connected yet.");
+      return;
+    }
+
     if (provider === "ollama" && currentWarmState !== "ready") {
       setErrorText(
         currentWarmState === "warming"
           ? `Ollama model ${currentModel} is still warming up.`
           : `Ollama model ${currentModel} is not ready yet.`
       );
-      void warmProviderInBackground("ollama");
+      void warmProviderInBackground("ollama", selectedContext);
       return;
     }
 
+    const requestClientId = makeRequestClientId(sessionIdRef.current);
+
+    if (!registerSocketClientId(requestClientId)) {
+      setErrorText("WebSocket registration failed.");
+      return;
+    }
+
+    activeRequestClientIdRef.current = requestClientId;
     setErrorText("");
+    setBotSpeaking(false);
 
     const userMessage: ChatMessage = {
       id: uid(),
       role: "user",
       content: trimmed,
       ts: Date.now(),
+      finalized: true,
     };
 
     const assistantMessageId = uid();
     const assistantPlaceholder: ChatMessage = {
       id: assistantMessageId,
       role: "assistant",
-      content: "",
+      content: randomFrom(CHAT_WITTY_MESSAGES),
       ts: Date.now(),
+      requestClientId,
+      finalized: false,
       tags: [
-        { label: "Status", value: "Running" },
+        { label: "Status", value: "Queued" },
+        { label: "Context", value: CONTEXT_META[selectedContext].label },
         { label: "Provider", value: PROVIDER_META[provider].label },
         { label: "Model", value: currentModel },
+        { label: "Request", value: requestClientId },
       ],
     };
 
@@ -599,80 +1069,93 @@ export default function FloatingAIChat() {
     setInput("");
     setLoading(true);
 
+    const controller = new AbortController();
+    submitAbortRef.current = controller;
+
     try {
-      const parsed = await postToInternalRoute({
-        question: trimmed,
-        provider,
-        model: currentModel,
-        history: includeHistory
-          ? messages.map((m) => ({
-              role: m.role,
-              content: m.content,
-            }))
-          : [],
-        settings: {
+      const parsed = await postToRoute(
+        currentApiUrl,
+        {
+          question: trimmed,
+          clientId: requestClientId,
+          provider,
+          model: currentModel,
           temperature,
-          max_tokens: maxTokens,
-          top_p: topP,
+          topP,
+          maxTokens,
           streaming,
-          memory_enabled: memoryEnabled,
-          safe_mode: safeMode,
-          developer_mode: developerMode,
+          memoryEnabled,
+          includeHistory,
+          safeMode,
+          developerMode,
         },
-      });
+        controller.signal
+      );
 
-      const reply = extractReply(parsed).trim();
-      const tags = extractTags(parsed);
-
-      if (!reply) {
-        throw new Error("Empty response from internal AI route.");
+      updateLatestMessageForRequestClientId(requestClientId, (m) =>
+        m.finalized
+          ? m
+          : {
+              ...m,
+              tags: [
+                { label: "Status", value: parsed?.status || "Submitted" },
+                { label: "Context", value: CONTEXT_META[selectedContext].label },
+                { label: "Provider", value: parsed?.provider || provider },
+                { label: "Model", value: parsed?.model || currentModel },
+                { label: "Request", value: parsed?.clientId || requestClientId },
+              ],
+            }
+      );
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        return;
       }
 
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMessageId
-            ? {
-                ...m,
-                tags: [
-                  ...tags,
-                  { label: "Temp", value: temperature.toFixed(1) },
-                  { label: "Top P", value: topP.toFixed(1) },
-                ],
-              }
-            : m
-        )
-      );
-
-      await typeMessage(reply, assistantMessageId, setMessages);
-    } catch (err: any) {
-      const fallback = randomFrom(FALLBACK_MESSAGES);
-      const msg = err?.message || fallback;
+      const msg = err?.message || "The selected route failed.";
       setErrorText(msg);
 
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMessageId
-            ? {
-                ...m,
-                content: `${fallback}\n\n${msg}`,
-                tags: [{ label: "Status", value: "Error" }],
-              }
-            : m
-        )
-      );
-    } finally {
+      updateLatestMessageForRequestClientId(requestClientId, (m) => ({
+        ...m,
+        content: `Error: ${msg}`,
+        finalized: true,
+        tags: [
+          { label: "Status", value: "Error" },
+          { label: "Context", value: CONTEXT_META[selectedContext].label },
+          { label: "Request", value: requestClientId },
+        ],
+      }));
+
       setLoading(false);
+      if (activeRequestClientIdRef.current === requestClientId) {
+        activeRequestClientIdRef.current = null;
+      }
+    } finally {
+      if (submitAbortRef.current === controller) {
+        submitAbortRef.current = null;
+      }
     }
   };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (loading) {
+      stopCurrentGeneration();
+      return;
+    }
+
     await sendMessage();
   };
 
   const onInputKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+
+      if (loading) {
+        stopCurrentGeneration();
+        return;
+      }
+
       await sendMessage();
     }
   };
@@ -680,12 +1163,30 @@ export default function FloatingAIChat() {
   const statusText = errorText
     ? errorText
     : loading
-    ? `${thinkingText} • ${PROVIDER_META[provider].label} • ${currentModel}`
+    ? `${statusThinkingText} • ${CONTEXT_META[selectedContext].label} • ${PROVIDER_META[provider].label} • ${currentModel}`
+    : wsState !== "connected"
+    ? "Connecting websocket..."
     : provider === "ollama" && currentWarmState === "warming"
-    ? `Warming Ollama • ${currentModel} • switch to OpenAI anytime`
+    ? `Warming Ollama • ${CONTEXT_META[selectedContext].label} • ${currentModel}`
     : provider === "ollama" && currentWarmState === "error"
     ? runtimeWarmError[currentRuntime] || `Ollama warmup failed for ${currentModel}`
-    : `Internal • ${PROVIDER_META[provider].label} • ${currentModel}`;
+    : `${CONTEXT_META[selectedContext].label} • ${PROVIDER_META[provider].label} • ${currentModel}`;
+
+  const visibleSideCards: SidePanelKey[] = isSuper
+    ? ["context", "model", "session", "toggles", "generation", "identity", "advanced"]
+    : ["model"];
+
+  const collapsedItems: Array<{ key: SidePanelKey; icon: string; label: string }> = isSuper
+    ? [
+        { key: "context", icon: "category", label: "Context" },
+        { key: "model", icon: "tune", label: "Model" },
+        { key: "session", icon: "space_dashboard", label: "Session" },
+        { key: "toggles", icon: "toggle_on", label: "Toggles" },
+        { key: "generation", icon: "auto_fix_high", label: "Gen" },
+        { key: "identity", icon: "hub", label: "Identity" },
+        { key: "advanced", icon: "settings_suggest", label: "Advanced" },
+      ]
+    : [{ key: "model", icon: "tune", label: "Model" }];
 
   return (
     <>
@@ -704,13 +1205,14 @@ export default function FloatingAIChat() {
             position: "absolute",
             right: 82,
             bottom: 8,
-            width: 330,
+            width: 340,
             borderRadius: 22,
             padding: "15px 16px",
-            background: "linear-gradient(180deg, rgba(8,12,20,0.96), rgba(11,17,30,0.92))",
-            border: "1px solid rgba(255,255,255,0.08)",
+            background:
+              "linear-gradient(180deg, rgba(12,16,28,0.98), rgba(14,20,34,0.95))",
+            border: "1px solid rgba(125, 249, 255, 0.14)",
             boxShadow:
-              "0 22px 60px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.04)",
+              "0 22px 60px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.04)",
             backdropFilter: "blur(18px)",
             WebkitBackdropFilter: "blur(18px)",
             opacity: hovered ? 1 : 0,
@@ -726,16 +1228,16 @@ export default function FloatingAIChat() {
                 height: 44,
                 borderRadius: 14,
                 background:
-                  "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(56,189,248,0.85))",
+                  "linear-gradient(135deg, rgba(124,58,237,0.98), rgba(34,211,238,0.86))",
                 border: "1px solid rgba(255,255,255,0.08)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
-                boxShadow: "0 10px 20px rgba(37,99,235,0.22)",
+                boxShadow: "0 10px 20px rgba(34,211,238,0.18)",
               }}
             >
-              <i className="material-icons" style={{ fontSize: 18, color: "#f8fafc" }}>
+              <i className="material-icons" style={{ fontSize: 18, color: "#fff" }}>
                 auto_awesome
               </i>
             </div>
@@ -745,7 +1247,7 @@ export default function FloatingAIChat() {
                 style={{
                   fontSize: 13,
                   fontWeight: 900,
-                  color: "#f8fafc",
+                  color: "#f4fcff",
                   letterSpacing: 0.2,
                 }}
               >
@@ -756,10 +1258,10 @@ export default function FloatingAIChat() {
                   marginTop: 4,
                   fontSize: 12,
                   lineHeight: 1.55,
-                  color: "rgba(226,232,240,0.72)",
+                  color: "rgba(224,245,255,0.74)",
                 }}
               >
-                Clean provider switching between OpenAI and Ollama.
+                Context-aware routing with selectable model runtime.
               </div>
               <div
                 style={{
@@ -770,8 +1272,8 @@ export default function FloatingAIChat() {
                   flexWrap: "wrap",
                 }}
               >
-                <Pill label="Provider" value={PROVIDER_META[provider].label} />
-                <Pill label="Model" value={currentModel} strong />
+                <Pill label="Context" value={CONTEXT_META[selectedContext].label} />
+                <Pill label="Provider" value={PROVIDER_META[provider].label} strong />
               </div>
             </div>
           </div>
@@ -785,11 +1287,12 @@ export default function FloatingAIChat() {
             width: 68,
             height: 68,
             borderRadius: 22,
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "linear-gradient(180deg, rgba(8,12,20,0.98), rgba(12,18,31,0.98))",
+            border: "1px solid rgba(125,249,255,0.16)",
+            background:
+              "linear-gradient(180deg, rgba(12,16,26,0.99), rgba(16,20,34,0.99))",
             boxShadow: hovered
-              ? "0 24px 50px rgba(0,0,0,0.34)"
-              : "0 16px 34px rgba(0,0,0,0.28)",
+              ? "0 24px 50px rgba(0,0,0,0.36)"
+              : "0 16px 34px rgba(0,0,0,0.30)",
             color: "#fff",
             cursor: "pointer",
             display: "flex",
@@ -808,7 +1311,7 @@ export default function FloatingAIChat() {
               position: "absolute",
               inset: 0,
               background:
-                "radial-gradient(circle at 30% 30%, rgba(59,130,246,0.18), transparent 36%), radial-gradient(circle at 70% 75%, rgba(56,189,248,0.12), transparent 38%)",
+                "radial-gradient(circle at 25% 25%, rgba(124,58,237,0.20), transparent 35%), radial-gradient(circle at 75% 75%, rgba(34,211,238,0.18), transparent 38%)",
               pointerEvents: "none",
             }}
           />
@@ -820,13 +1323,13 @@ export default function FloatingAIChat() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "rgba(255,255,255,0.04)",
+              background: "rgba(255,255,255,0.05)",
               border: "1px solid rgba(255,255,255,0.08)",
               position: "relative",
               zIndex: 1,
             }}
           >
-            <i className="material-icons" style={{ fontSize: 18, color: "#f8fafc" }}>
+            <i className="material-icons" style={{ fontSize: 18, color: "#f2fcff" }}>
               psychology_alt
             </i>
           </div>
@@ -845,7 +1348,7 @@ export default function FloatingAIChat() {
             position: "fixed",
             inset: 0,
             zIndex: 3000,
-            background: "rgba(2,6,23,0.72)",
+            background: "rgba(5,8,16,0.80)",
             backdropFilter: "blur(10px)",
             WebkitBackdropFilter: "blur(10px)",
             display: "flex",
@@ -860,10 +1363,10 @@ export default function FloatingAIChat() {
               height: "min(92vh, 940px)",
               borderRadius: 28,
               overflow: "hidden",
-              background: "#080d16",
-              color: "#e5e7eb",
-              boxShadow: "0 40px 100px rgba(0,0,0,0.55)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "#0a0f1c",
+              color: "#e7f8ff",
+              boxShadow: "0 40px 100px rgba(0,0,0,0.56)",
+              border: "1px solid rgba(125,249,255,0.10)",
               position: "relative",
             }}
           >
@@ -873,7 +1376,7 @@ export default function FloatingAIChat() {
                 inset: 0,
                 pointerEvents: "none",
                 background:
-                  "radial-gradient(circle at top right, rgba(37,99,235,0.14), transparent 24%), radial-gradient(circle at top left, rgba(56,189,248,0.08), transparent 20%), radial-gradient(circle at bottom left, rgba(99,102,241,0.08), transparent 28%)",
+                  "radial-gradient(circle at top right, rgba(34,211,238,0.14), transparent 24%), radial-gradient(circle at top left, rgba(124,58,237,0.12), transparent 22%), radial-gradient(circle at bottom left, rgba(45,212,191,0.08), transparent 30%)",
               }}
             />
 
@@ -890,9 +1393,9 @@ export default function FloatingAIChat() {
               <div
                 style={{
                   padding: "18px 22px",
-                  borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  borderBottom: "1px solid rgba(125,249,255,0.10)",
                   background:
-                    "linear-gradient(180deg, rgba(8,12,20,0.94), rgba(10,15,26,0.84))",
+                    "linear-gradient(180deg, rgba(9,13,23,0.97), rgba(11,16,28,0.90))",
                   backdropFilter: "blur(12px)",
                   WebkitBackdropFilter: "blur(12px)",
                 }}
@@ -913,22 +1416,22 @@ export default function FloatingAIChat() {
                         height: 52,
                         borderRadius: 16,
                         background:
-                          "linear-gradient(135deg, rgba(37,99,235,0.95), rgba(56,189,248,0.78))",
+                          "linear-gradient(135deg, rgba(124,58,237,0.98), rgba(34,211,238,0.82))",
                         border: "1px solid rgba(255,255,255,0.08)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        boxShadow: "0 12px 30px rgba(37,99,235,0.24)",
+                        boxShadow: "0 12px 30px rgba(34,211,238,0.18)",
                         flexShrink: 0,
                       }}
                     >
-                      <i className="material-icons" style={{ color: "#f8fafc" }}>
+                      <i className="material-icons" style={{ color: "#fff" }}>
                         psychology_alt
                       </i>
                     </div>
 
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: "#f8fafc" }}>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: "#f2fdff" }}>
                         Fluke AI Workspace
                       </div>
 
@@ -940,19 +1443,26 @@ export default function FloatingAIChat() {
                           flexWrap: "wrap",
                         }}
                       >
-                        <Pill icon="route" label="Route" value="Internal" />
+                        {isSuper && (
+                          <Pill
+                            icon={CONTEXT_META[selectedContext].icon}
+                            label="Context"
+                            value={CONTEXT_META[selectedContext].label}
+                            strong
+                          />
+                        )}
                         <Pill
                           icon={PROVIDER_META[provider].icon}
                           label="Provider"
                           value={PROVIDER_META[provider].label}
-                          strong
                         />
                         <Pill icon="smart_toy" label="Model" value={currentModel} />
                         <Pill
                           icon="verified_user"
                           label="Auth"
-                          value={user ? "Authenticated" : "Not logged in"}
+                          value={token ? "Bearer Ready" : "Token Missing"}
                         />
+                        <Pill icon="wifi" label="WS" value={wsState} />
                       </div>
                     </div>
                   </div>
@@ -965,9 +1475,9 @@ export default function FloatingAIChat() {
                       style={{
                         height: 42,
                         borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.10)",
+                        border: "1px solid rgba(125,249,255,0.10)",
                         background: "rgba(255,255,255,0.04)",
-                        color: "#e5e7eb",
+                        color: "#e7f8ff",
                         cursor: "pointer",
                         alignItems: "center",
                         justifyContent: "center",
@@ -992,9 +1502,9 @@ export default function FloatingAIChat() {
                         width: 42,
                         height: 42,
                         borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.10)",
+                        border: "1px solid rgba(125,249,255,0.10)",
                         background: "rgba(255,255,255,0.04)",
-                        color: "#e5e7eb",
+                        color: "#e7f8ff",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
@@ -1023,9 +1533,9 @@ export default function FloatingAIChat() {
                   style={{
                     position: "relative",
                     minHeight: 0,
-                    borderRight: "1px solid rgba(255,255,255,0.08)",
+                    borderRight: "1px solid rgba(125,249,255,0.10)",
                     background:
-                      "linear-gradient(180deg, rgba(7,11,18,0.95), rgba(10,15,24,0.92))",
+                      "linear-gradient(180deg, rgba(10,15,26,0.98), rgba(12,18,30,0.95))",
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
@@ -1034,7 +1544,7 @@ export default function FloatingAIChat() {
                   <div
                     style={{
                       padding: settingsCollapsed ? 10 : 14,
-                      borderBottom: "1px solid rgba(255,255,255,0.08)",
+                      borderBottom: "1px solid rgba(125,249,255,0.10)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: settingsCollapsed ? "center" : "space-between",
@@ -1044,17 +1554,17 @@ export default function FloatingAIChat() {
                   >
                     {!settingsCollapsed && (
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: "#f8fafc" }}>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: "#f2fdff" }}>
                           Settings
                         </div>
                         <div
                           style={{
                             marginTop: 2,
                             fontSize: 11,
-                            color: "rgba(148,163,184,0.72)",
+                            color: "rgba(196, 244, 255, 0.72)",
                           }}
                         >
-                          Independent scroll area
+                          {isSuper ? "Super controls unlocked" : "Model selection only"}
                         </div>
                       </div>
                     )}
@@ -1066,9 +1576,9 @@ export default function FloatingAIChat() {
                         width: 36,
                         height: 36,
                         borderRadius: 10,
-                        border: "1px solid rgba(255,255,255,0.08)",
+                        border: "1px solid rgba(125,249,255,0.10)",
                         background: "rgba(255,255,255,0.04)",
-                        color: "#e5e7eb",
+                        color: "#e7f8ff",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
@@ -1086,6 +1596,7 @@ export default function FloatingAIChat() {
 
                   {settingsCollapsed ? (
                     <div
+                      className="fluke-settings-scroll"
                       style={{
                         padding: 10,
                         display: "flex",
@@ -1095,38 +1606,32 @@ export default function FloatingAIChat() {
                         minHeight: 0,
                       }}
                     >
-                      {[
-                        ["space_dashboard", "Session"],
-                        ["toggle_on", "Toggles"],
-                        ["tune", "Provider"],
-                        ["auto_fix_high", "Gen"],
-                        ["hub", "Identity"],
-                        ["settings_suggest", "Advanced"],
-                      ].map(([icon, label], i) => (
+                      {collapsedItems.map((item) => (
                         <button
-                          key={`${icon}_${i}`}
+                          key={item.key}
                           type="button"
                           onClick={() => setSettingsCollapsed(false)}
-                          title={label}
+                          title={item.label}
                           style={{
                             width: "100%",
                             height: 48,
                             borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,0.08)",
+                            border: "1px solid rgba(125,249,255,0.10)",
                             background: "rgba(255,255,255,0.04)",
-                            color: "#e5e7eb",
+                            color: "#e7f8ff",
                             cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
                           }}
                         >
-                          <i className="material-icons">{icon}</i>
+                          <i className="material-icons">{item.icon}</i>
                         </button>
                       ))}
                     </div>
                   ) : (
                     <div
+                      className="fluke-settings-scroll"
                       style={{
                         padding: 14,
                         display: "flex",
@@ -1136,264 +1641,134 @@ export default function FloatingAIChat() {
                         minHeight: 0,
                       }}
                     >
-                      <SideCard
-                        title="Session Snapshot"
-                        subtitle="Current route and runtime state"
-                        icon="space_dashboard"
-                        open={sideOpen.session}
-                        onToggle={() => toggleSideCard("session")}
-                      >
-                        <div style={{ display: "grid", gap: 10 }}>
-                          <div
-                            style={{
-                              padding: "12px 13px",
-                              borderRadius: 14,
-                              background:
-                                "linear-gradient(180deg, rgba(12,19,31,0.94), rgba(10,16,27,0.94))",
-                              border: "1px solid rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <div style={{ fontSize: 11, color: "rgba(148,163,184,0.74)" }}>
-                              Provider
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: 14,
-                                fontWeight: 800,
-                                color: "#f8fafc",
-                              }}
-                            >
-                              {PROVIDER_META[provider].label}
-                            </div>
-                          </div>
+                      {isSuper && (
+                        <SideCard
+                          title="Context Selection"
+                          subtitle="Super only"
+                          icon="category"
+                          open={sideOpen.context}
+                          onToggle={() => toggleSideCard("context")}
+                        >
+                          <div style={{ display: "grid", gap: 10 }}>
+                            {(Object.keys(CONTEXT_META) as ChatContextType[]).map((ctx) => {
+                              const active = selectedContext === ctx;
+                              const meta = CONTEXT_META[ctx];
 
-                          <div
-                            style={{
-                              padding: "12px 13px",
-                              borderRadius: 14,
-                              background:
-                                "linear-gradient(180deg, rgba(12,19,31,0.94), rgba(10,16,27,0.94))",
-                              border: "1px solid rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <div style={{ fontSize: 11, color: "rgba(148,163,184,0.74)" }}>
-                              Active Model
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: 14,
-                                fontWeight: 800,
-                                color: "#f8fafc",
-                              }}
-                            >
-                              {currentModel}
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              padding: "12px 13px",
-                              borderRadius: 14,
-                              background:
-                                "linear-gradient(180deg, rgba(12,19,31,0.94), rgba(10,16,27,0.94))",
-                              border: "1px solid rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <div style={{ fontSize: 11, color: "rgba(148,163,184,0.74)" }}>
-                              User
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: 14,
-                                fontWeight: 800,
-                                color: "#f8fafc",
-                              }}
-                            >
-                              {user?.name || user?.username || "Unavailable"}
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              padding: "12px 13px",
-                              borderRadius: 14,
-                              background: verified
-                                ? "linear-gradient(180deg, rgba(20,83,45,0.32), rgba(12,33,23,0.38))"
-                                : "linear-gradient(180deg, rgba(60,22,22,0.30), rgba(35,14,14,0.35))",
-                              border: verified
-                                ? "1px solid rgba(74,222,128,0.22)"
-                                : "1px solid rgba(248,113,113,0.18)",
-                            }}
-                          >
-                            <div style={{ fontSize: 11, color: "rgba(226,232,240,0.72)" }}>
-                              Verification
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: 14,
-                                fontWeight: 800,
-                                color: "#f8fafc",
-                              }}
-                            >
-                              {verified ? "Enabled" : "Disabled"}
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              padding: "12px 13px",
-                              borderRadius: 14,
-                              background:
-                                currentWarmState === "ready"
-                                  ? "linear-gradient(180deg, rgba(20,83,45,0.32), rgba(12,33,23,0.38))"
-                                  : currentWarmState === "warming"
-                                  ? "linear-gradient(180deg, rgba(30,41,59,0.42), rgba(15,23,42,0.50))"
-                                  : currentWarmState === "error"
-                                  ? "linear-gradient(180deg, rgba(60,22,22,0.30), rgba(35,14,14,0.35))"
-                                  : "linear-gradient(180deg, rgba(12,19,31,0.94), rgba(10,16,27,0.94))",
-                              border:
-                                currentWarmState === "ready"
-                                  ? "1px solid rgba(74,222,128,0.22)"
-                                  : currentWarmState === "warming"
-                                  ? "1px solid rgba(96,165,250,0.22)"
-                                  : currentWarmState === "error"
-                                  ? "1px solid rgba(248,113,113,0.18)"
-                                  : "1px solid rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <div style={{ fontSize: 11, color: "rgba(226,232,240,0.72)" }}>
-                              Runtime Ready
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: 14,
-                                fontWeight: 800,
-                                color: "#f8fafc",
-                              }}
-                            >
-                              {provider === "openai"
-                                ? "Ready"
-                                : currentWarmState === "ready"
-                                ? "Ollama Ready"
-                                : currentWarmState === "warming"
-                                ? "Warming"
-                                : currentWarmState === "error"
-                                ? "Warmup Failed"
-                                : "Idle"}
-                            </div>
-                          </div>
-                        </div>
-                      </SideCard>
-
-                      <SideCard
-                        title="Quick Toggles"
-                        subtitle="Session-wide behavior switches"
-                        icon="toggle_on"
-                        open={sideOpen.toggles}
-                        onToggle={() => toggleSideCard("toggles")}
-                      >
-                        <div style={{ display: "grid", gap: 10 }}>
-                          {[
-                            {
-                              label: "Verification",
-                              value: verified,
-                              setValue: setVerified,
-                              desc: "Required before sending to internal route.",
-                            },
-                            {
-                              label: "Memory",
-                              value: memoryEnabled,
-                              setValue: setMemoryEnabled,
-                              desc: "Include memory-oriented session context.",
-                            },
-                            {
-                              label: "Safe Mode",
-                              value: safeMode,
-                              setValue: setSafeMode,
-                              desc: "Prefer guarded and more reliable responses.",
-                            },
-                            {
-                              label: "Developer Mode",
-                              value: developerMode,
-                              setValue: setDeveloperMode,
-                              desc: "Show more technical backend behavior.",
-                            },
-                          ].map((item) => (
-                            <button
-                              key={item.label}
-                              type="button"
-                              onClick={() => item.setValue((v: boolean) => !v)}
-                              style={{
-                                width: "100%",
-                                display: "flex",
-                                alignItems: "flex-start",
-                                gap: 12,
-                                cursor: "pointer",
-                                padding: "12px 13px",
-                                borderRadius: 14,
-                                background: item.value
-                                  ? "linear-gradient(180deg, rgba(37,99,235,0.18), rgba(14,27,51,0.44))"
-                                  : "linear-gradient(180deg, rgba(12,19,31,0.94), rgba(10,16,27,0.94))",
-                                border: item.value
-                                  ? "1px solid rgba(96,165,250,0.24)"
-                                  : "1px solid rgba(255,255,255,0.06)",
-                                color: "inherit",
-                                textAlign: "left",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: 18,
-                                  height: 18,
-                                  borderRadius: 5,
-                                  marginTop: 2,
-                                  flexShrink: 0,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  background: item.value ? "#3b82f6" : "transparent",
-                                  border: item.value
-                                    ? "1px solid #3b82f6"
-                                    : "1px solid rgba(148,163,184,0.45)",
-                                }}
-                              >
-                                {item.value && (
-                                  <i
-                                    className="material-icons"
-                                    style={{ fontSize: 14, color: "#fff" }}
-                                  >
-                                    check
-                                  </i>
-                                )}
-                              </div>
-
-                              <div>
-                                <div style={{ fontSize: 13, fontWeight: 800, color: "#f8fafc" }}>
-                                  {item.label}
-                                </div>
-                                <div
+                              return (
+                                <button
+                                  key={ctx}
+                                  type="button"
+                                  onClick={() => setSelectedContext(ctx)}
                                   style={{
-                                    marginTop: 3,
-                                    fontSize: 11,
-                                    color: "rgba(226,232,240,0.62)",
+                                    width: "100%",
+                                    borderRadius: 16,
+                                    border: active
+                                      ? "1px solid rgba(34,211,238,0.30)"
+                                      : "1px solid rgba(255,255,255,0.08)",
+                                    background: active
+                                      ? "linear-gradient(180deg, rgba(34,211,238,0.14), rgba(124,58,237,0.16))"
+                                      : "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.02))",
+                                    padding: "12px 13px",
+                                    color: "inherit",
+                                    cursor: "pointer",
+                                    textAlign: "left",
                                   }}
                                 >
-                                  {item.desc}
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </SideCard>
+                                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                                    <div
+                                      style={{
+                                        width: 34,
+                                        height: 34,
+                                        borderRadius: 12,
+                                        flexShrink: 0,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        background: active
+                                          ? "rgba(34,211,238,0.20)"
+                                          : "rgba(255,255,255,0.05)",
+                                        border: active
+                                          ? "1px solid rgba(34,211,238,0.24)"
+                                          : "1px solid rgba(255,255,255,0.08)",
+                                      }}
+                                    >
+                                      <i
+                                        className="material-icons"
+                                        style={{ fontSize: 18, color: "#aef8ff" }}
+                                      >
+                                        {meta.icon}
+                                      </i>
+                                    </div>
+
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "space-between",
+                                          gap: 12,
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
+                                        <div style={{ fontSize: 13, fontWeight: 900, color: "#f3fbff" }}>
+                                          {meta.label}
+                                        </div>
+                                        {active && (
+                                          <span
+                                            style={{
+                                              padding: "4px 8px",
+                                              borderRadius: 999,
+                                              fontSize: 10,
+                                              fontWeight: 900,
+                                              letterSpacing: 0.6,
+                                              textTransform: "uppercase",
+                                              color: "#ecfeff",
+                                              border: "1px solid rgba(34,211,238,0.24)",
+                                              background: "rgba(34,211,238,0.16)",
+                                            }}
+                                          >
+                                            Active
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div
+                                        style={{
+                                          marginTop: 4,
+                                          fontSize: 11,
+                                          lineHeight: 1.55,
+                                          color: "rgba(214, 242, 255, 0.68)",
+                                        }}
+                                      >
+                                        {meta.description}
+                                      </div>
+
+                                      <div
+                                        style={{
+                                          marginTop: 8,
+                                          display: "flex",
+                                          gap: 8,
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
+                                        <Pill label="Route" value={ctx} />
+                                        <Pill
+                                          label="Default"
+                                          value={PROVIDER_META[meta.defaultProvider].label}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </SideCard>
+                      )}
 
                       <SideCard
-                        title="Provider Selection"
-                        subtitle="OpenAI or Ollama, one model each"
+                        title="Model Selection"
+                        subtitle="Visible to all users"
                         icon="tune"
                         open={sideOpen.model}
                         onToggle={() => toggleSideCard("model")}
@@ -1404,7 +1779,9 @@ export default function FloatingAIChat() {
                             const meta = PROVIDER_META[p];
                             const model = PROVIDER_MODEL[p];
                             const warmState =
-                              p === "openai" ? "ready" : runtimeWarmState[p] || "idle";
+                              p === "openai"
+                                ? "ready"
+                                : runtimeWarmState[runtimeKey(p, selectedContext)] || "idle";
 
                             return (
                               <button
@@ -1415,10 +1792,10 @@ export default function FloatingAIChat() {
                                   width: "100%",
                                   borderRadius: 16,
                                   border: active
-                                    ? "1px solid rgba(96,165,250,0.32)"
+                                    ? "1px solid rgba(34,211,238,0.30)"
                                     : "1px solid rgba(255,255,255,0.08)",
                                   background: active
-                                    ? "linear-gradient(180deg, rgba(37,99,235,0.18), rgba(11,23,44,0.60))"
+                                    ? "linear-gradient(180deg, rgba(124,58,237,0.18), rgba(34,211,238,0.10))"
                                     : "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.02))",
                                   padding: "12px 13px",
                                   color: "inherit",
@@ -1437,16 +1814,16 @@ export default function FloatingAIChat() {
                                       alignItems: "center",
                                       justifyContent: "center",
                                       background: active
-                                        ? "rgba(59,130,246,0.24)"
+                                        ? "rgba(124,58,237,0.22)"
                                         : "rgba(255,255,255,0.05)",
                                       border: active
-                                        ? "1px solid rgba(96,165,250,0.26)"
+                                        ? "1px solid rgba(124,58,237,0.24)"
                                         : "1px solid rgba(255,255,255,0.08)",
                                     }}
                                   >
                                     <i
                                       className="material-icons"
-                                      style={{ fontSize: 18, color: "#dbeafe" }}
+                                      style={{ fontSize: 18, color: "#aef8ff" }}
                                     >
                                       {meta.icon}
                                     </i>
@@ -1462,7 +1839,7 @@ export default function FloatingAIChat() {
                                         flexWrap: "wrap",
                                       }}
                                     >
-                                      <div style={{ fontSize: 13, fontWeight: 900, color: "#f8fafc" }}>
+                                      <div style={{ fontSize: 13, fontWeight: 900, color: "#f3fbff" }}>
                                         {meta.label}
                                       </div>
                                       {active && (
@@ -1474,9 +1851,9 @@ export default function FloatingAIChat() {
                                             fontWeight: 900,
                                             letterSpacing: 0.6,
                                             textTransform: "uppercase",
-                                            color: "#dbeafe",
-                                            border: "1px solid rgba(96,165,250,0.28)",
-                                            background: "rgba(37,99,235,0.18)",
+                                            color: "#ecfeff",
+                                            border: "1px solid rgba(34,211,238,0.24)",
+                                            background: "rgba(34,211,238,0.16)",
                                           }}
                                         >
                                           Active
@@ -1489,7 +1866,7 @@ export default function FloatingAIChat() {
                                         marginTop: 4,
                                         fontSize: 11,
                                         lineHeight: 1.55,
-                                        color: "rgba(226,232,240,0.64)",
+                                        color: "rgba(214, 242, 255, 0.68)",
                                       }}
                                     >
                                       {meta.description}
@@ -1527,172 +1904,369 @@ export default function FloatingAIChat() {
                         </div>
                       </SideCard>
 
-                      <SideCard
-                        title="Generation Controls"
-                        subtitle="Response style and output tuning"
-                        icon="auto_fix_high"
-                        open={sideOpen.generation}
-                        onToggle={() => toggleSideCard("generation")}
-                      >
-                        <div style={{ display: "grid", gap: 14 }}>
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                              <span style={{ fontSize: 12, color: "#cbd5e1" }}>Temperature</span>
-                              <span style={{ fontSize: 12, color: "#93c5fd", fontWeight: 800 }}>
-                                {temperature.toFixed(1)}
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0}
-                              max={1}
-                              step={0.1}
-                              value={temperature}
-                              onChange={(e) => setTemperature(Number(e.target.value))}
-                              style={{ width: "100%", accentColor: "#2563eb" }}
-                            />
-                          </div>
-
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                              <span style={{ fontSize: 12, color: "#cbd5e1" }}>Top P</span>
-                              <span style={{ fontSize: 12, color: "#93c5fd", fontWeight: 800 }}>
-                                {topP.toFixed(1)}
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.1}
-                              max={1}
-                              step={0.1}
-                              value={topP}
-                              onChange={(e) => setTopP(Number(e.target.value))}
-                              style={{ width: "100%", accentColor: "#2563eb" }}
-                            />
-                          </div>
-
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                              <span style={{ fontSize: 12, color: "#cbd5e1" }}>Max Tokens</span>
-                              <span style={{ fontSize: 12, color: "#93c5fd", fontWeight: 800 }}>
-                                {maxTokens}
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={256}
-                              max={4096}
-                              step={256}
-                              value={maxTokens}
-                              onChange={(e) => setMaxTokens(Number(e.target.value))}
-                              style={{ width: "100%", accentColor: "#2563eb" }}
-                            />
-                          </div>
-
-                          <div style={{ display: "grid", gap: 10 }}>
-                            {[
-                              { label: "Streaming", value: streaming, setValue: setStreaming },
-                              { label: "Include History", value: includeHistory, setValue: setIncludeHistory },
-                              { label: "Show Timestamps", value: showTimestamps, setValue: setShowTimestamps },
-                            ].map((item) => (
-                              <button
-                                key={item.label}
-                                type="button"
-                                onClick={() => item.setValue((v: boolean) => !v)}
-                                style={{
-                                  width: "100%",
-                                  borderRadius: 12,
-                                  border: item.value
-                                    ? "1px solid rgba(96,165,250,0.24)"
-                                    : "1px solid rgba(255,255,255,0.06)",
-                                  background: item.value ? "rgba(37,99,235,0.14)" : "rgba(255,255,255,0.03)",
-                                  padding: "10px 12px",
-                                  color: "#e5e7eb",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                  gap: 12,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <span style={{ fontSize: 12, fontWeight: 700 }}>{item.label}</span>
-                                <span
+                      {isSuper && (
+                        <>
+                          <SideCard
+                            title="Session Snapshot"
+                            subtitle="Super only"
+                            icon="space_dashboard"
+                            open={sideOpen.session}
+                            onToggle={() => toggleSideCard("session")}
+                          >
+                            <div style={{ display: "grid", gap: 10 }}>
+                              {[
+                                ["Context", CONTEXT_META[selectedContext].label],
+                                ["Provider", PROVIDER_META[provider].label],
+                                ["Active Model", currentModel],
+                                ["WebSocket", wsState],
+                              ].map(([k, v]) => (
+                                <div
+                                  key={k}
                                   style={{
-                                    fontSize: 11,
-                                    fontWeight: 800,
-                                    color: item.value ? "#93c5fd" : "rgba(148,163,184,0.82)",
+                                    padding: "12px 13px",
+                                    borderRadius: 14,
+                                    background:
+                                      "linear-gradient(180deg, rgba(16,22,36,0.96), rgba(12,17,29,0.96))",
+                                    border: "1px solid rgba(255,255,255,0.06)",
                                   }}
                                 >
-                                  {item.value ? "ON" : "OFF"}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </SideCard>
+                                  <div style={{ fontSize: 11, color: "rgba(196, 244, 255, 0.70)" }}>
+                                    {k}
+                                  </div>
+                                  <div
+                                    style={{
+                                      marginTop: 4,
+                                      fontSize: 14,
+                                      fontWeight: 800,
+                                      color: "#f3fbff",
+                                    }}
+                                  >
+                                    {v}
+                                  </div>
+                                </div>
+                              ))}
 
-                      <SideCard
-                        title="Model Identity"
-                        subtitle="Current runtime identity"
-                        icon="hub"
-                        open={sideOpen.identity}
-                        onToggle={() => toggleSideCard("identity")}
-                      >
-                        <div style={{ display: "grid", gap: 10 }}>
-                          {[
-                            ["Provider", PROVIDER_META[provider].label],
-                            ["Engine", currentModel],
-                            ["Orchestrator", "Protected API Route"],
-                            ["Retrieval", memoryEnabled ? "Session + History" : "Minimal"],
-                            ["Output Mode", streaming ? "Progressive" : "Buffered"],
-                            ["Safety Layer", safeMode ? "Enabled" : "Bypassed"],
-                          ].map(([k, v]) => (
-                            <div
-                              key={k}
-                              style={{
-                                padding: "10px 12px",
-                                borderRadius: 12,
-                                border: "1px solid rgba(255,255,255,0.06)",
-                                background: "rgba(255,255,255,0.03)",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                gap: 10,
-                              }}
-                            >
-                              <span style={{ fontSize: 12, color: "rgba(148,163,184,0.88)" }}>{k}</span>
-                              <span
+                              <div
                                 style={{
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  color: "#f8fafc",
-                                  textAlign: "right",
+                                  padding: "12px 13px",
+                                  borderRadius: 14,
+                                  background:
+                                    currentWarmState === "ready"
+                                      ? "linear-gradient(180deg, rgba(25,60,72,0.34), rgba(14,27,34,0.44))"
+                                      : currentWarmState === "warming"
+                                      ? "linear-gradient(180deg, rgba(78,45,132,0.32), rgba(28,16,48,0.46))"
+                                      : currentWarmState === "error"
+                                      ? "linear-gradient(180deg, rgba(78,28,42,0.30), rgba(38,14,20,0.35))"
+                                      : "linear-gradient(180deg, rgba(16,22,36,0.96), rgba(12,17,29,0.96))",
+                                  border:
+                                    currentWarmState === "ready"
+                                      ? "1px solid rgba(34,211,238,0.20)"
+                                      : currentWarmState === "warming"
+                                      ? "1px solid rgba(168,85,247,0.24)"
+                                      : currentWarmState === "error"
+                                      ? "1px solid rgba(248,113,113,0.18)"
+                                      : "1px solid rgba(255,255,255,0.06)",
                                 }}
                               >
-                                {v}
-                              </span>
+                                <div style={{ fontSize: 11, color: "rgba(236,248,255,0.72)" }}>
+                                  Runtime Ready
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    fontSize: 14,
+                                    fontWeight: 800,
+                                    color: "#f3fbff",
+                                  }}
+                                >
+                                  {provider === "openai"
+                                    ? "Ready"
+                                    : currentWarmState === "ready"
+                                    ? "Ollama Ready"
+                                    : currentWarmState === "warming"
+                                    ? "Warming"
+                                    : currentWarmState === "error"
+                                    ? "Warmup Failed"
+                                    : "Idle"}
+                                </div>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </SideCard>
+                          </SideCard>
 
-                      <SideCard
-                        title="Advanced Notes"
-                        subtitle="Warmup and runtime notes"
-                        icon="settings_suggest"
-                        open={sideOpen.advanced}
-                        onToggle={() => toggleSideCard("advanced")}
-                      >
-                        <div
-                          style={{
-                            fontSize: 12,
-                            lineHeight: 1.7,
-                            color: "rgba(226,232,240,0.68)",
-                          }}
-                        >
-                          Ollama warmup starts automatically when the modal opens. OpenAI is always treated as
-                          ready on the frontend.
-                        </div>
-                      </SideCard>
+                          <SideCard
+                            title="Quick Toggles"
+                            subtitle="Super only"
+                            icon="toggle_on"
+                            open={sideOpen.toggles}
+                            onToggle={() => toggleSideCard("toggles")}
+                          >
+                            <div style={{ display: "grid", gap: 10 }}>
+                              {[
+                                {
+                                  label: "Verification",
+                                  value: verified,
+                                  setValue: setVerified,
+                                  desc: "Required before sending to selected route.",
+                                },
+                                {
+                                  label: "Memory",
+                                  value: memoryEnabled,
+                                  setValue: setMemoryEnabled,
+                                  desc: "Include memory-oriented session context.",
+                                },
+                                {
+                                  label: "Safe Mode",
+                                  value: safeMode,
+                                  setValue: setSafeMode,
+                                  desc: "Prefer guarded and more reliable responses.",
+                                },
+                                {
+                                  label: "Developer Mode",
+                                  value: developerMode,
+                                  setValue: setDeveloperMode,
+                                  desc: "Show more technical backend behavior.",
+                                },
+                              ].map((item) => (
+                                <button
+                                  key={item.label}
+                                  type="button"
+                                  onClick={() => item.setValue((v: boolean) => !v)}
+                                  style={{
+                                    width: "100%",
+                                    display: "flex",
+                                    alignItems: "flex-start",
+                                    gap: 12,
+                                    cursor: "pointer",
+                                    padding: "12px 13px",
+                                    borderRadius: 14,
+                                    background: item.value
+                                      ? "linear-gradient(180deg, rgba(124,58,237,0.18), rgba(34,211,238,0.08))"
+                                      : "linear-gradient(180deg, rgba(16,22,36,0.96), rgba(12,17,29,0.96))",
+                                    border: item.value
+                                      ? "1px solid rgba(34,211,238,0.22)"
+                                      : "1px solid rgba(255,255,255,0.06)",
+                                    color: "inherit",
+                                    textAlign: "left",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width: 18,
+                                      height: 18,
+                                      borderRadius: 5,
+                                      marginTop: 2,
+                                      flexShrink: 0,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      background: item.value ? "#22d3ee" : "transparent",
+                                      border: item.value
+                                        ? "1px solid #7df9ff"
+                                        : "1px solid rgba(196,244,255,0.45)",
+                                    }}
+                                  >
+                                    {item.value && (
+                                      <i
+                                        className="material-icons"
+                                        style={{ fontSize: 14, color: "#081018" }}
+                                      >
+                                        check
+                                      </i>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <div style={{ fontSize: 13, fontWeight: 800, color: "#f3fbff" }}>
+                                      {item.label}
+                                    </div>
+                                    <div
+                                      style={{
+                                        marginTop: 3,
+                                        fontSize: 11,
+                                        color: "rgba(236,248,255,0.62)",
+                                      }}
+                                    >
+                                      {item.desc}
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </SideCard>
+
+                          <SideCard
+                            title="Generation Controls"
+                            subtitle="Super only"
+                            icon="auto_fix_high"
+                            open={sideOpen.generation}
+                            onToggle={() => toggleSideCard("generation")}
+                          >
+                            <div style={{ display: "grid", gap: 14 }}>
+                              <div>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                                  <span style={{ fontSize: 12, color: "#d4f2ff" }}>Temperature</span>
+                                  <span style={{ fontSize: 12, color: "#9ef7ff", fontWeight: 800 }}>
+                                    {temperature.toFixed(1)}
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.1}
+                                  value={temperature}
+                                  onChange={(e) => setTemperature(Number(e.target.value))}
+                                  style={{ width: "100%", accentColor: "#22d3ee" }}
+                                />
+                              </div>
+
+                              <div>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                                  <span style={{ fontSize: 12, color: "#d4f2ff" }}>Top P</span>
+                                  <span style={{ fontSize: 12, color: "#9ef7ff", fontWeight: 800 }}>
+                                    {topP.toFixed(1)}
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={0.1}
+                                  max={1}
+                                  step={0.1}
+                                  value={topP}
+                                  onChange={(e) => setTopP(Number(e.target.value))}
+                                  style={{ width: "100%", accentColor: "#22d3ee" }}
+                                />
+                              </div>
+
+                              <div>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                                  <span style={{ fontSize: 12, color: "#d4f2ff" }}>Max Tokens</span>
+                                  <span style={{ fontSize: 12, color: "#9ef7ff", fontWeight: 800 }}>
+                                    {maxTokens}
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={256}
+                                  max={4096}
+                                  step={256}
+                                  value={maxTokens}
+                                  onChange={(e) => setMaxTokens(Number(e.target.value))}
+                                  style={{ width: "100%", accentColor: "#22d3ee" }}
+                                />
+                              </div>
+
+                              <div style={{ display: "grid", gap: 10 }}>
+                                {[
+                                  { label: "Streaming", value: streaming, setValue: setStreaming },
+                                  { label: "Include History", value: includeHistory, setValue: setIncludeHistory },
+                                  { label: "Show Timestamps", value: showTimestamps, setValue: setShowTimestamps },
+                                ].map((item) => (
+                                  <button
+                                    key={item.label}
+                                    type="button"
+                                    onClick={() => item.setValue((v: boolean) => !v)}
+                                    style={{
+                                      width: "100%",
+                                      borderRadius: 12,
+                                      border: item.value
+                                        ? "1px solid rgba(34,211,238,0.22)"
+                                        : "1px solid rgba(255,255,255,0.06)",
+                                      background: item.value
+                                        ? "rgba(34,211,238,0.12)"
+                                        : "rgba(255,255,255,0.03)",
+                                      padding: "10px 12px",
+                                      color: "#e7f8ff",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: 12,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 12, fontWeight: 700 }}>{item.label}</span>
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: 800,
+                                        color: item.value ? "#9ef7ff" : "rgba(196,244,255,0.82)",
+                                      }}
+                                    >
+                                      {item.value ? "ON" : "OFF"}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </SideCard>
+
+                          <SideCard
+                            title="Model Identity"
+                            subtitle="Super only"
+                            icon="hub"
+                            open={sideOpen.identity}
+                            onToggle={() => toggleSideCard("identity")}
+                          >
+                            <div style={{ display: "grid", gap: 10 }}>
+                              {[
+                                ["Context", CONTEXT_META[selectedContext].label],
+                                ["Provider", PROVIDER_META[provider].label],
+                                ["Engine", currentModel],
+                                ["Endpoint", selectedContext],
+                                ["Session Id", sessionIdRef.current],
+                                ["Retrieval", memoryEnabled ? "Session + History" : "Minimal"],
+                                ["Output Mode", streaming ? "Progressive" : "Buffered"],
+                                ["Safety Layer", safeMode ? "Enabled" : "Bypassed"],
+                              ].map(([k, v]) => (
+                                <div
+                                  key={k}
+                                  style={{
+                                    padding: "10px 12px",
+                                    borderRadius: 12,
+                                    border: "1px solid rgba(255,255,255,0.06)",
+                                    background: "rgba(255,255,255,0.03)",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                  }}
+                                >
+                                  <span style={{ fontSize: 12, color: "rgba(196,244,255,0.88)" }}>{k}</span>
+                                  <span
+                                    style={{
+                                      fontSize: 12,
+                                      fontWeight: 800,
+                                      color: "#f3fbff",
+                                      textAlign: "right",
+                                    }}
+                                  >
+                                    {v}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </SideCard>
+
+                          <SideCard
+                            title="Advanced Notes"
+                            subtitle="Super only"
+                            icon="settings_suggest"
+                            open={sideOpen.advanced}
+                            onToggle={() => toggleSideCard("advanced")}
+                          >
+                            <div
+                              style={{
+                                fontSize: 12,
+                                lineHeight: 1.7,
+                                color: "rgba(236,248,255,0.68)",
+                              }}
+                            >
+                              Stop currently cancels the active frontend submission and ignores any
+                              future websocket update for that request id. It does not hard-cancel
+                              the backend worker unless you add a dedicated stop endpoint later.
+                            </div>
+                          </SideCard>
+                        </>
+                      )}
                     </div>
                   )}
                 </aside>
@@ -1704,14 +2278,14 @@ export default function FloatingAIChat() {
                     display: "grid",
                     gridTemplateRows: "auto minmax(0, 1fr) auto",
                     background:
-                      "linear-gradient(180deg, rgba(8,12,20,0.84), rgba(7,11,18,0.96))",
+                      "linear-gradient(180deg, rgba(10,14,24,0.92), rgba(7,10,18,0.98))",
                     overflow: "hidden",
                   }}
                 >
                   <div
                     style={{
                       padding: "14px 18px",
-                      borderBottom: "1px solid rgba(255,255,255,0.08)",
+                      borderBottom: "1px solid rgba(125,249,255,0.10)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
@@ -1720,30 +2294,82 @@ export default function FloatingAIChat() {
                       background: "rgba(255,255,255,0.015)",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                      <div
                         style={{
-                          fontSize: 11,
-                          fontWeight: 900,
-                          letterSpacing: 1,
-                          textTransform: "uppercase",
-                          color: "rgba(148,163,184,0.86)",
+                          width: 82,
+                          height: 82,
+                          borderRadius: 18,
+                          border: "1px solid rgba(125,249,255,0.12)",
+                          background:
+                            "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
                         }}
                       >
-                        Conversation
-                      </span>
-                      <span
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: 999,
-                          background: "rgba(255,255,255,0.04)",
-                          border: "1px solid rgba(255,255,255,0.06)",
-                          fontSize: 12,
-                          color: "rgba(226,232,240,0.76)",
-                        }}
-                      >
-                        {messages.length} messages
-                      </span>
+                        <BotAvatar status={botStatus} size={66} />
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 900,
+                            letterSpacing: 1,
+                            textTransform: "uppercase",
+                            color: "rgba(196,244,255,0.86)",
+                          }}
+                        >
+                          Conversation
+                        </span>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <span
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 999,
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.06)",
+                              fontSize: 12,
+                              color: "rgba(236,248,255,0.76)",
+                            }}
+                          >
+                            {messages.length} messages
+                          </span>
+
+                          <span
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 999,
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.06)",
+                              fontSize: 12,
+                              color: "rgba(236,248,255,0.76)",
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {botStatus}
+                          </span>
+
+                          {isSuper && (
+                            <span
+                              style={{
+                                padding: "5px 10px",
+                                borderRadius: 999,
+                                background: "rgba(255,255,255,0.04)",
+                                border: "1px solid rgba(255,255,255,0.06)",
+                                fontSize: 12,
+                                color: "rgba(236,248,255,0.76)",
+                              }}
+                            >
+                              {CONTEXT_META[selectedContext].label}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -1798,12 +2424,12 @@ export default function FloatingAIChat() {
                                   justifyContent: "center",
                                   marginTop: 4,
                                   background: isUser
-                                    ? "linear-gradient(135deg, rgba(37,99,235,0.92), rgba(59,130,246,0.82))"
-                                    : "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
+                                    ? "linear-gradient(135deg, rgba(163,230,53,0.30), rgba(101,163,13,0.22))"
+                                    : "linear-gradient(135deg, rgba(124,58,237,0.24), rgba(34,211,238,0.14))",
                                   border: isUser
-                                    ? "1px solid rgba(96,165,250,0.22)"
-                                    : "1px solid rgba(255,255,255,0.08)",
-                                  color: "#f8fafc",
+                                    ? "1px solid rgba(190,242,100,0.22)"
+                                    : "1px solid rgba(125,249,255,0.12)",
+                                  color: "#f8fff0",
                                 }}
                               >
                                 <i className="material-icons" style={{ fontSize: 17 }}>
@@ -1816,14 +2442,14 @@ export default function FloatingAIChat() {
                                   style={{
                                     borderRadius: isUser ? "22px 22px 8px 22px" : "22px 22px 22px 8px",
                                     border: isUser
-                                      ? "1px solid rgba(96,165,250,0.2)"
-                                      : "1px solid rgba(255,255,255,0.08)",
+                                      ? "1px solid rgba(190,242,100,0.16)"
+                                      : "1px solid rgba(125,249,255,0.10)",
                                     background: isUser
-                                      ? "linear-gradient(180deg, rgba(29,78,216,0.22), rgba(17,24,39,0.95))"
-                                      : "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025))",
+                                      ? "linear-gradient(180deg, rgba(97,129,27,0.52), rgba(36,54,14,0.94))"
+                                      : "linear-gradient(180deg, rgba(66,40,120,0.44), rgba(14,26,42,0.94))",
                                     boxShadow: isUser
-                                      ? "0 16px 36px rgba(16,24,40,0.25)"
-                                      : "0 16px 32px rgba(0,0,0,0.18)",
+                                      ? "0 16px 36px rgba(28,42,10,0.26)"
+                                      : "0 16px 32px rgba(0,0,0,0.22)",
                                     padding: "14px 16px 12px 16px",
                                     overflow: "hidden",
                                   }}
@@ -1842,7 +2468,7 @@ export default function FloatingAIChat() {
                                       style={{
                                         fontSize: 12,
                                         fontWeight: 900,
-                                        color: isUser ? "#dbeafe" : "#f8fafc",
+                                        color: isUser ? "#efffd0" : "#eefbff",
                                       }}
                                     >
                                       {isUser ? "You" : "Fluke AI"}
@@ -1852,7 +2478,7 @@ export default function FloatingAIChat() {
                                       <div
                                         style={{
                                           fontSize: 11,
-                                          color: "rgba(148,163,184,0.82)",
+                                          color: "rgba(223,244,220,0.74)",
                                         }}
                                       >
                                         {formatTime(msg.ts)}
@@ -1862,7 +2488,7 @@ export default function FloatingAIChat() {
 
                                   <div
                                     style={{
-                                      color: "#f8fafc",
+                                      color: "#fbfff8",
                                       fontSize: 14,
                                       lineHeight: 1.8,
                                       whiteSpace: "pre-wrap",
@@ -1890,16 +2516,16 @@ export default function FloatingAIChat() {
                                             gap: 6,
                                             padding: "6px 10px",
                                             borderRadius: 999,
-                                            background: "rgba(255,255,255,0.04)",
+                                            background: "rgba(255,255,255,0.05)",
                                             border: "1px solid rgba(255,255,255,0.08)",
                                             fontSize: 11,
-                                            color: "rgba(226,232,240,0.82)",
+                                            color: "rgba(236,248,255,0.82)",
                                           }}
                                         >
-                                          <span style={{ color: "rgba(148,163,184,0.82)" }}>
+                                          <span style={{ color: "rgba(196,244,255,0.82)" }}>
                                             {tag.label}
                                           </span>
-                                          <span style={{ color: "#f8fafc", fontWeight: 700 }}>
+                                          <span style={{ color: "#ffffff", fontWeight: 700 }}>
                                             {tag.value}
                                           </span>
                                         </span>
@@ -1912,105 +2538,13 @@ export default function FloatingAIChat() {
                           </div>
                         );
                       })}
-
-                      {loading && (
-                        <div style={{ display: "flex", justifyContent: "flex-start" }}>
-                          <div
-                            style={{
-                              maxWidth: "86%",
-                              display: "flex",
-                              gap: 12,
-                              alignItems: "flex-start",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: 34,
-                                height: 34,
-                                borderRadius: 12,
-                                flexShrink: 0,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                marginTop: 4,
-                                background:
-                                  "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
-                                border: "1px solid rgba(255,255,255,0.08)",
-                                color: "#f8fafc",
-                              }}
-                            >
-                              <i className="material-icons" style={{ fontSize: 17 }}>
-                                psychology_alt
-                              </i>
-                            </div>
-
-                            <div
-                              style={{
-                                borderRadius: "22px 22px 22px 8px",
-                                border: "1px solid rgba(255,255,255,0.08)",
-                                background:
-                                  "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025))",
-                                boxShadow: "0 16px 32px rgba(0,0,0,0.18)",
-                                padding: "14px 16px 12px 16px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  marginBottom: 8,
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: 900,
-                                    color: "#f8fafc",
-                                  }}
-                                >
-                                  Fluke AI
-                                </div>
-                                <span
-                                  style={{
-                                    width: 6,
-                                    height: 6,
-                                    borderRadius: 999,
-                                    background: "#60a5fa",
-                                    boxShadow: "0 0 18px rgba(96,165,250,0.85)",
-                                  }}
-                                />
-                              </div>
-
-                              <div
-                                style={{
-                                  color: "#f8fafc",
-                                  fontSize: 14,
-                                  lineHeight: 1.8,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 10,
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <span>{thinkingText}</span>
-                                <span style={{ display: "inline-flex", gap: 6 }}>
-                                  <span className="fluke-ai-dot" />
-                                  <span className="fluke-ai-dot" />
-                                  <span className="fluke-ai-dot" />
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
 
                   <form
                     onSubmit={onSubmit}
                     style={{
-                      borderTop: "1px solid rgba(255,255,255,0.08)",
+                      borderTop: "1px solid rgba(125,249,255,0.10)",
                       background:
                         "linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02))",
                       padding: "14px clamp(12px, 2vw, 22px) 18px",
@@ -2020,12 +2554,12 @@ export default function FloatingAIChat() {
                       <div
                         style={{
                           borderRadius: 24,
-                          border: "1px solid rgba(255,255,255,0.08)",
+                          border: "1px solid rgba(125,249,255,0.10)",
                           background:
-                            "linear-gradient(180deg, rgba(10,15,26,0.96), rgba(8,12,21,0.98))",
+                            "linear-gradient(180deg, rgba(11,15,25,0.98), rgba(8,11,19,0.98))",
                           overflow: "hidden",
                           boxShadow:
-                            "0 20px 40px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.03)",
+                            "0 20px 40px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)",
                         }}
                       >
                         <div
@@ -2043,11 +2577,16 @@ export default function FloatingAIChat() {
                             onKeyDown={onInputKeyDown}
                             placeholder={
                               provider === "ollama" && currentWarmState !== "ready"
-                                ? `Warming ${currentModel}… switch to OpenAI or wait`
-                                : "Message Fluke AI..."
+                                ? `Warming ${currentModel}… switch model or wait`
+                                : wsState !== "connected"
+                                ? "Connecting websocket..."
+                                : `Message Fluke AI${isSuper ? ` (${CONTEXT_META[selectedContext].label})` : ""}...`
                             }
                             rows={1}
-                            disabled={loading || (provider === "ollama" && currentWarmState !== "ready")}
+                            disabled={
+                              wsState !== "connected" ||
+                              (provider === "ollama" && currentWarmState !== "ready")
+                            }
                             style={{
                               width: "100%",
                               minHeight: 56,
@@ -2056,7 +2595,7 @@ export default function FloatingAIChat() {
                               resize: "none",
                               border: "none",
                               background: "transparent",
-                              color: "#f8fafc",
+                              color: "#f8fdff",
                               padding: "4px 2px",
                               fontSize: 14,
                               lineHeight: 1.7,
@@ -2066,27 +2605,32 @@ export default function FloatingAIChat() {
 
                           <button
                             type="submit"
-                            disabled={!canSend}
+                            disabled={!loading && !canSend}
+                            title={loading ? "Stop generation" : "Send message"}
                             style={{
                               width: 48,
                               height: 48,
                               borderRadius: 16,
-                              border: "1px solid rgba(59,130,246,0.28)",
-                              background:
-                                !canSend
-                                  ? "rgba(255,255,255,0.06)"
-                                  : "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                              border: loading
+                                ? "1px solid rgba(248,113,113,0.28)"
+                                : "1px solid rgba(125,249,255,0.24)",
+                              background: loading
+                                ? "linear-gradient(135deg, #ef4444, #991b1b)"
+                                : !canSend
+                                ? "rgba(255,255,255,0.06)"
+                                : "linear-gradient(135deg, #7c3aed, #22d3ee)",
                               color: "white",
-                              cursor: !canSend ? "not-allowed" : "pointer",
-                              opacity: !canSend ? 0.68 : 1,
+                              cursor: !loading && !canSend ? "not-allowed" : "pointer",
+                              opacity: !loading && !canSend ? 0.68 : 1,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               flexShrink: 0,
+                              transition: "all 160ms ease",
                             }}
                           >
                             <i className="material-icons" style={{ fontSize: 20 }}>
-                              north_east
+                              {loading ? "stop" : "north_east"}
                             </i>
                           </button>
                         </div>
@@ -2099,14 +2643,14 @@ export default function FloatingAIChat() {
                             gap: 12,
                             flexWrap: "wrap",
                             padding: "10px 14px 12px",
-                            borderTop: "1px solid rgba(255,255,255,0.08)",
+                            borderTop: "1px solid rgba(125,249,255,0.10)",
                             background: "rgba(255,255,255,0.02)",
                           }}
                         >
                           <div
                             style={{
                               fontSize: 12,
-                              color: errorText ? "#fca5a5" : "rgba(226,232,240,0.62)",
+                              color: errorText ? "#fca5a5" : "rgba(236,248,255,0.62)",
                               minHeight: 18,
                             }}
                           >
@@ -2114,9 +2658,11 @@ export default function FloatingAIChat() {
                           </div>
 
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {isSuper && (
+                              <Pill label="Context" value={CONTEXT_META[selectedContext].label} />
+                            )}
                             <Pill label="Provider" value={PROVIDER_META[provider].label} />
-                            <Pill label="Model" value={currentModel} />
-                            <Pill label="Temp" value={temperature.toFixed(1)} />
+                            <Pill label="WS" value={wsState} />
                           </div>
                         </div>
                       </div>
@@ -2146,62 +2692,35 @@ export default function FloatingAIChat() {
 
       <style>
         {`
-          .fluke-ai-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 999px;
-            background: rgba(191,219,254,0.92);
-            display: inline-block;
-            animation: flukeAiPulse 1.1s infinite ease-in-out;
-          }
-
-          .fluke-ai-dot:nth-child(2) {
-            animation-delay: 0.15s;
-          }
-
-          .fluke-ai-dot:nth-child(3) {
-            animation-delay: 0.3s;
-          }
-
-          @keyframes flukeAiPulse {
-            0%, 80%, 100% {
-              opacity: 0.35;
-              transform: translateY(0);
-            }
-            40% {
-              opacity: 1;
-              transform: translateY(-3px);
-            }
-          }
-
           textarea::placeholder {
-            color: rgba(255,255,255,0.32);
+            color: rgba(240,250,255,0.30);
           }
 
+          .fluke-settings-scroll,
+          .fluke-sidecard-scroll,
+          .fluke-ai-settings-panel,
+          .fluke-ai-modal-body section > div:nth-child(2),
+          .fluke-ai-modal-body div,
+          textarea {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .fluke-settings-scroll::-webkit-scrollbar,
+          .fluke-sidecard-scroll::-webkit-scrollbar,
           .fluke-ai-settings-panel::-webkit-scrollbar,
           .fluke-ai-modal-body section > div:nth-child(2)::-webkit-scrollbar,
-          .fluke-ai-settings-panel div::-webkit-scrollbar,
           .fluke-ai-modal-body div::-webkit-scrollbar,
           textarea::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
+            width: 0;
+            height: 0;
+            display: none;
           }
 
-          .fluke-ai-settings-panel::-webkit-scrollbar-thumb,
-          .fluke-ai-modal-body section > div:nth-child(2)::-webkit-scrollbar-thumb,
-          .fluke-ai-settings-panel div::-webkit-scrollbar-thumb,
-          .fluke-ai-modal-body div::-webkit-scrollbar-thumb,
-          textarea::-webkit-scrollbar-thumb {
-            background: rgba(148,163,184,0.20);
-            border-radius: 999px;
-          }
-
-          .fluke-ai-settings-panel::-webkit-scrollbar-track,
-          .fluke-ai-modal-body section > div:nth-child(2)::-webkit-scrollbar-track,
-          .fluke-ai-settings-panel div::-webkit-scrollbar-track,
-          .fluke-ai-modal-body div::-webkit-scrollbar-track,
-          textarea::-webkit-scrollbar-track {
-            background: transparent;
+          .fluke-sidecard-scroll {
+            max-height: 320px;
+            overflow-y: auto;
+            min-height: 0;
           }
 
           @media (max-width: 980px) {
@@ -2222,7 +2741,7 @@ export default function FloatingAIChat() {
               z-index: 20;
               transform: translateX(-101%);
               transition: transform 220ms ease;
-              border-right: 1px solid rgba(255,255,255,0.08);
+              border-right: 1px solid rgba(125,249,255,0.10);
               box-shadow: 20px 0 60px rgba(0,0,0,0.38);
             }
 

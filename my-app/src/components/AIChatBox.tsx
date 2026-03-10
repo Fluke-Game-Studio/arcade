@@ -1,93 +1,31 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import type { AIProvider } from "../api/types/ai";
 
-type ChatRole = "user" | "assistant" | "system";
+type ChatRole = "user" | "assistant";
+
+type ChatMetaTag = {
+  label: string;
+  value: string;
+};
 
 type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
   ts: number;
+  tags?: ChatMetaTag[];
 };
 
-type ModelOption = {
-  id: string;
-  label: string;
-  description: string;
+const CHAT_URL = "https://xtipeal88c.execute-api.us-east-1.amazonaws.com/ai/chat/internal";
+
+const PROVIDER_MODEL: Record<Exclude<AIProvider, "auto">, string> = {
+  openai: "gpt-5-mini",
+  ollama: "qwen3:4b",
 };
-
-const API_URL = "https://xtipeal88c.execute-api.us-east-1.amazonaws.com/ai/test";
-
-const MODEL_OPTIONS: ModelOption[] = [
-  {
-    id: "fast",
-    label: "Fast",
-    description: "Quick replies, lighter model route",
-  },
-  {
-    id: "balanced",
-    label: "Balanced",
-    description: "Good quality and speed",
-  },
-  {
-    id: "smart",
-    label: "Smart",
-    description: "Higher quality / heavier route",
-  },
-];
 
 function uid() {
-  return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function pickTextFromUnknown(data: any): string {
-  if (!data) return "No response received.";
-
-  if (typeof data === "string") return data;
-
-  if (typeof data?.answer === "string") return data.answer;
-  if (typeof data?.response === "string") return data.response;
-  if (typeof data?.message === "string") return data.message;
-  if (typeof data?.output === "string") return data.output;
-  if (typeof data?.content === "string") return data.content;
-  if (typeof data?.text === "string") return data.text;
-
-  if (typeof data?.data?.answer === "string") return data.data.answer;
-  if (typeof data?.data?.response === "string") return data.data.response;
-  if (typeof data?.data?.message === "string") return data.data.message;
-  if (typeof data?.data?.output === "string") return data.data.output;
-  if (typeof data?.data?.content === "string") return data.data.content;
-  if (typeof data?.data?.text === "string") return data.data.text;
-
-  if (Array.isArray(data?.output) && data.output.length > 0) {
-    const joined = data.output
-      .map((x: any) => {
-        if (typeof x === "string") return x;
-        if (typeof x?.content === "string") return x.content;
-        if (Array.isArray(x?.content)) {
-          return x.content
-            .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
-            .join("\n");
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
-    if (joined) return joined;
-  }
-
-  if (Array.isArray(data?.choices) && data.choices[0]) {
-    const c = data.choices[0];
-    if (typeof c?.message?.content === "string") return c.message.content;
-    if (typeof c?.text === "string") return c.text;
-  }
-
-  if (typeof data?.message?.content === "string") return data.message.content;
-
-  try {
-    return JSON.stringify(data, null, 2);
-  } catch {
-    return "Response received, but could not parse it.";
-  }
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function formatTime(ts: number) {
@@ -97,696 +35,650 @@ function formatTime(ts: number) {
   });
 }
 
-export default function AIChatBox() {
+function getStableClientId() {
+  const key = "fluke_ai_client_id";
+
+  if (typeof window === "undefined") {
+    return `client_${uid()}`;
+  }
+
+  const existing = window.localStorage.getItem(key);
+  if (existing && existing.trim()) return existing;
+
+  const next = `client_${uid()}`;
+  window.localStorage.setItem(key, next);
+  return next;
+}
+
+function Pill({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 10px",
+        borderRadius: 999,
+        background: "rgba(255,255,255,0.05)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        color: "#dbe7f4",
+        fontSize: 11,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ color: "rgba(148,163,184,0.9)" }}>{label}</span>
+      <span style={{ color: "#f8fafc", fontWeight: 800 }}>{value}</span>
+    </span>
+  );
+}
+
+export default function FloatingAIChat() {
+  const { api, user } = useAuth();
+  console.log("AUTH_API_OBJECT", api);
+  console.log("AUTH_TOKEN_DIRECT", (api as any)?.token);
+  console.log("AUTH_USER", user);
+
+  const token = String((api as any)?.token || "").trim();
+  const clientIdRef = useRef<string>(getStableClientId());
+  const clientId = clientIdRef.current;
+
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [provider, setProvider] = useState<Exclude<AIProvider, "auto">>("openai");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: uid(),
       role: "assistant",
-      content:
-        "Hey — choose a model, verify the checkbox, and start chatting with your AI endpoint.",
+      content: "Welcome to Fluke AI. This chat sends directly to the internal chat endpoint.",
       ts: Date.now(),
+      tags: [
+        { label: "ClientId", value: clientId },
+        { label: "Route", value: "internal" },
+      ],
     },
   ]);
   const [input, setInput] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(1);
-  const [notRobot, setNotRobot] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState("");
-  const [endpointMode, setEndpointMode] = useState<"auto" | "openai" | "ollama">("auto");
+  const [lastPayload, setLastPayload] = useState("");
+  const [lastResponse, setLastResponse] = useState("");
 
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const currentModel = PROVIDER_MODEL[provider];
+  const canSend = !loading && !!input.trim() && !!token;
 
-  const selectedModel = useMemo(
-    () => MODEL_OPTIONS[selectedIndex] || MODEL_OPTIONS[1],
-    [selectedIndex]
-  );
+  const blockedReason = loading
+    ? "Already loading"
+    : !input.trim()
+    ? "Input is empty"
+    : !token
+    ? "Auth token is missing"
+    : "";
 
-  const scrollToBottom = () => {
-    requestAnimationFrame(() => {
-      if (!scrollRef.current) return;
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    });
-  };
+  useEffect(() => {
+    if (!messagesRef.current) return;
+    messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+  }, [messages, loading]);
 
-  const pushMessage = (role: ChatRole, content: string) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: uid(),
-        role,
-        content,
-        ts: Date.now(),
-      },
-    ]);
-    scrollToBottom();
-  };
+  useEffect(() => {
+    if (!textareaRef.current) return;
+    textareaRef.current.style.height = "0px";
+    const next = Math.min(Math.max(textareaRef.current.scrollHeight, 56), 180);
+    textareaRef.current.style.height = `${next}px`;
+  }, [input]);
 
-  const sendMessage = async () => {
+  async function sendMessage() {
     const trimmed = input.trim();
+    if (!trimmed || loading) return;
 
-    if (!trimmed) return;
-    if (!notRobot) {
-      setErrorText("Please confirm you are not a robot before sending.");
+    if (!token) {
+      setErrorText("Auth token is missing.");
       return;
     }
 
-    setErrorText("");
-    setLoading(true);
+    const payload = {
+      question: trimmed,
+      clientId,
+      provider,
+      model: currentModel,
+    };
 
-    const nextUserMessage: ChatMessage = {
+    setLastPayload(JSON.stringify(payload, null, 2));
+    setLastResponse("");
+    setErrorText("");
+
+    const userMessage: ChatMessage = {
       id: uid(),
       role: "user",
       content: trimmed,
       ts: Date.now(),
     };
 
-    const nextMessages = [...messages, nextUserMessage];
-    setMessages(nextMessages);
+    const pendingId = uid();
+
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      {
+        id: pendingId,
+        role: "assistant",
+        content: "Sending request to internal endpoint...",
+        ts: Date.now(),
+        tags: [
+          { label: "Provider", value: provider },
+          { label: "Model", value: currentModel },
+          { label: "ClientId", value: clientId },
+        ],
+      },
+    ]);
+
     setInput("");
-    scrollToBottom();
+    setLoading(true);
 
     try {
-      const payload = {
-        message: trimmed,
-        prompt: trimmed,
-        input: trimmed,
-        query: trimmed,
-        model: selectedModel.id,
-        modelLabel: selectedModel.label,
-        provider: endpointMode,
-        route: endpointMode,
-        captchaChecked: notRobot,
-        history: nextMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      };
+      console.log("DIRECT_CHAT_URL", CHAT_URL);
+      console.log("DIRECT_CHAT_PAYLOAD", payload);
+      console.log("DIRECT_CHAT_TOKEN_PRESENT", !!token);
 
-      const res = await fetch(API_URL, {
+      const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
+          Accept: "application/json",
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
 
-      const rawText = await res.text();
+      const raw = await res.text();
+      setLastResponse(raw);
 
-      let parsed: any = rawText;
+      console.log("DIRECT_CHAT_STATUS", res.status);
+      console.log("DIRECT_CHAT_RAW", raw);
+
+      let parsed: any = {};
       try {
-        parsed = rawText ? JSON.parse(rawText) : {};
+        parsed = raw ? JSON.parse(raw) : {};
       } catch {
-        parsed = rawText;
+        parsed = { message: raw };
       }
 
       if (!res.ok) {
-        const msg =
-          typeof parsed === "string"
-            ? parsed
-            : pickTextFromUnknown(parsed) || `Request failed with ${res.status}`;
-        throw new Error(msg);
+        throw new Error(
+          parsed?.error ||
+            parsed?.message ||
+            `Request failed with status ${res.status}`
+        );
       }
 
-      const assistantText = pickTextFromUnknown(parsed);
-      pushMessage("assistant", assistantText || "No response text returned.");
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingId
+            ? {
+                ...m,
+                content:
+                  parsed?.status === "queued"
+                    ? "Queued successfully. Backend accepted the request."
+                    : "Request submitted.",
+                tags: [
+                  { label: "Status", value: parsed?.status || "ok" },
+                  { label: "Provider", value: parsed?.provider || provider },
+                  { label: "Model", value: parsed?.model || currentModel },
+                  { label: "ClientId", value: parsed?.clientId || clientId },
+                ],
+              }
+            : m
+        )
+      );
     } catch (err: any) {
-      const msg = err?.message || "Failed to contact AI endpoint.";
+      const msg = err?.message || "Unknown error";
       setErrorText(msg);
-      pushMessage("assistant", `Error: ${msg}`);
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingId
+            ? {
+                ...m,
+                content: `Error: ${msg}`,
+                tags: [
+                  { label: "Status", value: "Error" },
+                  { label: "ClientId", value: clientId },
+                ],
+              }
+            : m
+        )
+      );
     } finally {
       setLoading(false);
-      scrollToBottom();
     }
-  };
+  }
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading) return;
-    await sendMessage();
-  };
-
-  const onKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  async function onInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!loading) await sendMessage();
+      await sendMessage();
     }
-  };
-
-  const sliderPercent =
-    MODEL_OPTIONS.length <= 1
-      ? 0
-      : (selectedIndex / (MODEL_OPTIONS.length - 1)) * 100;
+  }
 
   return (
-    <div
-      style={{
-        width: "100%",
-        maxWidth: 980,
-        margin: "0 auto",
-      }}
-    >
+    <>
       <div
         style={{
-          borderRadius: 28,
-          overflow: "hidden",
-          border: "1px solid rgba(255,255,255,0.08)",
-          background:
-            "linear-gradient(180deg, rgba(8,15,34,0.92), rgba(15,23,42,0.96))",
-          boxShadow:
-            "0 20px 60px rgba(2,6,23,0.35), inset 0 1px 0 rgba(255,255,255,0.05)",
-          backdropFilter: "blur(18px)",
-          WebkitBackdropFilter: "blur(18px)",
+          position: "fixed",
+          right: 28,
+          bottom: 28,
+          zIndex: 1600,
         }}
       >
-        <div
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          aria-label="Open Fluke AI Assistant"
           style={{
-            padding: "18px 18px 14px",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
+            width: 68,
+            height: 68,
+            borderRadius: 22,
+            border: "1px solid rgba(255,255,255,0.10)",
             background:
-              "linear-gradient(135deg, rgba(37,99,235,0.22), rgba(59,130,246,0.10))",
+              "linear-gradient(180deg, rgba(8,12,20,0.98), rgba(12,18,31,0.98))",
+            boxShadow: "0 16px 34px rgba(0,0,0,0.28)",
+            color: "#fff",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <i className="material-icons" style={{ fontSize: 20, color: "#f8fafc" }}>
+            psychology_alt
+          </i>
+        </button>
+      </div>
+
+      {modalOpen && (
+        <div
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setModalOpen(false);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 3000,
+            background: "rgba(2,6,23,0.72)",
+            backdropFilter: "blur(10px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 14,
           }}
         >
           <div
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
+              width: "min(1200px, 96vw)",
+              height: "min(90vh, 900px)",
+              borderRadius: 28,
+              overflow: "hidden",
+              background: "#080d16",
+              color: "#e5e7eb",
+              boxShadow: "0 40px 100px rgba(0,0,0,0.55)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              display: "grid",
+              gridTemplateRows: "auto minmax(0,1fr) auto",
             }}
           >
-            <div>
-              <div
-                style={{
-                  color: "#fff",
-                  fontSize: 18,
-                  fontWeight: 900,
-                  letterSpacing: 0.2,
-                }}
-              >
-                Fluke AI Chat
+            <div
+              style={{
+                padding: "18px 22px",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "#f8fafc" }}>
+                  Fluke AI Workspace
+                </div>
+                <div
+                  style={{
+                    marginTop: 6,
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Pill label="Route" value="internal only" />
+                  <Pill label="ClientId" value={clientId} />
+                  <Pill label="Token" value={token ? "present" : "missing"} />
+                  <Pill label="URL" value="fixed internal endpoint" />
+                </div>
               </div>
-              <div
+
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
                 style={{
-                  color: "rgba(255,255,255,0.68)",
-                  fontSize: 13,
-                  marginTop: 4,
+                  width: 42,
+                  height: 42,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#e5e7eb",
+                  cursor: "pointer",
                 }}
               >
-                OpenAI / Ollama-ready chat surface for your Lambda endpoint
+                <i className="material-icons">close</i>
+              </button>
+            </div>
+
+            <div
+              ref={messagesRef}
+              style={{
+                overflowY: "auto",
+                padding: "18px 22px",
+              }}
+            >
+              <div style={{ maxWidth: 920, margin: "0 auto", display: "grid", gap: 16 }}>
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    color: "#cbd5e1",
+                    fontSize: 12,
+                    lineHeight: 1.7,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {`canSend=${String(canSend)} | blocked=${blockedReason || "none"} | hasUser=${String(
+                    !!user
+                  )} | hasToken=${String(!!token)} | loading=${String(
+                    loading
+                  )} | provider=${provider} | clientId=${clientId}`}
+                </div>
+
+                {messages.map((msg) => {
+                  const isUser = msg.role === "user";
+
+                  return (
+                    <div
+                      key={msg.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: isUser ? "flex-end" : "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          maxWidth: isUser ? "78%" : "86%",
+                          borderRadius: isUser ? "22px 22px 8px 22px" : "22px 22px 22px 8px",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: isUser
+                            ? "linear-gradient(180deg, rgba(29,78,216,0.22), rgba(17,24,39,0.95))"
+                            : "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025))",
+                          padding: "14px 16px 12px 16px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            marginBottom: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 900,
+                              color: isUser ? "#dbeafe" : "#f8fafc",
+                            }}
+                          >
+                            {isUser ? "You" : "Fluke AI"}
+                          </div>
+                          <div style={{ fontSize: 11, color: "rgba(148,163,184,0.82)" }}>
+                            {formatTime(msg.ts)}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            color: "#f8fafc",
+                            fontSize: 14,
+                            lineHeight: 1.8,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {msg.content}
+                        </div>
+
+                        {!!msg.tags?.length && (
+                          <div
+                            style={{
+                              marginTop: 12,
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            {msg.tags.map((tag, i) => (
+                              <span
+                                key={`${msg.id}_${i}`}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  padding: "6px 10px",
+                                  borderRadius: 999,
+                                  background: "rgba(255,255,255,0.04)",
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                  fontSize: 11,
+                                  color: "rgba(226,232,240,0.82)",
+                                }}
+                              >
+                                <span style={{ color: "rgba(148,163,184,0.82)" }}>
+                                  {tag.label}
+                                </span>
+                                <span style={{ color: "#f8fafc", fontWeight: 700 }}>
+                                  {tag.value}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    color: "#cbd5e1",
+                    fontSize: 12,
+                    lineHeight: 1.7,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  <div><strong>Request URL:</strong> {CHAT_URL}</div>
+                  <div style={{ marginTop: 8 }}><strong>Last Payload:</strong></div>
+                  <div>{lastPayload || "(none yet)"}</div>
+                  <div style={{ marginTop: 8 }}><strong>Last Raw Response:</strong></div>
+                  <div>{lastResponse || "(none yet)"}</div>
+                </div>
               </div>
             </div>
 
             <div
               style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 8,
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+                padding: "14px 22px 18px",
               }}
             >
-              {(["auto", "openai", "ollama"] as const).map((mode) => {
-                const active = endpointMode === mode;
-                return (
+              <div style={{ maxWidth: 920, margin: "0 auto" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    marginBottom: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <button
-                    key={mode}
                     type="button"
-                    onClick={() => setEndpointMode(mode)}
+                    onClick={() => setProvider("openai")}
                     style={{
-                      border: active
-                        ? "1px solid rgba(96,165,250,0.45)"
-                        : "1px solid rgba(255,255,255,0.10)",
-                      background: active
-                        ? "linear-gradient(135deg, rgba(59,130,246,0.28), rgba(37,99,235,0.24))"
-                        : "rgba(255,255,255,0.05)",
-                      color: "white",
-                      fontWeight: 800,
-                      fontSize: 12,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.8,
-                      borderRadius: 999,
-                      padding: "9px 12px",
+                      padding: "8px 12px",
+                      borderRadius: 12,
+                      border:
+                        provider === "openai"
+                          ? "1px solid rgba(96,165,250,0.32)"
+                          : "1px solid rgba(255,255,255,0.08)",
+                      background:
+                        provider === "openai"
+                          ? "rgba(37,99,235,0.18)"
+                          : "rgba(255,255,255,0.03)",
+                      color: "#f8fafc",
                       cursor: "pointer",
                     }}
                   >
-                    {mode}
+                    OpenAI
                   </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
 
-        <div style={{ padding: 18 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1.2fr 0.8fr",
-              gap: 16,
-            }}
-            className="hide-on-small-only"
-          >
-            <div
-              style={{
-                padding: 16,
-                borderRadius: 22,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 10,
-                }}
-              >
-                <div style={{ color: "white", fontWeight: 800, fontSize: 14 }}>
-                  Model Selection
-                </div>
-                <div
-                  style={{
-                    color: "#93c5fd",
-                    fontWeight: 800,
-                    fontSize: 13,
-                  }}
-                >
-                  {selectedModel.label}
-                </div>
-              </div>
-
-              <div style={{ position: "relative", padding: "10px 4px 2px" }}>
-                <input
-                  type="range"
-                  min={0}
-                  max={MODEL_OPTIONS.length - 1}
-                  step={1}
-                  value={selectedIndex}
-                  onChange={(e) => setSelectedIndex(Number(e.target.value))}
-                  style={{
-                    width: "100%",
-                    accentColor: "#60a5fa",
-                    cursor: "pointer",
-                  }}
-                />
-
-                <div
-                  style={{
-                    position: "relative",
-                    marginTop: 8,
-                    height: 32,
-                  }}
-                >
-                  <div
+                  <button
+                    type="button"
+                    onClick={() => setProvider("ollama")}
                     style={{
-                      position: "absolute",
-                      left: `${sliderPercent}%`,
-                      top: 0,
-                      transform: "translateX(-50%)",
-                      padding: "6px 10px",
+                      padding: "8px 12px",
                       borderRadius: 12,
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: "white",
+                      border:
+                        provider === "ollama"
+                          ? "1px solid rgba(96,165,250,0.32)"
+                          : "1px solid rgba(255,255,255,0.08)",
                       background:
-                        "linear-gradient(135deg, rgba(59,130,246,0.95), rgba(37,99,235,0.95))",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      boxShadow: "0 10px 24px rgba(30,64,175,0.25)",
-                      whiteSpace: "nowrap",
+                        provider === "ollama"
+                          ? "rgba(37,99,235,0.18)"
+                          : "rgba(255,255,255,0.03)",
+                      color: "#f8fafc",
+                      cursor: "pointer",
                     }}
                   >
-                    {selectedModel.label}
-                  </div>
+                    Ollama
+                  </button>
                 </div>
-              </div>
 
-              <div
-                style={{
-                  marginTop: 8,
-                  color: "rgba(255,255,255,0.64)",
-                  fontSize: 12,
-                }}
-              >
-                {selectedModel.description}
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: 16,
-                borderRadius: 22,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <div style={{ color: "white", fontWeight: 800, fontSize: 14, marginBottom: 10 }}>
-                Verification
-              </div>
-
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "14px 14px",
-                  borderRadius: 18,
-                  background: notRobot
-                    ? "rgba(34,197,94,0.12)"
-                    : "rgba(255,255,255,0.05)",
-                  border: notRobot
-                    ? "1px solid rgba(34,197,94,0.32)"
-                    : "1px solid rgba(255,255,255,0.08)",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={notRobot}
-                  onChange={(e) => setNotRobot(e.target.checked)}
+                <div
                   style={{
-                    width: 18,
-                    height: 18,
-                    accentColor: "#22c55e",
-                    cursor: "pointer",
+                    borderRadius: 24,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background:
+                      "linear-gradient(180deg, rgba(10,15,26,0.96), rgba(8,12,21,0.98))",
+                    overflow: "hidden",
                   }}
-                />
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ color: "white", fontWeight: 800, fontSize: 14 }}>
-                    I’m not a robot
-                  </span>
-                  <span
-                    style={{
-                      color: "rgba(255,255,255,0.60)",
-                      fontSize: 12,
-                    }}
-                  >
-                    Simple UI gate before requests are allowed
-                  </span>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <div
-            className="hide-on-med-and-up"
-            style={{
-              display: "grid",
-              gap: 14,
-              marginBottom: 14,
-            }}
-          >
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 18,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <div style={{ color: "white", fontWeight: 800, fontSize: 14 }}>
-                Model: {selectedModel.label}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={MODEL_OPTIONS.length - 1}
-                step={1}
-                value={selectedIndex}
-                onChange={(e) => setSelectedIndex(Number(e.target.value))}
-                style={{
-                  width: "100%",
-                  marginTop: 12,
-                  accentColor: "#60a5fa",
-                }}
-              />
-              <div
-                style={{
-                  color: "rgba(255,255,255,0.64)",
-                  fontSize: 12,
-                  marginTop: 6,
-                }}
-              >
-                {selectedModel.description}
-              </div>
-            </div>
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "14px 14px",
-                borderRadius: 18,
-                background: notRobot
-                  ? "rgba(34,197,94,0.12)"
-                  : "rgba(255,255,255,0.05)",
-                border: notRobot
-                  ? "1px solid rgba(34,197,94,0.32)"
-                  : "1px solid rgba(255,255,255,0.08)",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={notRobot}
-                onChange={(e) => setNotRobot(e.target.checked)}
-                style={{
-                  width: 18,
-                  height: 18,
-                  accentColor: "#22c55e",
-                }}
-              />
-              <span style={{ color: "white", fontWeight: 800, fontSize: 14 }}>
-                I’m not a robot
-              </span>
-            </label>
-          </div>
-
-          <div
-            ref={scrollRef}
-            style={{
-              marginTop: 16,
-              height: 430,
-              overflowY: "auto",
-              borderRadius: 24,
-              padding: 16,
-              background:
-                "linear-gradient(180deg, rgba(2,6,23,0.36), rgba(15,23,42,0.68))",
-              border: "1px solid rgba(255,255,255,0.06)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {messages.map((msg) => {
-                const isUser = msg.role === "user";
-                return (
+                >
                   <div
-                    key={msg.id}
                     style={{
                       display: "flex",
-                      justifyContent: isUser ? "flex-end" : "flex-start",
+                      alignItems: "flex-end",
+                      gap: 12,
+                      padding: "12px 12px 10px 14px",
                     }}
                   >
-                    <div
+                    <textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={onInputKeyDown}
+                      placeholder="Message Fluke AI..."
+                      rows={1}
+                      disabled={loading}
                       style={{
-                        maxWidth: "78%",
-                        padding: "14px 15px",
-                        borderRadius: isUser
-                          ? "22px 22px 8px 22px"
-                          : "22px 22px 22px 8px",
-                        background: isUser
-                          ? "linear-gradient(135deg, rgba(59,130,246,0.96), rgba(37,99,235,0.96))"
-                          : "rgba(255,255,255,0.07)",
+                        width: "100%",
+                        minHeight: 56,
+                        maxHeight: 180,
+                        boxSizing: "border-box",
+                        resize: "none",
+                        border: "none",
+                        background: "transparent",
+                        color: "#f8fafc",
+                        padding: "4px 2px",
+                        fontSize: 14,
+                        lineHeight: 1.7,
+                        outline: "none",
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={sendMessage}
+                      disabled={!canSend}
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 16,
+                        border: "1px solid rgba(59,130,246,0.28)",
+                        background:
+                          !canSend
+                            ? "rgba(255,255,255,0.06)"
+                            : "linear-gradient(135deg, #2563eb, #1d4ed8)",
                         color: "white",
-                        border: isUser
-                          ? "1px solid rgba(255,255,255,0.10)"
-                          : "1px solid rgba(255,255,255,0.08)",
-                        boxShadow: isUser
-                          ? "0 12px 30px rgba(30,64,175,0.22)"
-                          : "0 10px 24px rgba(0,0,0,0.12)",
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
+                        cursor: !canSend ? "not-allowed" : "pointer",
+                        opacity: !canSend ? 0.68 : 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 900,
-                          textTransform: "uppercase",
-                          letterSpacing: 0.8,
-                          opacity: 0.72,
-                          marginBottom: 6,
-                        }}
-                      >
-                        {isUser ? "You" : "Assistant"}
-                      </div>
-
-                      <div style={{ fontSize: 14, lineHeight: 1.6 }}>{msg.content}</div>
-
-                      <div
-                        style={{
-                          marginTop: 8,
-                          fontSize: 11,
-                          opacity: 0.56,
-                          textAlign: "right",
-                        }}
-                      >
-                        {formatTime(msg.ts)}
-                      </div>
-                    </div>
+                      <i className="material-icons" style={{ fontSize: 20 }}>
+                        north_east
+                      </i>
+                    </button>
                   </div>
-                );
-              })}
 
-              {loading && (
-                <div style={{ display: "flex", justifyContent: "flex-start" }}>
                   <div
                     style={{
-                      maxWidth: "78%",
-                      padding: "14px 15px",
-                      borderRadius: "22px 22px 22px 8px",
-                      background: "rgba(255,255,255,0.07)",
-                      color: "white",
-                      border: "1px solid rgba(255,255,255,0.08)",
+                      padding: "10px 14px 12px",
+                      borderTop: "1px solid rgba(255,255,255,0.08)",
+                      color: errorText ? "#fca5a5" : "rgba(226,232,240,0.62)",
+                      fontSize: 12,
+                      minHeight: 18,
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 900,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.8,
-                        opacity: 0.72,
-                        marginBottom: 8,
-                      }}
-                    >
-                      Assistant
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "rgba(255,255,255,0.78)",
-                          display: "inline-block",
-                        }}
-                      />
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "rgba(255,255,255,0.55)",
-                          display: "inline-block",
-                        }}
-                      />
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "rgba(255,255,255,0.35)",
-                          display: "inline-block",
-                        }}
-                      />
-                    </div>
+                    {errorText || "Ready"}
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          <form onSubmit={onSubmit} style={{ marginTop: 16 }}>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-                padding: 14,
-                borderRadius: 24,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                placeholder="Ask something..."
-                rows={4}
-                disabled={loading}
-                style={{
-                  width: "100%",
-                  resize: "vertical",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  outline: "none",
-                  borderRadius: 18,
-                  padding: "14px 16px",
-                  background: "rgba(2,6,23,0.34)",
-                  color: "white",
-                  fontSize: 14,
-                  lineHeight: 1.6,
-                  boxSizing: "border-box",
-                }}
-              />
-
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                }}
-              >
-                <div
-                  style={{
-                    color: errorText ? "#fca5a5" : "rgba(255,255,255,0.56)",
-                    fontSize: 12,
-                    minHeight: 18,
-                  }}
-                >
-                  {errorText ||
-                    `Mode: ${endpointMode.toUpperCase()} • Model: ${selectedModel.label}`}
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || !input.trim()}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    minWidth: 136,
-                    height: 46,
-                    padding: "0 18px",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    borderRadius: 16,
-                    cursor: loading || !input.trim() ? "not-allowed" : "pointer",
-                    background:
-                      loading || !input.trim()
-                        ? "rgba(255,255,255,0.10)"
-                        : "linear-gradient(135deg, rgba(59,130,246,0.96), rgba(37,99,235,0.96))",
-                    color: "white",
-                    fontWeight: 900,
-                    fontSize: 14,
-                    boxShadow:
-                      loading || !input.trim()
-                        ? "none"
-                        : "0 14px 28px rgba(30,64,175,0.24)",
-                    opacity: loading || !input.trim() ? 0.7 : 1,
-                  }}
-                >
-                  {loading ? "Thinking..." : "Send"}
-                </button>
               </div>
             </div>
-          </form>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      <style>
+        {`
+          textarea::placeholder {
+            color: rgba(255,255,255,0.32);
+          }
+        `}
+      </style>
+    </>
   );
 }
