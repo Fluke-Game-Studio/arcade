@@ -8,7 +8,7 @@ import React, {
   useState,
 } from "react";
 import { useAuth } from "../auth/AuthContext";
-import type { ApiUpdateRow } from "../api";
+import type { ApiUpdateRow, ApiUpdateSummary } from "../api";
 
 export type TimeEntry = { date: string; hours: number };
 
@@ -16,6 +16,9 @@ export type UpdateSubmission = {
   id: string;
   userId?: string;
   userName?: string;
+  employee_id?: string;
+  employee_manager?: string;
+  projectId?: string;
   weekStart: string;
   accomplishments: string;
   blockers: string;
@@ -29,10 +32,34 @@ export type UpdateSubmission = {
   createdAt: string;
 };
 
+export type UpdateSummaryView = {
+  userId?: string;
+  userName?: string;
+  employee_id?: string;
+  employee_manager?: string;
+  projectId?: string;
+  weekStart: string;
+  createdAtFirst?: string;
+  createdAtLast?: string;
+  totalEntries: number;
+  totalHours: number;
+  accomplishments: string[];
+  blockers: string[];
+  next: string[];
+  retrospective: {
+    worked: string[];
+    didnt: string[];
+    improve: string[];
+  };
+  timesheet: TimeEntry[];
+};
+
 type UpdatesContextShape = {
   submissions: UpdateSubmission[];
+  summaries: UpdateSummaryView[];
   save: (u: UpdateSubmission) => void;
   byWeek: (weekStart: string) => UpdateSubmission[];
+  summariesByWeek: (weekStart: string) => UpdateSummaryView[];
   allWeeks: string[];
   reload: () => Promise<void>;
   loading: boolean;
@@ -42,7 +69,16 @@ type UpdatesContextShape = {
 
 const UpdatesContext = createContext<UpdatesContextShape | null>(null);
 
-/* ---------- Helpers to normalize API rows ---------- */
+/* ---------- helpers ---------- */
+
+function asArray<T = any>(v: any): T[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function safeStr(v: any): string {
+  if (v === null || v === undefined) return "";
+  return String(v).trim();
+}
 
 function normalizeRetrospective(raw: any): {
   worked: string[];
@@ -62,7 +98,7 @@ function normalizeRetrospective(raw: any): {
 
   const asList = (v: any): string[] =>
     Array.isArray(v)
-      ? v.map((x) => String(x)).filter(Boolean)
+      ? v.map((x) => String(x).trim()).filter(Boolean)
       : typeof v === "string"
       ? v
           .split("\n")
@@ -79,74 +115,72 @@ function normalizeRetrospective(raw: any): {
 
 function normalizeTimesheet(raw: any): TimeEntry[] {
   if (!raw) return [];
+
   if (typeof raw === "string") {
     try {
       const arr = JSON.parse(raw);
       if (!Array.isArray(arr)) return [];
       return arr.map((e) => ({
-        date: String(e.date),
-        hours: Number(e.hours) || 0,
+        date: safeStr(e?.date),
+        hours: Number(e?.hours) || 0,
       }));
     } catch {
       return [];
     }
   }
+
   if (Array.isArray(raw)) {
     return raw.map((e) => ({
-      date: String(e.date),
-      hours: Number(e.hours) || 0,
+      date: safeStr(e?.date),
+      hours: Number(e?.hours) || 0,
     }));
   }
+
   return [];
 }
 
-function fromApi(row: ApiUpdateRow): UpdateSubmission {
-  const retrospective = normalizeRetrospective(row.retrospective);
-  const timesheet = normalizeTimesheet(row.timesheet);
-
+function fromApiRow(row: ApiUpdateRow): UpdateSubmission {
   return {
-    id: row.id || crypto.randomUUID(),
-    userId:
-      row.userId ||
-      row.employee_id ||
-      (row as any).username ||
-      "unknown",
+    id: safeStr(row?.id) || crypto.randomUUID(),
+    userId: safeStr(row?.userId || (row as any)?.employee_id || (row as any)?.username),
     userName:
-      row.userName ||
-      (row as any).employee_name ||
-      row.userId ||
-      (row as any).username ||
+      safeStr(row?.userName || (row as any)?.employee_name) ||
+      safeStr(row?.userId || (row as any)?.username) ||
       "Anonymous",
-    weekStart: row.weekStart || (row as any).weekOf || "",
-    accomplishments: row.accomplishments || "",
-    blockers: row.blockers || "",
-    next: row.next || (row as any).nextWeek || "",
-    retrospective,
-    timesheet,
-    createdAt: row.createdAt || new Date().toISOString(),
+    employee_id: safeStr((row as any)?.employee_id),
+    employee_manager: safeStr((row as any)?.employee_manager),
+    projectId: safeStr(row?.projectId || (row as any)?.project_id),
+    weekStart: safeStr(row?.weekStart || (row as any)?.weekOf),
+    accomplishments: safeStr(row?.accomplishments),
+    blockers: safeStr(row?.blockers),
+    next: safeStr(row?.next || (row as any)?.nextWeek),
+    retrospective: normalizeRetrospective(row?.retrospective),
+    timesheet: normalizeTimesheet(row?.timesheet),
+    createdAt: safeStr(row?.createdAt) || new Date().toISOString(),
   };
 }
 
-/* ---------- Deduping: one submission per (user, week) ---------- */
-
-function keyOf(u: UpdateSubmission) {
-  return `${u.userId || "unknown"}|${u.weekStart || ""}`;
+function fromApiSummary(row: ApiUpdateSummary): UpdateSummaryView {
+  return {
+    userId: safeStr(row?.userId),
+    userName: safeStr(row?.userName) || safeStr((row as any)?.employee_name),
+    employee_id: safeStr(row?.employee_id),
+    employee_manager: safeStr(row?.employee_manager),
+    projectId: safeStr(row?.projectId),
+    weekStart: safeStr(row?.weekStart),
+    createdAtFirst: safeStr(row?.createdAtFirst),
+    createdAtLast: safeStr(row?.createdAtLast),
+    totalEntries: Number(row?.totalEntries) || 0,
+    totalHours: Number(row?.totalHours) || 0,
+    accomplishments: asArray<string>(row?.accomplishments).map(safeStr).filter(Boolean),
+    blockers: asArray<string>(row?.blockers).map(safeStr).filter(Boolean),
+    next: asArray<string>(row?.next).map(safeStr).filter(Boolean),
+    retrospective: normalizeRetrospective(row?.retrospective),
+    timesheet: normalizeTimesheet(row?.timesheet),
+  };
 }
 
-function dedupeByUserWeek(items: UpdateSubmission[]): UpdateSubmission[] {
-  const map = new Map<string, UpdateSubmission>();
-  for (const u of items) {
-    const k = keyOf(u);
-    const existing = map.get(k);
-    // keep newest createdAt per user/week
-    if (!existing || existing.createdAt < u.createdAt) {
-      map.set(k, u);
-    }
-  }
-  return Array.from(map.values());
-}
-
-/* ---------- Provider ---------- */
+/* ---------- provider ---------- */
 
 export const UpdatesProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -154,6 +188,7 @@ export const UpdatesProvider: React.FC<{ children: React.ReactNode }> = ({
   const { api, user } = useAuth();
 
   const [submissions, setSubmissions] = useState<UpdateSubmission[]>([]);
+  const [summaries, setSummaries] = useState<UpdateSummaryView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unauthenticated, setUnauthenticated] = useState(false);
@@ -161,13 +196,17 @@ export const UpdatesProvider: React.FC<{ children: React.ReactNode }> = ({
   const reload = useCallback(async () => {
     if (!user) {
       setSubmissions([]);
+      setSummaries([]);
       setError(null);
       setUnauthenticated(true);
       return;
     }
 
-    if (!api.getUpdates) {
+    if (!api?.getUpdates) {
+      setSubmissions([]);
+      setSummaries([]);
       setError("API client missing getUpdates");
+      setUnauthenticated(false);
       return;
     }
 
@@ -175,12 +214,12 @@ export const UpdatesProvider: React.FC<{ children: React.ReactNode }> = ({
     setUnauthenticated(false);
 
     try {
-      const rows = await api.getUpdates();
-      let mapped = (rows || []).map(fromApi);
+      const payload = await api.getUpdates();
 
-      mapped = dedupeByUserWeek(mapped);
+      const rawItems = asArray<ApiUpdateRow>(payload?.items);
+      const rawSummaries = asArray<ApiUpdateSummary>(payload?.summaries);
 
-      mapped.sort((a, b) => {
+      const mappedItems = rawItems.map(fromApiRow).sort((a, b) => {
         if (a.weekStart < b.weekStart) return 1;
         if (a.weekStart > b.weekStart) return -1;
         if (a.createdAt < b.createdAt) return 1;
@@ -188,17 +227,30 @@ export const UpdatesProvider: React.FC<{ children: React.ReactNode }> = ({
         return 0;
       });
 
-      setSubmissions(mapped);
+      const mappedSummaries = rawSummaries.map(fromApiSummary).sort((a, b) => {
+        if (a.weekStart < b.weekStart) return 1;
+        if (a.weekStart > b.weekStart) return -1;
+        if ((a.createdAtLast || "") < (b.createdAtLast || "")) return 1;
+        if ((a.createdAtLast || "") > (b.createdAtLast || "")) return -1;
+        return 0;
+      });
+
+      setSubmissions(mappedItems);
+      setSummaries(mappedSummaries);
       setError(null);
     } catch (e: any) {
       console.error("Failed to load weekly updates from API", e);
-      const msg = e?.message || "";
-      if (msg.includes("(401)") || msg.includes("401")) {
+      const msg = safeStr(e?.message);
+
+      setSubmissions([]);
+      setSummaries([]);
+
+      if (msg.includes("401") || msg.includes("(401)") || msg.includes("403")) {
         setUnauthenticated(true);
         setError(null);
       } else {
         setUnauthenticated(false);
-        setError(e?.message || "Failed to load weekly updates");
+        setError(msg || "Failed to load weekly updates");
       }
     } finally {
       setLoading(false);
@@ -210,26 +262,45 @@ export const UpdatesProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [reload]);
 
   const save = (u: UpdateSubmission) => {
-    setSubmissions((prev) => {
-      const next = [u, ...prev];
-      return dedupeByUserWeek(next);
-    });
+    setSubmissions((prev) => [u, ...asArray(prev)]);
   };
 
-  const byWeek = (weekStart: string) =>
-    submissions.filter((s) => s.weekStart === weekStart);
+  const byWeek = useCallback(
+    (weekStart: string) =>
+      asArray(submissions).filter((s) => safeStr(s.weekStart) === safeStr(weekStart)),
+    [submissions]
+  );
+
+  const summariesByWeek = useCallback(
+    (weekStart: string) =>
+      asArray(summaries).filter((s) => safeStr(s.weekStart) === safeStr(weekStart)),
+    [summaries]
+  );
 
   const allWeeks = useMemo(() => {
-    const set = new Set(submissions.map((s) => s.weekStart));
+    const set = new Set<string>();
+
+    asArray(submissions).forEach((s) => {
+      const w = safeStr(s.weekStart);
+      if (w) set.add(w);
+    });
+
+    asArray(summaries).forEach((s) => {
+      const w = safeStr(s.weekStart);
+      if (w) set.add(w);
+    });
+
     return Array.from(set).sort((a, b) => (a < b ? 1 : -1));
-  }, [submissions]);
+  }, [submissions, summaries]);
 
   return (
     <UpdatesContext.Provider
       value={{
         submissions,
+        summaries,
         save,
         byWeek,
+        summariesByWeek,
         allWeeks,
         reload,
         loading,
@@ -248,7 +319,7 @@ export function useUpdates() {
   return ctx;
 }
 
-/* ---------- Date helpers ---------- */
+/* ---------- date helpers ---------- */
 
 export function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
