@@ -7,6 +7,7 @@ import type {
   UpdateUserBody,
   SendEmployeeDocEmailBody,
 } from "../api";
+import AdminMailerComposerModal from "../components/AdminMailerComposerModal";
 
 declare const M: any;
 
@@ -84,12 +85,24 @@ function formatLongDate(yyyyMmDd: string) {
 function roleChipColors(roleLower: string) {
   const r = (roleLower || "employee").toLowerCase();
   if (r === "super") {
-    return { bg: "rgba(168,85,247,0.16)", bd: "rgba(168,85,247,0.28)", tx: "#6d28d9" };
+    return {
+      bg: "rgba(168,85,247,0.16)",
+      bd: "rgba(168,85,247,0.28)",
+      tx: "#6d28d9",
+    };
   }
   if (r === "admin") {
-    return { bg: "rgba(59,130,246,0.14)", bd: "rgba(59,130,246,0.26)", tx: "#1d4ed8" };
+    return {
+      bg: "rgba(59,130,246,0.14)",
+      bd: "rgba(59,130,246,0.26)",
+      tx: "#1d4ed8",
+    };
   }
-  return { bg: "rgba(34,197,94,0.12)", bd: "rgba(34,197,94,0.22)", tx: "#166534" };
+  return {
+    bg: "rgba(34,197,94,0.12)",
+    bd: "rgba(34,197,94,0.22)",
+    tx: "#166534",
+  };
 }
 
 function RolePill({ role }: { role: string }) {
@@ -113,7 +126,11 @@ function RolePill({ role }: { role: string }) {
       }}
     >
       <i className="material-icons" style={{ fontSize: 16 }}>
-        {role === "super" ? "auto_awesome" : role === "admin" ? "admin_panel_settings" : "badge"}
+        {role === "super"
+          ? "auto_awesome"
+          : role === "admin"
+          ? "admin_panel_settings"
+          : "badge"}
       </i>
       {role}
     </span>
@@ -168,16 +185,32 @@ function ModalSection({
               flex: "0 0 auto",
             }}
           >
-            <i className="material-icons" style={{ fontSize: 18, color: "#334e68" }}>
+            <i
+              className="material-icons"
+              style={{ fontSize: 18, color: "#334e68" }}
+            >
               {icon}
             </i>
           </div>
           <div>
-            <div style={{ fontWeight: 1000, color: "#0f172a", lineHeight: "18px" }}>
+            <div
+              style={{
+                fontWeight: 1000,
+                color: "#0f172a",
+                lineHeight: "18px",
+              }}
+            >
               {title}
             </div>
             {hint ? (
-              <div style={{ marginTop: 2, fontSize: 12, color: "#607d8b", fontWeight: 800 }}>
+              <div
+                style={{
+                  marginTop: 2,
+                  fontSize: 12,
+                  color: "#607d8b",
+                  fontWeight: 800,
+                }}
+              >
                 {hint}
               </div>
             ) : null}
@@ -204,17 +237,21 @@ export default function Admin() {
 
   const [form, setForm] = useState<AdminForm>({ ...EMPTY });
   const [editingUsername, setEditingUsername] = useState<string | null>(null);
-  const [editingTargetRole, setEditingTargetRole] = useState<string>("employee");
+  const [editingTargetRole, setEditingTargetRole] =
+    useState<string>("employee");
 
   const modalRef = useRef<HTMLDivElement | null>(null);
   const composerModalRef = useRef<HTMLDivElement | null>(null);
+
+  const [mailerOpen, setMailerOpen] = useState(false);
 
   const [composerEmployee, setComposerEmployee] = useState<ApiUser | null>(null);
   const [composerRoleTitle, setComposerRoleTitle] = useState("");
   const [composerSubjectOverride, setComposerSubjectOverride] = useState(
     "Experience Certificate | Fluke Games"
   );
-  const [composerSetStatus, setComposerSetStatus] = useState("experience_sent");
+  const [composerSetStatus, setComposerSetStatus] =
+    useState("experience_sent");
   const [extraInfo, setExtraInfo] = useState("");
 
   const [dateStarted, setDateStarted] = useState("");
@@ -305,15 +342,18 @@ export default function Admin() {
   function canEditTarget(target: ApiUser) {
     if (!isAdmin) return false;
     const targetRole = getRoleLower(target);
-    // Admin cannot edit SUPER; Super can edit everyone.
     if (targetRole === "super" && !isSuper) return false;
     return true;
   }
 
   function isFieldLockedForAdmin(field: keyof AdminForm) {
     if (isSuper) return false;
-    // Admin cannot change identifiers (on edit)
-    if (field === "username" || field === "employee_email" || field === "employee_id") return true;
+    if (
+      field === "username" ||
+      field === "employee_email" ||
+      field === "employee_id"
+    )
+      return true;
     return false;
   }
 
@@ -370,8 +410,15 @@ export default function Admin() {
     e.preventDefault();
     if (!isAdmin) return;
 
-    if (!safeStr(form.username) || !safeStr(form.employee_name) || !safeStr(form.employee_email)) {
-      M.toast({ html: "Username, Name, and Email are required.", classes: "red" });
+    if (
+      !safeStr(form.username) ||
+      !safeStr(form.employee_name) ||
+      !safeStr(form.employee_email)
+    ) {
+      M.toast({
+        html: "Username, Name, and Email are required.",
+        classes: "red",
+      });
       return;
     }
 
@@ -403,10 +450,8 @@ export default function Admin() {
 
         if (safeStr(form.password)) update.password = form.password;
 
-        // ✅ Role can only be changed by SUPER (admins never send employee_role)
         if (isSuper) update.employee_role = form.employee_role || undefined;
 
-        // identifiers: only super can modify
         if (isSuper) {
           update.username = safeStr(form.username) || editingUsername;
           update.employee_email = safeStr(form.employee_email) || undefined;
@@ -425,7 +470,7 @@ export default function Admin() {
           password: safeStr(form.password),
           employee_name: safeStr(form.employee_name),
           employee_email: safeStr(form.employee_email),
-          employee_role: "employee", // safe create
+          employee_role: "employee",
           employee_title: form.employee_title || undefined,
           employee_profilepicture: form.employee_profilepicture || undefined,
           employee_phonenumber: form.employee_phonenumber || undefined,
@@ -441,7 +486,10 @@ export default function Admin() {
         };
 
         if (!createBody.password) {
-          M.toast({ html: "Password required for new employee.", classes: "red" });
+          M.toast({
+            html: "Password required for new employee.",
+            classes: "red",
+          });
           setLoading(false);
           return;
         }
@@ -462,7 +510,10 @@ export default function Admin() {
 
   function openComposer(u: ApiUser) {
     if (!canEditTarget(u)) {
-      M.toast({ html: "You cannot send docs for this user.", classes: "red" });
+      M.toast({
+        html: "You cannot send docs for this user.",
+        classes: "red",
+      });
       return;
     }
 
@@ -499,14 +550,19 @@ export default function Admin() {
       return;
     }
     if (!dateStarted || !dateEnded) {
-      M.toast({ html: "Experience: dateStarted and dateEnded are required.", classes: "red" });
+      M.toast({
+        html: "Experience: dateStarted and dateEnded are required.",
+        classes: "red",
+      });
       return;
     }
 
     setSending(true);
     try {
       const vars: Record<string, any> = {
-        ...(extraInfo.trim() ? { extraInfo: extraInfo.trim(), EXTRA_INFO: extraInfo.trim() } : {}),
+        ...(extraInfo.trim()
+          ? { extraInfo: extraInfo.trim(), EXTRA_INFO: extraInfo.trim() }
+          : {}),
         ...(currentDate ? { CURRENT_DATE: formatLongDate(currentDate) } : {}),
         ...(dateStarted ? { START_DATE: formatLongDate(dateStarted) } : {}),
         ...(dateEnded ? { END_DATE: formatLongDate(dateEnded) } : {}),
@@ -522,8 +578,14 @@ export default function Admin() {
         vars: Object.keys(vars).length ? vars : undefined,
       };
 
-      const resp = await (api as any).sendEmployeeDocEmail(composerEmployee.username, body);
-      M.toast({ html: String(resp?.message || resp?.status || "Sent"), classes: "green" });
+      const resp = await (api as any).sendEmployeeDocEmail(
+        composerEmployee.username,
+        body
+      );
+      M.toast({
+        html: String(resp?.message || resp?.status || "Sent"),
+        classes: "green",
+      });
       closeComposer();
     } catch (e: any) {
       M.toast({ html: e?.message || "Send failed", classes: "red" });
@@ -555,6 +617,7 @@ export default function Admin() {
           }
           .adm-heroRow { display:flex; align-items:center; justify-content:space-between; gap: 12px; flex-wrap: wrap; }
           .adm-heroLeft { display:flex; align-items:center; gap: 12px; min-width: 0; }
+          .adm-heroActions { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; }
           .adm-meAvatar {
             width: 54px; height: 54px; border-radius: 18px;
             background: rgba(255,255,255,0.12);
@@ -581,6 +644,15 @@ export default function Admin() {
             font-size: 12px;
           }
           .adm-btn { border-radius: 12px !important; font-weight: 1000 !important; text-transform: none !important; }
+          .adm-btnGhost {
+            border-radius: 12px !important;
+            font-weight: 1000 !important;
+            text-transform: none !important;
+            background: rgba(255,255,255,0.10) !important;
+            border: 1px solid rgba(255,255,255,0.18) !important;
+            color: #fff !important;
+            box-shadow: none !important;
+          }
           .adm-card { border-radius: 18px; overflow: visible; border: 1px solid #e6edf2; }
           .adm-cardHead {
             padding: 12px 14px;
@@ -643,7 +715,6 @@ export default function Admin() {
             color: #334e68;
           }
 
-          /* Modal fancy */
           .adm-modalHero {
             border-radius: 16px;
             overflow: hidden;
@@ -708,7 +779,6 @@ export default function Admin() {
             .adm-span-4, .adm-span-6 { grid-column: span 12; }
           }
 
-          /* Fix label overlap for selects */
           .adm-selectWrap { position: relative; }
           .adm-selectWrap label {
             position: static !important;
@@ -724,7 +794,6 @@ export default function Admin() {
         `}</style>
 
         <div className="adm-shell">
-          {/* HERO */}
           <div className="adm-hero">
             <div className="adm-heroRow">
               <div className="adm-heroLeft">
@@ -741,21 +810,34 @@ export default function Admin() {
                 </div>
               </div>
 
-              <span className="adm-chip" title="Your role">
-                <i className="material-icons" style={{ fontSize: 16 }}>
-                  {isSuper ? "auto_awesome" : "admin_panel_settings"}
-                </i>
-                {myRole.toUpperCase()}
-              </span>
+              <div className="adm-heroActions">
+                <button
+                  className="btn adm-btnGhost"
+                  onClick={() => setMailerOpen(true)}
+                  disabled={!isAdmin}
+                  title="Open Newsletter / Generic / Reminder composer"
+                >
+                  <i className="material-icons left">campaign</i>
+                  Mail Composer
+                </button>
+
+                <span className="adm-chip" title="Your role">
+                  <i className="material-icons" style={{ fontSize: 16 }}>
+                    {isSuper ? "auto_awesome" : "admin_panel_settings"}
+                  </i>
+                  {myRole.toUpperCase()}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* USERS CARD */}
           <div className="card z-depth-1 adm-card" style={{ marginTop: 14 }}>
             <div className="adm-cardHead">
               <div>
                 <div className="t">Users ({rows.length})</div>
-                <div className="h">Search, edit, and send employee docs.</div>
+                <div className="h">
+                  Search, edit, and send employee docs.
+                </div>
               </div>
 
               <div className="adm-searchRow">
@@ -771,7 +853,11 @@ export default function Admin() {
                   </label>
                 </div>
 
-                <button className="btn adm-btn" onClick={openModalForAdd} disabled={!isAdmin}>
+                <button
+                  className="btn adm-btn"
+                  onClick={openModalForAdd}
+                  disabled={!isAdmin}
+                >
                   <i className="material-icons left">person_add</i>
                   Add Employee
                 </button>
@@ -780,7 +866,11 @@ export default function Admin() {
 
             <div className="card-content" style={{ padding: 0 }}>
               {loading && <p style={{ padding: 14 }}>Loading…</p>}
-              {err && <p className="red-text" style={{ padding: 14 }}>{err}</p>}
+              {err && (
+                <p className="red-text" style={{ padding: 14 }}>
+                  {err}
+                </p>
+              )}
 
               {!loading && !err && (
                 <div className="adm-tableWrap">
@@ -802,27 +892,46 @@ export default function Admin() {
                         const canEdit = canEditTarget(u);
 
                         return (
-                          <tr key={u.username} className={locked ? "adm-lock" : ""}>
+                          <tr
+                            key={u.username}
+                            className={locked ? "adm-lock" : ""}
+                          >
                             <td>
                               <div className="adm-rowMain">
-                                <div className="adm-rowAvatar" title={u.employee_name || u.username}>
-                                  {isHttpUrl((u as any).employee_profilepicture) ? (
-                                    <img src={(u as any).employee_profilepicture} alt="avatar" />
+                                <div
+                                  className="adm-rowAvatar"
+                                  title={u.employee_name || u.username}
+                                >
+                                  {isHttpUrl(
+                                    (u as any).employee_profilepicture
+                                  ) ? (
+                                    <img
+                                      src={(u as any).employee_profilepicture}
+                                      alt="avatar"
+                                    />
                                   ) : (
-                                    <span>{initials(u.employee_name || u.username)}</span>
+                                    <span>
+                                      {initials(u.employee_name || u.username)}
+                                    </span>
                                   )}
                                 </div>
                                 <div style={{ minWidth: 0 }}>
-                                  <div className="adm-name">{u.employee_name || "—"}</div>
+                                  <div className="adm-name">
+                                    {u.employee_name || "—"}
+                                  </div>
                                   <div className="adm-sub">
-                                    <span className="adm-miniCode">{u.username}</span>
+                                    <span className="adm-miniCode">
+                                      {u.username}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
                             </td>
 
                             <td>
-                              <span className="adm-miniCode">{u.employee_email || "—"}</span>
+                              <span className="adm-miniCode">
+                                {u.employee_email || "—"}
+                              </span>
                             </td>
 
                             <td>
@@ -830,11 +939,15 @@ export default function Admin() {
                             </td>
 
                             <td>
-                              <span className="adm-miniCode">{safeStr((u as any).employee_id) || "—"}</span>
+                              <span className="adm-miniCode">
+                                {safeStr((u as any).employee_id) || "—"}
+                              </span>
                             </td>
 
                             <td>
-                              <span className="adm-miniCode">{safeStr((u as any).project_id) || "—"}</span>
+                              <span className="adm-miniCode">
+                                {safeStr((u as any).project_id) || "—"}
+                              </span>
                             </td>
 
                             <td className="right-align">
@@ -843,7 +956,11 @@ export default function Admin() {
                                   className="btn-small adm-btn"
                                   onClick={() => openModalForEdit(u.username)}
                                   disabled={!canEdit}
-                                  title={locked ? "Admins cannot edit SUPER users" : "Edit user"}
+                                  title={
+                                    locked
+                                      ? "Admins cannot edit SUPER users"
+                                      : "Edit user"
+                                  }
                                 >
                                   <i className="material-icons left">edit</i>
                                 </button>
@@ -879,13 +996,21 @@ export default function Admin() {
         </div>
       </main>
 
-      {/* ----------------------- EDIT MODAL ------------------------- */}
+      <AdminMailerComposerModal
+        api={api}
+        open={mailerOpen}
+        onClose={() => setMailerOpen(false)}
+      />
+
       <div ref={modalRef} id="employeeModal" className="modal modal-fixed-footer">
         <form onSubmit={saveFromModal}>
           <div className="modal-content">
             <div className="adm-modalHero">
               <div className="adm-modalHeroLeft">
-                <div className="adm-modalAvatar" title={safeStr(form.employee_name) || safeStr(form.username)}>
+                <div
+                  className="adm-modalAvatar"
+                  title={safeStr(form.employee_name) || safeStr(form.username)}
+                >
                   {isHttpUrl(form.employee_profilepicture || "") ? (
                     <img
                       src={form.employee_profilepicture as any}
@@ -895,13 +1020,19 @@ export default function Admin() {
                       }}
                     />
                   ) : (
-                    <span>{initials(safeStr(form.employee_name) || safeStr(form.username))}</span>
+                    <span>
+                      {initials(
+                        safeStr(form.employee_name) || safeStr(form.username)
+                      )}
+                    </span>
                   )}
                   <span className="dot" />
                 </div>
 
                 <div style={{ minWidth: 0 }}>
-                  <div className="adm-modalTitle">{editingUsername ? "Edit User" : "Add Employee"}</div>
+                  <div className="adm-modalTitle">
+                    {editingUsername ? "Edit User" : "Add Employee"}
+                  </div>
                   <div className="adm-modalSub">
                     {editingUsername ? (
                       <>
@@ -948,7 +1079,9 @@ export default function Admin() {
                   alignItems: "flex-start",
                 }}
               >
-                <i className="material-icons" style={{ color: "#b91c1c" }}>lock</i>
+                <i className="material-icons" style={{ color: "#b91c1c" }}>
+                  lock
+                </i>
                 <div>Admins cannot edit SUPER users.</div>
               </div>
             ) : null}
@@ -964,10 +1097,20 @@ export default function Admin() {
                     <input
                       id="username"
                       value={form.username}
-                      onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                      disabled={!!editingUsername || (!isSuper && isFieldLockedForAdmin("username"))}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, username: e.target.value }))
+                      }
+                      disabled={
+                        !!editingUsername ||
+                        (!isSuper && isFieldLockedForAdmin("username"))
+                      }
                     />
-                    <label className={form.username ? "active" : ""} htmlFor="username">Username</label>
+                    <label
+                      className={form.username ? "active" : ""}
+                      htmlFor="username"
+                    >
+                      Username
+                    </label>
                   </div>
                 </div>
 
@@ -976,9 +1119,19 @@ export default function Admin() {
                     <input
                       id="name"
                       value={form.employee_name}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_name: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_name: e.target.value,
+                        }))
+                      }
                     />
-                    <label className={form.employee_name ? "active" : ""} htmlFor="name">Employee Name</label>
+                    <label
+                      className={form.employee_name ? "active" : ""}
+                      htmlFor="name"
+                    >
+                      Employee Name
+                    </label>
                   </div>
                 </div>
 
@@ -988,11 +1141,24 @@ export default function Admin() {
                       id="email"
                       type="email"
                       value={form.employee_email}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_email: e.target.value }))}
-                      disabled={!!editingUsername && (!isSuper && isFieldLockedForAdmin("employee_email"))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_email: e.target.value,
+                        }))
+                      }
+                      disabled={
+                        !!editingUsername &&
+                        !isSuper &&
+                        isFieldLockedForAdmin("employee_email")
+                      }
                     />
-                    <label className={form.employee_email ? "active" : ""} htmlFor="email">
-                      Employee Email {!isSuper && editingUsername ? "(locked)" : ""}
+                    <label
+                      className={form.employee_email ? "active" : ""}
+                      htmlFor="email"
+                    >
+                      Employee Email{" "}
+                      {!isSuper && editingUsername ? "(locked)" : ""}
                     </label>
                   </div>
                 </div>
@@ -1002,11 +1168,24 @@ export default function Admin() {
                     <input
                       id="employee_id"
                       value={form.employee_id || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_id: e.target.value }))}
-                      disabled={!!editingUsername && (!isSuper && isFieldLockedForAdmin("employee_id"))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_id: e.target.value,
+                        }))
+                      }
+                      disabled={
+                        !!editingUsername &&
+                        !isSuper &&
+                        isFieldLockedForAdmin("employee_id")
+                      }
                     />
-                    <label className={form.employee_id ? "active" : ""} htmlFor="employee_id">
-                      Employee ID {!isSuper && editingUsername ? "(locked)" : ""}
+                    <label
+                      className={form.employee_id ? "active" : ""}
+                      htmlFor="employee_id"
+                    >
+                      Employee ID{" "}
+                      {!isSuper && editingUsername ? "(locked)" : ""}
                     </label>
                   </div>
                 </div>
@@ -1016,15 +1195,21 @@ export default function Admin() {
                     <input
                       id="password"
                       value={form.password || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, password: e.target.value }))
+                      }
                     />
-                    <label className={form.password ? "active" : ""} htmlFor="password">
-                      {editingUsername ? "New Password (optional)" : "Password"}
+                    <label
+                      className={form.password ? "active" : ""}
+                      htmlFor="password"
+                    >
+                      {editingUsername
+                        ? "New Password (optional)"
+                        : "Password"}
                     </label>
                   </div>
                 </div>
 
-                {/* ✅ ROLE: SUPER ONLY dropdown */}
                 {isSuper ? (
                   <div className="adm-span-4">
                     <div className="adm-selectWrap">
@@ -1032,7 +1217,12 @@ export default function Admin() {
                       <select
                         className="browser-default"
                         value={form.employee_role || "employee"}
-                        onChange={(e) => setForm((f) => ({ ...f, employee_role: e.target.value as any }))}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            employee_role: e.target.value as any,
+                          }))
+                        }
                       >
                         <option value="employee">employee</option>
                         <option value="admin">admin</option>
@@ -1042,28 +1232,54 @@ export default function Admin() {
                   </div>
                 ) : (
                   <div className="adm-span-4" style={{ paddingTop: 6 }}>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: "#607d8b", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 900,
+                        color: "#607d8b",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.4,
+                      }}
+                    >
                       Role (read-only)
                     </div>
                     <div style={{ marginTop: 8 }}>
-                      <RolePill role={getRoleLower({ employee_role: form.employee_role })} />
+                      <RolePill
+                        role={getRoleLower({
+                          employee_role: form.employee_role,
+                        })}
+                      />
                     </div>
                   </div>
                 )}
               </div>
             </ModalSection>
 
-            <ModalSection title="Employment & Contact" hint="Directory and HR metadata." icon="work">
+            <ModalSection
+              title="Employment & Contact"
+              hint="Directory and HR metadata."
+              icon="work"
+            >
               <div className="adm-modalGrid">
                 <div className="adm-span-4">
                   <div className="input-field">
                     <input
                       id="dob"
                       value={form.employee_dob || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_dob: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_dob: e.target.value,
+                        }))
+                      }
                       placeholder="YYYY-MM-DD"
                     />
-                    <label className={form.employee_dob ? "active" : ""} htmlFor="dob">DOB</label>
+                    <label
+                      className={form.employee_dob ? "active" : ""}
+                      htmlFor="dob"
+                    >
+                      DOB
+                    </label>
                   </div>
                 </div>
 
@@ -1072,10 +1288,20 @@ export default function Admin() {
                     <input
                       id="date_started"
                       value={form.employee_date_started || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_date_started: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_date_started: e.target.value,
+                        }))
+                      }
                       placeholder="YYYY-MM-DD"
                     />
-                    <label className={form.employee_date_started ? "active" : ""} htmlFor="date_started">Date Started</label>
+                    <label
+                      className={form.employee_date_started ? "active" : ""}
+                      htmlFor="date_started"
+                    >
+                      Date Started
+                    </label>
                   </div>
                 </div>
 
@@ -1084,9 +1310,19 @@ export default function Admin() {
                     <input
                       id="address"
                       value={form.employee_address || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_address: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_address: e.target.value,
+                        }))
+                      }
                     />
-                    <label className={form.employee_address ? "active" : ""} htmlFor="address">Address</label>
+                    <label
+                      className={form.employee_address ? "active" : ""}
+                      htmlFor="address"
+                    >
+                      Address
+                    </label>
                   </div>
                 </div>
 
@@ -1095,9 +1331,19 @@ export default function Admin() {
                     <input
                       id="phone"
                       value={form.employee_phonenumber || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_phonenumber: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_phonenumber: e.target.value,
+                        }))
+                      }
                     />
-                    <label className={form.employee_phonenumber ? "active" : ""} htmlFor="phone">Phone</label>
+                    <label
+                      className={form.employee_phonenumber ? "active" : ""}
+                      htmlFor="phone"
+                    >
+                      Phone
+                    </label>
                   </div>
                 </div>
 
@@ -1106,10 +1352,20 @@ export default function Admin() {
                     <input
                       id="pic"
                       value={form.employee_profilepicture || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_profilepicture: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_profilepicture: e.target.value,
+                        }))
+                      }
                       placeholder="https://…"
                     />
-                    <label className={form.employee_profilepicture ? "active" : ""} htmlFor="pic">Profile Picture URL</label>
+                    <label
+                      className={form.employee_profilepicture ? "active" : ""}
+                      htmlFor="pic"
+                    >
+                      Profile Picture URL
+                    </label>
                   </div>
                 </div>
 
@@ -1118,9 +1374,19 @@ export default function Admin() {
                     <input
                       id="title"
                       value={form.employee_title || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_title: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_title: e.target.value,
+                        }))
+                      }
                     />
-                    <label className={form.employee_title ? "active" : ""} htmlFor="title">Title</label>
+                    <label
+                      className={form.employee_title ? "active" : ""}
+                      htmlFor="title"
+                    >
+                      Title
+                    </label>
                   </div>
                 </div>
 
@@ -1129,9 +1395,19 @@ export default function Admin() {
                     <input
                       id="employment"
                       value={form.employment_type || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employment_type: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employment_type: e.target.value,
+                        }))
+                      }
                     />
-                    <label className={form.employment_type ? "active" : ""} htmlFor="employment">Employment Type</label>
+                    <label
+                      className={form.employment_type ? "active" : ""}
+                      htmlFor="employment"
+                    >
+                      Employment Type
+                    </label>
                   </div>
                 </div>
 
@@ -1140,9 +1416,16 @@ export default function Admin() {
                     <input
                       id="dept"
                       value={form.department || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, department: e.target.value }))
+                      }
                     />
-                    <label className={form.department ? "active" : ""} htmlFor="dept">Department</label>
+                    <label
+                      className={form.department ? "active" : ""}
+                      htmlFor="dept"
+                    >
+                      Department
+                    </label>
                   </div>
                 </div>
 
@@ -1151,9 +1434,16 @@ export default function Admin() {
                     <input
                       id="location"
                       value={form.location || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, location: e.target.value }))
+                      }
                     />
-                    <label className={form.location ? "active" : ""} htmlFor="location">Location</label>
+                    <label
+                      className={form.location ? "active" : ""}
+                      htmlFor="location"
+                    >
+                      Location
+                    </label>
                   </div>
                 </div>
 
@@ -1163,7 +1453,12 @@ export default function Admin() {
                     <select
                       className="browser-default"
                       value={form.employee_manager || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, employee_manager: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          employee_manager: e.target.value,
+                        }))
+                      }
                     >
                       <option value="">Select Manager</option>
                       {rows.map((u) => (
@@ -1181,7 +1476,12 @@ export default function Admin() {
                     <select
                       className="browser-default"
                       value={form.project_id || ""}
-                      onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          project_id: e.target.value,
+                        }))
+                      }
                     >
                       <option value="">Select Project</option>
                       {projects.map((p) => (
@@ -1200,7 +1500,9 @@ export default function Admin() {
                         type="checkbox"
                         className="filled-in"
                         checked={!!form.revoked}
-                        onChange={(e) => setForm((f) => ({ ...f, revoked: e.target.checked }))}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, revoked: e.target.checked }))
+                        }
                       />
                       <span>Revoked</span>
                     </label>
@@ -1211,22 +1513,31 @@ export default function Admin() {
           </div>
 
           <div className="modal-footer">
-            <a className="modal-close btn-flat" onClick={closeModal}>Cancel</a>
-            <button type="submit" className={`btn adm-btn ${loading ? "disabled" : ""}`} disabled={loading}>
-              <i className="material-icons left">{editingUsername ? "save" : "add"}</i>
+            <a className="modal-close btn-flat" onClick={closeModal}>
+              Cancel
+            </a>
+            <button
+              type="submit"
+              className={`btn adm-btn ${loading ? "disabled" : ""}`}
+              disabled={loading}
+            >
+              <i className="material-icons left">
+                {editingUsername ? "save" : "add"}
+              </i>
               {editingUsername ? "Save Changes" : "Create Employee"}
             </button>
           </div>
         </form>
       </div>
 
-      {/* ----------------------- COMPOSER MODAL (EXPERIENCE ONLY) ------------------------- */}
       <div ref={composerModalRef} className="modal modal-fixed-footer">
         <div className="modal-content">
           <h5>Composer (Employee)</h5>
           <p className="grey-text" style={{ marginTop: 0 }}>
             Sends <b>Experience Certificate</b> using:
-            <code style={{ marginLeft: 6 }}>POST /admin/employees/&lt;username&gt;/send-doc-email</code>
+            <code style={{ marginLeft: 6 }}>
+              POST /admin/employees/&lt;username&gt;/send-doc-email
+            </code>
           </p>
 
           <div className="row" style={{ marginBottom: 0 }}>
@@ -1236,37 +1547,73 @@ export default function Admin() {
             </div>
 
             <div className="input-field col s12 m6">
-              <input value={composerRoleTitle} onChange={(e) => setComposerRoleTitle(e.target.value)} />
+              <input
+                value={composerRoleTitle}
+                onChange={(e) => setComposerRoleTitle(e.target.value)}
+              />
               <label className="active">roleTitle</label>
             </div>
           </div>
 
           <div className="row" style={{ marginBottom: 0 }}>
             <div className="input-field col s12 m6">
-              <input value={composerSubjectOverride} onChange={(e) => setComposerSubjectOverride(e.target.value)} />
+              <input
+                value={composerSubjectOverride}
+                onChange={(e) => setComposerSubjectOverride(e.target.value)}
+              />
               <label className="active">subjectOverride</label>
             </div>
 
             <div className="input-field col s12 m6">
-              <input value={composerSetStatus} onChange={(e) => setComposerSetStatus(e.target.value)} />
+              <input
+                value={composerSetStatus}
+                onChange={(e) => setComposerSetStatus(e.target.value)}
+              />
               <label className="active">setStatus</label>
             </div>
           </div>
 
           <div className="row" style={{ marginTop: 8 }}>
             <div className="col s12 m4">
-              <div className="grey-text" style={{ fontWeight: 700, marginBottom: 6 }}>dateStarted</div>
-              <input type="date" value={dateStarted} onChange={(e) => setDateStarted(e.target.value)} />
+              <div
+                className="grey-text"
+                style={{ fontWeight: 700, marginBottom: 6 }}
+              >
+                dateStarted
+              </div>
+              <input
+                type="date"
+                value={dateStarted}
+                onChange={(e) => setDateStarted(e.target.value)}
+              />
             </div>
 
             <div className="col s12 m4">
-              <div className="grey-text" style={{ fontWeight: 700, marginBottom: 6 }}>dateEnded</div>
-              <input type="date" value={dateEnded} onChange={(e) => setDateEnded(e.target.value)} />
+              <div
+                className="grey-text"
+                style={{ fontWeight: 700, marginBottom: 6 }}
+              >
+                dateEnded
+              </div>
+              <input
+                type="date"
+                value={dateEnded}
+                onChange={(e) => setDateEnded(e.target.value)}
+              />
             </div>
 
             <div className="col s12 m4">
-              <div className="grey-text" style={{ fontWeight: 700, marginBottom: 6 }}>CURRENT_DATE</div>
-              <input type="date" value={currentDate} onChange={(e) => setCurrentDate(e.target.value)} />
+              <div
+                className="grey-text"
+                style={{ fontWeight: 700, marginBottom: 6 }}
+              >
+                CURRENT_DATE
+              </div>
+              <input
+                type="date"
+                value={currentDate}
+                onChange={(e) => setCurrentDate(e.target.value)}
+              />
             </div>
           </div>
 
@@ -1281,14 +1628,18 @@ export default function Admin() {
           </div>
 
           <details style={{ marginTop: 12 }}>
-            <summary style={{ cursor: "pointer", fontWeight: 700 }}>Preview vars sent</summary>
+            <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+              Preview vars sent
+            </summary>
             <pre style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>
 {JSON.stringify(
   {
     START_DATE: dateStarted ? formatLongDate(dateStarted) : "",
     END_DATE: dateEnded ? formatLongDate(dateEnded) : "",
     CURRENT_DATE: currentDate ? formatLongDate(currentDate) : "",
-    ...(extraInfo.trim() ? { extraInfo: extraInfo.trim(), EXTRA_INFO: extraInfo.trim() } : {}),
+    ...(extraInfo.trim()
+      ? { extraInfo: extraInfo.trim(), EXTRA_INFO: extraInfo.trim() }
+      : {}),
   },
   null,
   2
@@ -1298,9 +1649,17 @@ export default function Admin() {
         </div>
 
         <div className="modal-footer">
-          <a className="btn-flat" href="#!" onClick={closeComposer}>Cancel</a>
-          <button className={`btn adm-btn ${sending ? "disabled" : ""}`} disabled={sending} onClick={sendNow}>
-            <i className="material-icons left">{sending ? "hourglass_empty" : "send"}</i>
+          <a className="btn-flat" href="#!" onClick={closeComposer}>
+            Cancel
+          </a>
+          <button
+            className={`btn adm-btn ${sending ? "disabled" : ""}`}
+            disabled={sending}
+            onClick={sendNow}
+          >
+            <i className="material-icons left">
+              {sending ? "hourglass_empty" : "send"}
+            </i>
             {sending ? "Sending…" : "Send"}
           </button>
         </div>
