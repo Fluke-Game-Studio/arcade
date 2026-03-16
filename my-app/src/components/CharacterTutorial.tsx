@@ -31,7 +31,7 @@ export default function CharacterTutorial() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    function init() {
+    function init(canvasEl: HTMLCanvasElement) {
       const backgroundColor = 0xf1f1f1;
 
       scene = new THREE.Scene();
@@ -39,7 +39,7 @@ export default function CharacterTutorial() {
       scene.fog = new THREE.Fog(backgroundColor, 60, 100);
 
       renderer = new THREE.WebGLRenderer({
-        canvas,
+        canvas: canvasEl,
         antialias: true,
         alpha: false,
       });
@@ -101,7 +101,6 @@ export default function CharacterTutorial() {
       const stacyMaterial = new THREE.MeshPhongMaterial({
         map: stacyTexture,
         color: 0xffffff,
-        skinning: true,
       });
 
       const loader = new GLTFLoader();
@@ -112,15 +111,18 @@ export default function CharacterTutorial() {
           model = gltf.scene;
           const fileAnimations = gltf.animations;
 
-          model.traverse((o: any) => {
-            if (o.isMesh) {
-              o.castShadow = true;
-              o.receiveShadow = true;
-              o.material = stacyMaterial;
+          model.traverse((o: THREE.Object3D) => {
+            const mesh = o as THREE.Mesh;
+            const bone = o as THREE.Bone;
+
+            if ((mesh as any).isMesh) {
+              mesh.castShadow = true;
+              mesh.receiveShadow = true;
+              mesh.material = stacyMaterial;
             }
 
-            if (o.isBone && o.name === "mixamorigNeck") neck = o;
-            if (o.isBone && o.name === "mixamorigSpine") waist = o;
+            if ((bone as any).isBone && bone.name === "mixamorigNeck") neck = bone;
+            if ((bone as any).isBone && bone.name === "mixamorigSpine") waist = bone;
           });
 
           model.scale.set(7, 7, 7);
@@ -133,20 +135,24 @@ export default function CharacterTutorial() {
 
           possibleAnims = clips.map((clipData) => {
             const clip = clipData.clone();
+
             if (clip.tracks.length >= 12) {
               clip.tracks.splice(3, 3);
               clip.tracks.splice(9, 3);
             }
+
             return mixer!.clipAction(clip);
           });
 
           const idleAnim = THREE.AnimationClip.findByName(fileAnimations, "idle");
           if (idleAnim) {
             const idleClip = idleAnim.clone();
+
             if (idleClip.tracks.length >= 12) {
               idleClip.tracks.splice(3, 3);
               idleClip.tracks.splice(9, 3);
             }
+
             idle = mixer.clipAction(idleClip);
             idle.play();
           }
@@ -162,6 +168,7 @@ export default function CharacterTutorial() {
 
     function resizeRendererToDisplaySize() {
       if (!renderer) return false;
+
       const width = window.innerWidth;
       const height = window.innerHeight;
       const canvasPixelWidth = renderer.domElement.width / window.devicePixelRatio;
@@ -170,19 +177,27 @@ export default function CharacterTutorial() {
       const needResize =
         canvasPixelWidth !== width || canvasPixelHeight !== height;
 
-      if (needResize) renderer.setSize(width, height, false);
+      if (needResize) {
+        renderer.setSize(width, height, false);
+      }
+
       return needResize;
     }
 
     function update() {
-      if (mixer) mixer.update(clock.getDelta());
+      if (mixer) {
+        mixer.update(clock.getDelta());
+      }
 
       if (renderer && camera && resizeRendererToDisplaySize()) {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
       }
 
-      if (renderer && scene && camera) renderer.render(scene, camera);
+      if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+      }
+
       animationFrameId = requestAnimationFrame(update);
     }
 
@@ -237,10 +252,12 @@ export default function CharacterTutorial() {
 
     function getRootName(object: THREE.Object3D | null) {
       let current: THREE.Object3D | null = object;
+
       while (current) {
         if (current.name === "stacy") return "stacy";
         current = current.parent;
       }
+
       return null;
     }
 
@@ -256,7 +273,7 @@ export default function CharacterTutorial() {
       to.play();
       from.crossFadeTo(to, fSpeed, true);
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         from.enabled = true;
         to.crossFadeTo(from, tSpeed, true);
         currentlyAnimating = false;
@@ -306,7 +323,7 @@ export default function CharacterTutorial() {
       camera.updateProjectionMatrix();
     }
 
-    init();
+    init(canvas);
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("click", handleClick);
@@ -321,21 +338,26 @@ export default function CharacterTutorial() {
 
       cancelAnimationFrame(animationFrameId);
 
-      if (mixer) mixer.stopAllAction();
+      if (mixer) {
+        mixer.stopAllAction();
+      }
 
       if (scene) {
-        scene.traverse((obj: any) => {
-          if (obj.isMesh) {
-            obj.geometry?.dispose?.();
+        scene.traverse((obj: THREE.Object3D) => {
+          const mesh = obj as THREE.Mesh;
 
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach((mat: any) => {
+          if ((mesh as any).isMesh) {
+            mesh.geometry?.dispose?.();
+
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach((mat: any) => {
                 mat.map?.dispose?.();
                 mat.dispose?.();
               });
-            } else if (obj.material) {
-              obj.material.map?.dispose?.();
-              obj.material.dispose?.();
+            } else if (mesh.material) {
+              const mat: any = mesh.material;
+              mat.map?.dispose?.();
+              mat.dispose?.();
             }
           }
         });

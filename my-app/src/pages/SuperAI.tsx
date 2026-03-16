@@ -114,10 +114,13 @@ function emptySnapshotTemplate(snapshotId = "") {
 }
 
 export default function SuperAI() {
-  const { user, api } = useAuth() as {
+  const auth = useAuth() as unknown as {
     user?: { username?: string; role?: string };
     api?: { token?: string };
   };
+
+  const user = auth.user;
+  const api = auth.api;
 
   const apiClient = useMemo(
     () => createAIAPI(API_BASE, api?.token),

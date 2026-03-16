@@ -1,13 +1,37 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type ApiUpdateSummary,
   type ApiUpdatesResponse,
+  type ApiUser,
 } from "../api";
+
+declare const M: any;
 
 function safeStr(v: any) {
   if (v === null || v === undefined) return "";
   return String(v).trim();
+}
+
+function safeNum(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function clamp01(x: number) {
+  return Math.max(0, Math.min(1, x));
+}
+
+function norm(v: any) {
+  return safeStr(v).toLowerCase();
+}
+
+function toast(html: string, classes = "") {
+  try {
+    M?.toast?.({ html, classes });
+  } catch {
+    console.log(html);
+  }
 }
 
 function colorForHours(hours: number) {
@@ -37,6 +61,96 @@ function colorForHours(hours: number) {
     text: "#64748b",
     border: "rgba(148,163,184,.28)",
   };
+}
+
+async function callAdminActivityReportReminders(body: any) {
+  const anyApi = api as any;
+
+  if (typeof anyApi.sendAdminActivityReportReminders === "function") {
+    return await anyApi.sendAdminActivityReportReminders(body);
+  }
+
+  if (typeof anyApi.post === "function") {
+    return await anyApi.post("/admin/mail/activity-report-reminders", body);
+  }
+
+  if (typeof anyApi.request === "function") {
+    return await anyApi.request("/admin/mail/activity-report-reminders", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  throw new Error("Activity report reminder API is not wired on the client.");
+}
+
+function getUserKey(user: Partial<ApiUser>) {
+  return (
+    norm((user as any)?.username) ||
+    norm((user as any)?.employee_username) ||
+    norm((user as any)?.employee_email) ||
+    norm((user as any)?.email)
+  );
+}
+
+function getUserName(user: Partial<ApiUser>) {
+  return (
+    safeStr((user as any)?.employee_name) ||
+    safeStr((user as any)?.name) ||
+    safeStr((user as any)?.username) ||
+    safeStr((user as any)?.employee_email) ||
+    "Unknown"
+  );
+}
+
+function getUserEmail(user: Partial<ApiUser>) {
+  return (
+    safeStr((user as any)?.employee_email) ||
+    safeStr((user as any)?.email) ||
+    ""
+  );
+}
+
+function getUserRole(user: Partial<ApiUser>) {
+  return norm((user as any)?.employee_role || (user as any)?.role || "employee");
+}
+
+function isRevoked(user: Partial<ApiUser>) {
+  return (
+    (user as any)?.revoked === true ||
+    (user as any)?.is_revoked === true ||
+    norm((user as any)?.status) === "revoked" ||
+    norm((user as any)?.employment_status) === "revoked"
+  );
+}
+
+function getSummaryKey(summary: Partial<ApiUpdateSummary>) {
+  return norm((summary as any)?.userId || (summary as any)?.userName);
+}
+
+function hasTimesheet(summary: Partial<ApiUpdateSummary>) {
+  const rows = Array.isArray((summary as any)?.timesheet)
+    ? (summary as any).timesheet
+    : [];
+
+  if (rows.length > 0) {
+    const total = rows.reduce(
+      (acc: number, row: any) => acc + safeNum(row?.hours),
+      0
+    );
+    if (total > 0) return true;
+  }
+
+  return safeNum((summary as any)?.totalHours) > 0;
+}
+
+function hasRetro(summary: Partial<ApiUpdateSummary>) {
+  const retro = (summary as any)?.retrospective || {};
+  const worked = Array.isArray(retro?.worked) ? retro.worked : [];
+  const didnt = Array.isArray(retro?.didnt) ? retro.didnt : [];
+  const improve = Array.isArray(retro?.improve) ? retro.improve : [];
+  return worked.length > 0 || didnt.length > 0 || improve.length > 0;
 }
 
 function MetricChip({
@@ -75,6 +189,280 @@ function MetricChip({
   );
 }
 
+function SnapshotCard({
+  label,
+  value,
+  sublabel,
+  tone = "blue",
+}: {
+  label: string;
+  value: number | string;
+  sublabel?: string;
+  tone?: "blue" | "green" | "amber" | "red" | "slate" | "purple";
+}) {
+  const toneBg =
+    tone === "green"
+      ? "rgba(34,197,94,.10)"
+      : tone === "amber"
+      ? "rgba(245,158,11,.10)"
+      : tone === "red"
+      ? "rgba(239,68,68,.10)"
+      : tone === "purple"
+      ? "rgba(168,85,247,.10)"
+      : tone === "slate"
+      ? "rgba(100,116,139,.10)"
+      : "rgba(59,130,246,.10)";
+
+  const toneBorder =
+    tone === "green"
+      ? "rgba(34,197,94,.18)"
+      : tone === "amber"
+      ? "rgba(245,158,11,.18)"
+      : tone === "red"
+      ? "rgba(239,68,68,.18)"
+      : tone === "purple"
+      ? "rgba(168,85,247,.18)"
+      : tone === "slate"
+      ? "rgba(100,116,139,.18)"
+      : "rgba(59,130,246,.18)";
+
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        border: `1px solid ${toneBorder}`,
+        background: `linear-gradient(180deg, ${toneBg}, #fff 76%)`,
+        padding: 14,
+        boxShadow: "0 10px 22px rgba(15,23,42,.04)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: "#64748b",
+          fontWeight: 900,
+          letterSpacing: 0.08,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 28,
+          lineHeight: 1,
+          fontWeight: 1000,
+          color: "#0f172a",
+          letterSpacing: "-0.03em",
+        }}
+      >
+        {value}
+      </div>
+      {!!sublabel && (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: "#64748b",
+            fontWeight: 700,
+            lineHeight: 1.45,
+          }}
+        >
+          {sublabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DonutChart({
+  value,
+  total,
+  label,
+  sublabel,
+  tone = "blue",
+}: {
+  value: number;
+  total: number;
+  label: string;
+  sublabel?: string;
+  tone?: "blue" | "green" | "amber" | "purple" | "red";
+}) {
+  const pct = total > 0 ? clamp01(value / total) : 0;
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const dash = circumference * pct;
+
+  const color =
+    tone === "green"
+      ? "#22c55e"
+      : tone === "amber"
+      ? "#f59e0b"
+      : tone === "purple"
+      ? "#a855f7"
+      : tone === "red"
+      ? "#ef4444"
+      : "#3b82f6";
+
+  return (
+    <div style={{ display: "grid", justifyItems: "center", gap: 10, minWidth: 0 }}>
+      <div style={{ position: "relative", width: 112, height: 112 }}>
+        <svg width="112" height="112" viewBox="0 0 112 112">
+          <circle
+            cx="56"
+            cy="56"
+            r={radius}
+            fill="none"
+            stroke="rgba(148,163,184,0.18)"
+            strokeWidth="12"
+          />
+          <circle
+            cx="56"
+            cy="56"
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth="12"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${circumference - dash}`}
+            transform="rotate(-90 56 56)"
+          />
+        </svg>
+
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            textAlign: "center",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 950, color: "#0f172a", lineHeight: 1 }}>
+              {Math.round(pct * 100)}%
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: 0.08,
+                color: "#64748b",
+                textTransform: "uppercase",
+              }}
+            >
+              {value}/{total}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 14, fontWeight: 900, color: "#102033" }}>{label}</div>
+        {!!sublabel && (
+          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", lineHeight: 1.4 }}>
+            {sublabel}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MiniBarChart({
+  title,
+  items,
+  valueKey,
+  labelKey,
+  color = "linear-gradient(90deg,#60a5fa,#3b82f6)",
+  suffix = "",
+}: {
+  title: string;
+  items: Record<string, any>[];
+  valueKey: string;
+  labelKey: string;
+  color?: string;
+  suffix?: string;
+}) {
+  const rows = items.slice(0, 5);
+  const max = Math.max(1, ...rows.map((x) => safeNum(x[valueKey])));
+
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        border: "1px solid #e5edf4",
+        background: "linear-gradient(180deg,#ffffff 0%,#fbfdff 100%)",
+        padding: 14,
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 12 }}>
+        {title}
+      </div>
+
+      <div style={{ display: "grid", gap: 10 }}>
+        {rows.map((row, idx) => {
+          const raw = safeNum(row[valueKey]);
+          const pct = clamp01(raw / max);
+          const label = safeStr(row[labelKey]) || `Item ${idx + 1}`;
+
+          return (
+            <div key={`${label}-${idx}`} style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 5,
+                  fontSize: 12,
+                }}
+              >
+                <span
+                  style={{
+                    color: "#334155",
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    minWidth: 0,
+                  }}
+                  title={label}
+                >
+                  {label}
+                </span>
+                <span style={{ color: "#64748b", fontWeight: 900, whiteSpace: "nowrap" }}>
+                  {raw}
+                  {suffix}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  height: 10,
+                  borderRadius: 999,
+                  background: "rgba(148,163,184,0.15)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.max(6, pct * 100)}%`,
+                    height: "100%",
+                    borderRadius: 999,
+                    background: color,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function weekDatesFromMonday(mondayIso: string) {
   const start = new Date(`${mondayIso}T00:00:00`);
   if (Number.isNaN(start.getTime())) return [];
@@ -103,7 +491,7 @@ function formatDateLabel(iso: string) {
   return d.toLocaleDateString(undefined, { month: "short", day: "2-digit" });
 }
 
-function HeatmapPopover({
+function HeatmapGrid({
   weekStart,
   timesheet,
 }: {
@@ -124,9 +512,57 @@ function HeatmapPopover({
   return (
     <div
       style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(7, minmax(0,1fr))",
+        gap: 8,
+      }}
+    >
+      {days.map((date) => {
+        const hours = Number(byDate.get(date) || 0);
+        const tone = colorForHours(hours);
+
+        return (
+          <div
+            key={date}
+            style={{
+              borderRadius: 14,
+              border: `1px solid ${tone.border}`,
+              background: tone.bg,
+              color: tone.text,
+              minHeight: 56,
+              padding: "6px 4px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "space-between",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 800 }}>{weekdayShort(date)}</div>
+            <div style={{ fontSize: 12, fontWeight: 900 }}>
+              {hours > 0 ? hours.toFixed(1) : "—"}
+            </div>
+            <div style={{ fontSize: 10 }}>{formatDateLabel(date)}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HeatmapPopover({
+  weekStart,
+  timesheet,
+}: {
+  weekStart: string;
+  timesheet: { date: string; hours: number }[];
+}) {
+  return (
+    <div
+      style={{
         position: "absolute",
         right: 0,
-        bottom: "calc(100% + 10px)",
+        top: "calc(100% + 10px)",
         width: 300,
         zIndex: 9999,
         background: "rgba(255,255,255,.98)",
@@ -134,7 +570,6 @@ function HeatmapPopover({
         borderRadius: 16,
         boxShadow: "0 18px 50px rgba(15,23,42,.18)",
         padding: 12,
-        pointerEvents: "none",
       }}
     >
       <div
@@ -147,100 +582,144 @@ function HeatmapPopover({
       >
         Weekly Time Heatmap
       </div>
+      <HeatmapGrid weekStart={weekStart} timesheet={timesheet} />
+    </div>
+  );
+}
 
+function CompactListCell({
+  count,
+  tone = "blue",
+}: {
+  count: number;
+  tone?: "blue" | "amber" | "green" | "red" | "slate";
+}) {
+  const bg =
+    tone === "amber"
+      ? "rgba(245,158,11,.12)"
+      : tone === "green"
+      ? "rgba(34,197,94,.12)"
+      : tone === "red"
+      ? "rgba(239,68,68,.12)"
+      : tone === "slate"
+      ? "rgba(148,163,184,.12)"
+      : "rgba(59,130,246,.10)";
+
+  const color =
+    tone === "amber"
+      ? "#b45309"
+      : tone === "green"
+      ? "#166534"
+      : tone === "red"
+      ? "#b91c1c"
+      : tone === "slate"
+      ? "#475569"
+      : "#1d4ed8";
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minWidth: 44,
+        padding: "7px 11px",
+        borderRadius: 999,
+        background: bg,
+        color,
+        fontWeight: 900,
+        fontSize: 12,
+      }}
+    >
+      {count}
+    </span>
+  );
+}
+
+type MissingSection = "update" | "timesheet" | "retro";
+
+type MissingReasons = {
+  update: boolean;
+  timesheet: boolean;
+  retro: boolean;
+};
+
+function InfoBlock({
+  title,
+  value,
+}: {
+  title: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        border: "1px solid rgba(148,163,184,.14)",
+        background: "#fff",
+        padding: 18,
+        width: 300
+      }}
+    >
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, minmax(0,1fr))",
-          gap: 8,
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: ".06em",
+          color: "#64748b",
+          fontWeight: 900,
+          marginBottom: 6,
         }}
       >
-        {days.map((date) => {
-          const hours = Number(byDate.get(date) || 0);
-          const tone = colorForHours(hours);
-
-          return (
-            <div
-              key={date}
-              style={{
-                borderRadius: 14,
-                border: `1px solid ${tone.border}`,
-                background: tone.bg,
-                color: tone.text,
-                minHeight: 36,
-                padding: "4px 2px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "space-between",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 9, fontWeight: 800 }}>{weekdayShort(date)}</div>
-              <div style={{ fontSize: 11, fontWeight: 900 }}>
-                {hours > 0 ? hours.toFixed(1) : "—"}
-              </div>
-              <div style={{ fontSize: 9 }}>{formatDateLabel(date)}</div>
-            </div>
-          );
-        })}
+        {title}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", lineHeight: 1.5 }}>
+        {value}
       </div>
     </div>
   );
 }
 
-function ListPopover({
+function DetailList({
   title,
   items,
+  empty = "No items",
 }: {
   title: string;
   items: string[];
+  empty?: string;
 }) {
   return (
     <div
       style={{
-        position: "absolute",
-        left: 0,
-        bottom: "calc(100% + 10px)",
-        width: 320,
-        maxWidth: "70vw",
-        zIndex: 9999,
-        background: "rgba(255,255,255,.98)",
-        border: "1px solid rgba(148,163,184,.18)",
         borderRadius: 16,
-        boxShadow: "0 18px 50px rgba(15,23,42,.18)",
-        padding: 12,
-        pointerEvents: "none",
+        border: "1px solid rgba(148,163,184,.14)",
+        background: "linear-gradient(180deg,#ffffff 0%,#fbfdff 100%)",
+        padding: 14,
       }}
     >
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 900,
-          color: "#0f172a",
-          marginBottom: 10,
-        }}
-      >
+      <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 10 }}>
         {title}
       </div>
 
-      {items.length === 0 ? (
-        <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>No items</div>
+      {!items.length ? (
+        <div style={{ fontSize: 13, color: "#64748b", fontWeight: 700 }}>{empty}</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "grid", gap: 8 }}>
           {items.map((item, idx) => (
             <div
               key={`${title}-${idx}`}
               style={{
-                fontSize: 12,
-                color: "#334155",
-                lineHeight: 1.45,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                padding: "8px 10px",
+                padding: "9px 11px",
                 borderRadius: 12,
                 background: "#f8fafc",
                 border: "1px solid rgba(148,163,184,.12)",
+                fontSize: 13,
+                color: "#334155",
+                fontWeight: 700,
+                lineHeight: 1.45,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
               }}
             >
               {idx + 1}. {item}
@@ -252,59 +731,41 @@ function ListPopover({
   );
 }
 
-function CompactListCell({
-  title,
-  items,
-  cellId,
-  hoveredCellId,
-  setHoveredCellId,
-}: {
-  title: string;
-  items: string[];
-  cellId: string;
-  hoveredCellId: string | null;
-  setHoveredCellId: React.Dispatch<React.SetStateAction<string | null>>;
-}) {
-  const count = items.length;
-
-  return (
-    <div
-      style={{ position: "relative", display: "inline-block" }}
-      onMouseEnter={() => setHoveredCellId(cellId)}
-      onMouseLeave={() =>
-        setHoveredCellId((curr) => (curr === cellId ? null : curr))
-      }
-    >
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minWidth: 44,
-          padding: "7px 11px",
-          borderRadius: 999,
-          background: count > 0 ? "rgba(59,130,246,.10)" : "rgba(148,163,184,.10)",
-          color: count > 0 ? "#1d4ed8" : "#64748b",
-          fontWeight: 900,
-          fontSize: 12,
-          cursor: "default",
-        }}
-      >
-        {count}
-      </span>
-
-      {hoveredCellId === cellId && <ListPopover title={title} items={items} />}
-    </div>
-  );
-}
-
 export default function ActivityReport() {
+  const [weekOptions, setWeekOptions] = useState<string[]>([]);
   const [summaries, setSummaries] = useState<ApiUpdateSummary[]>([]);
+  const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sendingReminder, setSendingReminder] = useState(false);
   const [error, setError] = useState("");
   const [selectedWeek, setSelectedWeek] = useState("");
   const [hoveredHoursKey, setHoveredHoursKey] = useState<string | null>(null);
-  const [hoveredCellId, setHoveredCellId] = useState<string | null>(null);
+
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const detailModalRef = useRef<HTMLDivElement | null>(null);
+
+  const [selectedRecipients, setSelectedRecipients] = useState<Record<string, boolean>>({});
+  const [selectedDetailRow, setSelectedDetailRow] = useState<ApiUpdateSummary | null>(null);
+
+  useEffect(() => {
+    if (modalRef.current && typeof M !== "undefined") {
+      M.Modal.init(modalRef.current, {
+        dismissible: true,
+        opacity: 0.45,
+        inDuration: 140,
+        outDuration: 120,
+      });
+    }
+
+    if (detailModalRef.current && typeof M !== "undefined") {
+      M.Modal.init(detailModalRef.current, {
+        dismissible: true,
+        opacity: 0.45,
+        inDuration: 140,
+        outDuration: 120,
+      });
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -314,19 +775,23 @@ export default function ActivityReport() {
         setLoading(true);
         setError("");
 
-        const resp: ApiUpdatesResponse = await api.getUpdates();
+        const [updatesResp, usersResp]: [ApiUpdatesResponse, ApiUser[]] = await Promise.all([
+          api.getUpdates(),
+          typeof (api as any).getUsers === "function"
+            ? (api as any).getUsers()
+            : Promise.resolve([]),
+        ]);
+
         if (!mounted) return;
 
-        const normalized = Array.isArray(resp?.summaries) ? resp.summaries : [];
-        setSummaries(normalized);
+        const normalized = Array.isArray(updatesResp?.summaries) ? updatesResp.summaries : [];
+        const weeks = Array.from(
+          new Set(normalized.map((x) => safeStr((x as any).weekStart)).filter(Boolean))
+        ).sort((a, b) => String(b).localeCompare(String(a)));
 
-        if (normalized.length > 0) {
-          const weeks = Array.from(
-            new Set(normalized.map((x) => x.weekStart).filter(Boolean))
-          ).sort((a, b) => String(b).localeCompare(String(a)));
-
-          setSelectedWeek((prev) => prev || weeks[0] || "");
-        }
+        setWeekOptions(weeks);
+        setUsers(Array.isArray(usersResp) ? usersResp : []);
+        setSelectedWeek((prev) => prev || weeks[0] || "");
       } catch (err: any) {
         if (!mounted) return;
         setError(err?.message || "Failed to load activity report.");
@@ -340,37 +805,488 @@ export default function ActivityReport() {
     };
   }, []);
 
-  const allWeeks = useMemo(() => {
-    return Array.from(
-      new Set(summaries.map((x) => x.weekStart).filter(Boolean))
-    ).sort((a, b) => String(b).localeCompare(String(a)));
-  }, [summaries]);
+  useEffect(() => {
+    if (!selectedWeek) {
+      setSummaries([]);
+      return;
+    }
+
+    let mounted = true;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const resp: ApiUpdatesResponse = await api.getUpdates({
+          weekStart: selectedWeek,
+        });
+
+        if (!mounted) return;
+
+        const normalized = Array.isArray(resp?.summaries) ? resp.summaries : [];
+        setSummaries(normalized);
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || "Failed to load week data.");
+        setSummaries([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectedWeek]);
 
   const rows = useMemo(() => {
-    const filtered = selectedWeek
-      ? summaries.filter((s) => s.weekStart === selectedWeek)
-      : summaries;
-
-    return [...filtered].sort((a, b) => {
-      const w = String(b.weekStart || "").localeCompare(String(a.weekStart || ""));
-      if (w !== 0) return w;
-      return String(a.userName || a.userId || "").localeCompare(
-        String(b.userName || b.userId || "")
+    return [...summaries].sort((a, b) => {
+      return String((a as any).userName || (a as any).userId || "").localeCompare(
+        String((b as any).userName || (b as any).userId || "")
       );
     });
-  }, [summaries, selectedWeek]);
+  }, [summaries]);
+
+  const eligibleUsers = useMemo(() => {
+    return (Array.isArray(users) ? users : []).filter((u) => {
+      if (isRevoked(u)) return false;
+      return !!getUserKey(u);
+    });
+  }, [users]);
+
+  const summaryMap = useMemo(() => {
+    const map = new Map<string, ApiUpdateSummary>();
+    for (const row of rows) {
+      const key = getSummaryKey(row);
+      if (!key) continue;
+      map.set(key, row);
+    }
+    return map;
+  }, [rows]);
+
+  const userMap = useMemo(() => {
+    const map = new Map<string, ApiUser>();
+    for (const u of users) {
+      const key = getUserKey(u);
+      if (!key) continue;
+      map.set(key, u);
+    }
+    return map;
+  }, [users]);
+
+  const missingState = useMemo(() => {
+    const missingUpdates: ApiUser[] = [];
+    const missingTimesheets: ApiUser[] = [];
+    const missingRetro: ApiUser[] = [];
+    const reasonsMap = new Map<string, MissingReasons>();
+
+    for (const user of eligibleUsers) {
+      const key = getUserKey(user);
+      const row = summaryMap.get(key);
+
+      const missingUpdate = !row;
+      const missingTimesheet = !row || !hasTimesheet(row);
+      const missingRetrospective = !row || !hasRetro(row);
+
+      reasonsMap.set(key, {
+        update: missingUpdate,
+        timesheet: missingTimesheet,
+        retro: missingRetrospective,
+      });
+
+      if (missingUpdate) missingUpdates.push(user);
+      if (missingTimesheet) missingTimesheets.push(user);
+      if (missingRetrospective) missingRetro.push(user);
+    }
+
+    return {
+      missingUpdates,
+      missingTimesheets,
+      missingRetro,
+      reasonsMap,
+    };
+  }, [eligibleUsers, summaryMap]);
+
+  useEffect(() => {
+    const next: Record<string, boolean> = {};
+    for (const user of [
+      ...missingState.missingUpdates,
+      ...missingState.missingTimesheets,
+      ...missingState.missingRetro,
+    ]) {
+      const key = getUserKey(user);
+      if (key) next[key] = true;
+    }
+    setSelectedRecipients(next);
+  }, [missingState, selectedWeek]);
 
   const totals = useMemo(() => {
-    const employees = new Set(rows.map((r) => r.userId || r.userName || "Anon"));
-    const totalEntries = rows.reduce((acc, r) => acc + (Number(r.totalEntries) || 0), 0);
-    const totalHours = rows.reduce((acc, r) => acc + (Number(r.totalHours) || 0), 0);
+    const employees = new Set(rows.map((r) => (r as any).userId || (r as any).userName || "Anon"));
+    const totalEntries = rows.reduce((acc, r) => acc + safeNum((r as any).totalEntries), 0);
+    const totalHours = rows.reduce((acc, r) => acc + safeNum((r as any).totalHours), 0);
+    const submittedUpdates = rows.filter((r) => safeNum((r as any).totalEntries) > 0).length;
+    const contributors = rows.filter((r) => safeNum((r as any).totalHours) > 0).length;
+    const noHours = rows.filter((r) => safeNum((r as any).totalHours) <= 0).length;
+    const underThree = rows.filter(
+      (r) => safeNum((r as any).totalHours) > 0 && safeNum((r as any).totalHours) < 3
+    ).length;
 
     return {
       employees: employees.size,
       totalEntries,
       totalHours,
+      submittedUpdates,
+      contributors,
+      noHours,
+      underThree,
     };
   }, [rows]);
+
+  const contributorSeries = useMemo(() => {
+    return rows
+      .map((r) => ({
+        name: safeStr((r as any).userName || (r as any).userId) || "Anon",
+        totalHours: safeNum((r as any).totalHours),
+        updates: safeNum((r as any).totalEntries),
+      }))
+      .sort((a, b) => b.totalHours - a.totalHours || b.updates - a.updates);
+  }, [rows]);
+
+  const dailySeries = useMemo(() => {
+    const map = new Map<string, { day: string; totalHours: number; contributors: Set<string> }>();
+
+    for (const r of rows) {
+      const userKey = safeStr((r as any).userId || (r as any).userName) || "Anon";
+      const timesheet = Array.isArray((r as any).timesheet) ? (r as any).timesheet : [];
+
+      for (const t of timesheet) {
+        const day = safeStr((t as any)?.date);
+        const hours = safeNum((t as any)?.hours);
+        if (!day) continue;
+
+        if (!map.has(day)) {
+          map.set(day, {
+            day,
+            totalHours: 0,
+            contributors: new Set(),
+          });
+        }
+
+        const item = map.get(day)!;
+        item.totalHours += hours;
+        if (hours > 0) item.contributors.add(userKey);
+      }
+    }
+
+    return Array.from(map.values())
+      .map((x) => ({
+        day: x.day,
+        totalHours: Number(x.totalHours.toFixed(1)),
+        contributors: x.contributors.size,
+      }))
+      .sort((a, b) => a.day.localeCompare(b.day));
+  }, [rows]);
+
+  function openMissingModal() {
+    if (!modalRef.current || typeof M === "undefined") return;
+    const inst = M.Modal.getInstance(modalRef.current) || M.Modal.init(modalRef.current);
+    inst.open();
+  }
+
+  function closeMissingModal() {
+    if (!modalRef.current || typeof M === "undefined") return;
+    const inst = M.Modal.getInstance(modalRef.current) || M.Modal.init(modalRef.current);
+    inst.close();
+  }
+
+  function openDetailsModal(row: ApiUpdateSummary) {
+    setSelectedDetailRow(row);
+    if (!detailModalRef.current || typeof M === "undefined") return;
+    const inst =
+      M.Modal.getInstance(detailModalRef.current) || M.Modal.init(detailModalRef.current);
+    inst.open();
+  }
+
+  function closeDetailsModal() {
+    if (!detailModalRef.current || typeof M === "undefined") return;
+    const inst =
+      M.Modal.getInstance(detailModalRef.current) || M.Modal.init(detailModalRef.current);
+    inst.close();
+  }
+
+  function toggleUser(user: ApiUser, checked: boolean) {
+    const key = getUserKey(user);
+    if (!key) return;
+    setSelectedRecipients((prev) => ({ ...prev, [key]: checked }));
+  }
+
+  function setSectionChecked(section: MissingSection, checked: boolean) {
+    const list =
+      section === "update"
+        ? missingState.missingUpdates
+        : section === "timesheet"
+        ? missingState.missingTimesheets
+        : missingState.missingRetro;
+
+    setSelectedRecipients((prev) => {
+      const next = { ...prev };
+      for (const user of list) {
+        const key = getUserKey(user);
+        if (!key) continue;
+        next[key] = checked;
+      }
+      return next;
+    });
+  }
+
+  const selectedMailUsers = useMemo(() => {
+    const union = new Map<string, ApiUser>();
+    for (const user of [
+      ...missingState.missingUpdates,
+      ...missingState.missingTimesheets,
+      ...missingState.missingRetro,
+    ]) {
+      const key = getUserKey(user);
+      if (!key) continue;
+      if (selectedRecipients[key]) union.set(key, user);
+    }
+    return Array.from(union.values());
+  }, [missingState, selectedRecipients]);
+
+  const selectedDetailUser = useMemo(() => {
+    if (!selectedDetailRow) return null;
+    const key = getSummaryKey(selectedDetailRow);
+    return userMap.get(key) || null;
+  }, [selectedDetailRow, userMap]);
+
+  const selectedDetailTimesheet = useMemo(() => {
+    if (!selectedDetailRow) return [];
+    const ts = Array.isArray((selectedDetailRow as any).timesheet)
+      ? (selectedDetailRow as any).timesheet
+      : [];
+    return [...ts].sort((a: any, b: any) => String(a?.date || "").localeCompare(String(b?.date || "")));
+  }, [selectedDetailRow]);
+
+  async function sendMissingReminderEmail() {
+    if (!selectedWeek) {
+      toast("Please select a week first", "red");
+      return;
+    }
+
+    const selected = selectedMailUsers
+      .map((user) => {
+        const key = getUserKey(user);
+        const reasons = missingState.reasonsMap.get(key) || {
+          update: false,
+          timesheet: false,
+          retro: false,
+        };
+
+        const missingWeeks = [selectedWeek];
+        const email = getUserEmail(user);
+
+        if (!email) return null;
+
+        return {
+          username: safeStr((user as any)?.username),
+          email,
+          fullName: getUserName(user),
+          roleTitle: safeStr((user as any)?.employee_title || (user as any)?.role || ""),
+          missingWeeks,
+          missingItems: [
+            reasons.update ? "update" : "",
+            reasons.timesheet ? "timesheet" : "",
+            reasons.retro ? "retro" : "",
+          ].filter(Boolean),
+        };
+      })
+      .filter(Boolean) as Array<{
+      username: string;
+      email: string;
+      fullName: string;
+      roleTitle: string;
+      missingWeeks: string[];
+      missingItems: string[];
+    }>;
+
+    if (!selected.length) {
+      toast("No selected users with valid email addresses", "red");
+      return;
+    }
+
+    try {
+      setSendingReminder(true);
+
+      const resp = await callAdminActivityReportReminders({
+        selectedWeek,
+        recipients: selected,
+        dryRun: false,
+        autoCc: false,
+      });
+
+      toast(String(resp?.message || "Reminder emails sent"), "green");
+      closeMissingModal();
+    } catch (e: any) {
+      toast(e?.message || "Failed to send reminder email", "red");
+    } finally {
+      setSendingReminder(false);
+    }
+  }
+
+  function renderMissingSection(
+    title: string,
+    section: MissingSection,
+    usersList: ApiUser[],
+    tone: "blue" | "amber" | "red"
+  ) {
+    const checkedCount = usersList.filter((u) => selectedRecipients[getUserKey(u)]).length;
+    const bg =
+      tone === "red"
+        ? "rgba(239,68,68,.05)"
+        : tone === "amber"
+        ? "rgba(245,158,11,.05)"
+        : "rgba(59,130,246,.05)";
+
+    const border =
+      tone === "red"
+        ? "rgba(239,68,68,.18)"
+        : tone === "amber"
+        ? "rgba(245,158,11,.18)"
+        : "rgba(59,130,246,.18)";
+
+    return (
+      <div
+        style={{
+          borderRadius: 18,
+          border: `1px solid ${border}`,
+          background: `linear-gradient(180deg, ${bg}, #fff 80%)`,
+          padding: 14,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+            marginBottom: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a" }}>{title}</div>
+            <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+              {checkedCount}/{usersList.length} selected
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn-flat"
+              onClick={() => setSectionChecked(section, true)}
+              style={{
+                borderRadius: 999,
+                background: "rgba(15,23,42,.06)",
+                fontWeight: 900,
+                textTransform: "none",
+              }}
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              className="btn-flat"
+              onClick={() => setSectionChecked(section, false)}
+              style={{
+                borderRadius: 999,
+                background: "rgba(15,23,42,.06)",
+                fontWeight: 900,
+                textTransform: "none",
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {!usersList.length ? (
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+            No one missing this item.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8, maxHeight: 240, overflowY: "auto", paddingRight: 4 }}>
+            {usersList.map((user) => {
+              const key = getUserKey(user);
+              const checked = !!selectedRecipients[key];
+              return (
+                <label
+                  key={`${section}-${key}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(148,163,184,.14)",
+                    background: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => toggleUser(user, e.target.checked)}
+                    />
+                    <span style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 900,
+                          color: "#0f172a",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {getUserName(user)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "#64748b",
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {getUserEmail(user) || safeStr((user as any)?.username) || "No email"}
+                      </div>
+                    </span>
+                  </span>
+
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "#64748b",
+                      fontWeight: 800,
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {getUserRole(user) || "employee"}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="container" style={{ paddingTop: 24, paddingBottom: 24 }}>
@@ -421,7 +1337,7 @@ export default function ActivityReport() {
                   maxWidth: 720,
                 }}
               >
-                Weekly cumulative employee summaries.
+                Weekly employee summaries with snapshot cards, charts, and reminder actions.
               </div>
             </div>
 
@@ -465,8 +1381,8 @@ export default function ActivityReport() {
                     height: 44,
                   }}
                 >
-                  <option value="">All weeks</option>
-                  {allWeeks.map((w) => (
+                  <option value="">Select week</option>
+                  {weekOptions.map((w) => (
                     <option key={w} value={w}>
                       {w}
                     </option>
@@ -489,204 +1405,704 @@ export default function ActivityReport() {
                 </label>
               </div>
             </div>
+
+            <div className="col s12 m6 l8">
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  paddingTop: 4,
+                }}
+              >
+                <MetricChip
+                  icon="assignment_late"
+                  label="Missing Updates"
+                  value={String(missingState.missingUpdates.length)}
+                  tint="rgba(59,130,246,.10)"
+                  color="#1d4ed8"
+                />
+                <MetricChip
+                  icon="pending_actions"
+                  label="Missing Timesheets"
+                  value={String(missingState.missingTimesheets.length)}
+                  tint="rgba(245,158,11,.12)"
+                  color="#b45309"
+                />
+                <MetricChip
+                  icon="fact_check"
+                  label="Missing Retro"
+                  value={String(missingState.missingRetro.length)}
+                  tint="rgba(239,68,68,.10)"
+                  color="#b91c1c"
+                />
+
+                <button
+                  type="button"
+                  className="btn waves-effect waves-light"
+                  onClick={openMissingModal}
+                  style={{
+                    borderRadius: 12,
+                    textTransform: "none",
+                    fontWeight: 900,
+                  }}
+                >
+                  <i className="material-icons left">mail</i>
+                  Review Missing + Send Mail
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="card-content" style={{ padding: 0, overflow: "visible" }}>
-          <div className="responsive-table" style={{ overflowX: "auto", overflowY: "visible" }}>
-            <table
-              className="highlight"
+        <div className="card-content" style={{ padding: 18, overflow: "visible" }}>
+          {loading ? (
+            <div
               style={{
-                width: "100%",
-                borderCollapse: "separate",
-                borderSpacing: 0,
+                border: "1px dashed #d9e5ee",
+                borderRadius: 20,
+                padding: 24,
+                textAlign: "center",
+                color: "#64748b",
+                background: "linear-gradient(180deg,#fcfdff 0%,#f8fbfe 100%)",
+                fontWeight: 700,
               }}
             >
-              <thead>
-                <tr style={{ background: "#f8fafc" }}>
-                  {["Week", "Employee", "Entries", "Accomplishments", "Blockers", "Next", "Hours"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        style={{
-                          background: "#f8fafc",
-                          color: "#334155",
-                          fontSize: 12,
-                          textTransform: "uppercase",
-                          letterSpacing: ".06em",
-                          fontWeight: 900,
-                          padding: "16px 14px",
-                          borderBottom: "1px solid rgba(148,163,184,.14)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
-                </tr>
-              </thead>
+              Loading...
+            </div>
+          ) : error ? (
+            <div
+              style={{
+                border: "1px dashed #fecaca",
+                borderRadius: 20,
+                padding: 24,
+                textAlign: "center",
+                color: "#dc2626",
+                background: "#fff7f7",
+                fontWeight: 700,
+              }}
+            >
+              {error}
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5,minmax(0,1fr))",
+                  gap: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <SnapshotCard
+                  label="Employees"
+                  value={totals.employees}
+                  sublabel="In selected week"
+                  tone="slate"
+                />
+                <SnapshotCard
+                  label="Contributors"
+                  value={totals.contributors}
+                  sublabel="Logged hours > 0"
+                  tone="blue"
+                />
+                <SnapshotCard
+                  label="Updates"
+                  value={totals.submittedUpdates}
+                  sublabel="Rows with entries"
+                  tone="green"
+                />
+                <SnapshotCard
+                  label="Hours"
+                  value={totals.totalHours.toFixed(1)}
+                  sublabel="Total reported this week"
+                  tone="purple"
+                />
+                <SnapshotCard
+                  label="No Hours"
+                  value={totals.noHours}
+                  sublabel="Employees with 0h"
+                  tone="amber"
+                />
+              </div>
 
-              <tbody>
-                {loading && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 24, color: "#64748b" }}>
-                      Loading...
-                    </td>
-                  </tr>
-                )}
+              <div
+                style={{
+                  marginBottom: 16,
+                }}
+              >
+                <div
+                  style={{
+                    borderRadius: 20,
+                    border: "1px solid #e5edf4",
+                    background: "linear-gradient(180deg,#ffffff 0%,#fbfdff 100%)",
+                    padding: 16,
+                    boxShadow: "0 10px 22px rgba(15,23,42,.04)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 950,
+                      color: "#0f172a",
+                      marginBottom: 14,
+                    }}
+                  >
+                    Weekly Compliance Snapshot
+                  </div>
 
-                {!loading && error && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 24, color: "#dc2626", fontWeight: 700 }}>
-                      {error}
-                    </td>
-                  </tr>
-                )}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+                      gap: 16,
+                    }}
+                  >
+                    <DonutChart
+                      value={totals.submittedUpdates}
+                      total={Math.max(1, totals.employees)}
+                      label="Update Coverage"
+                      sublabel="Employees with weekly entries"
+                      tone="blue"
+                    />
+                    <DonutChart
+                      value={totals.contributors}
+                      total={Math.max(1, totals.employees)}
+                      label="Hours Coverage"
+                      sublabel="Employees with logged hours"
+                      tone="green"
+                    />
+                    <DonutChart
+                      value={missingState.missingTimesheets.length}
+                      total={Math.max(1, eligibleUsers.length)}
+                      label="Missing Timesheets"
+                      sublabel="From current team"
+                      tone="amber"
+                    />
+                    <DonutChart
+                      value={missingState.missingRetro.length}
+                      total={Math.max(1, eligibleUsers.length)}
+                      label="Missing Retro"
+                      sublabel="From current team"
+                      tone="red"
+                    />
+                  </div>
+                </div>
+              </div>
 
-                {!loading && !error && rows.length === 0 && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 24, color: "#64748b" }}>
-                      No data
-                    </td>
-                  </tr>
-                )}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 16,
+                  marginBottom: 18,
+                }}
+              >
 
-                {!loading &&
-                  !error &&
-                  rows.map((r, idx) => {
-                    const rowKey = `${r.weekStart}__${r.userId || r.userName || idx}`;
-                    const hoursTone = colorForHours(Number(r.totalHours || 0));
+                <MiniBarChart
+                  title="Updates by Contributor"
+                  items={contributorSeries}
+                  valueKey="updates"
+                  labelKey="name"
+                  color="linear-gradient(90deg,#60a5fa,#2563eb)"
+                />
+                <MiniBarChart
+                  title="Daily Hours"
+                  items={dailySeries}
+                  valueKey="totalHours"
+                  labelKey="day"
+                  color="linear-gradient(90deg,#fbbf24,#f59e0b)"
+                  suffix="h"
+                />
+              </div>
 
-                    return (
-                      <tr key={rowKey} style={{ background: idx % 2 === 0 ? "#ffffff" : "#fcfdff" }}>
-                        <td
-                          style={{
-                            padding: "16px 14px",
-                            borderBottom: "1px solid rgba(148,163,184,.10)",
-                            whiteSpace: "nowrap",
-                            fontWeight: 800,
-                            color: "#0f172a",
-                          }}
-                        >
-                          {r.weekStart}
-                        </td>
-
-                        <td
-                          style={{
-                            padding: "16px 14px",
-                            borderBottom: "1px solid rgba(148,163,184,.10)",
-                            minWidth: 180,
-                          }}
-                        >
-                          <div style={{ fontWeight: 900, color: "#0f172a" }}>
-                            {r.userName || r.userId || "Anon"}
-                          </div>
-                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
-                            {r.employee_id || r.employee_manager || "—"}
-                          </div>
-                        </td>
-
-                        <td
-                          style={{
-                            padding: "16px 14px",
-                            borderBottom: "1px solid rgba(148,163,184,.10)",
-                          }}
-                        >
-                          <span
+              <div className="responsive-table" style={{ overflowX: "auto", overflowY: "visible" }}>
+                <table
+                  className="highlight"
+                  style={{
+                    width: "100%",
+                    borderCollapse: "separate",
+                    borderSpacing: 0,
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: "#f8fafc" }}>
+                      {["Week", "Employee", "Entries", "Accomplishments", "Blockers", "Next", "Hours"].map(
+                        (h) => (
+                          <th
+                            key={h}
                             style={{
-                              display: "inline-flex",
-                              minWidth: 40,
-                              justifyContent: "center",
-                              padding: "6px 10px",
-                              borderRadius: 999,
-                              background: "rgba(99,102,241,.10)",
-                              color: "#4338ca",
+                              background: "#f8fafc",
+                              color: "#334155",
+                              fontSize: 12,
+                              textTransform: "uppercase",
+                              letterSpacing: ".06em",
                               fontWeight: 900,
+                              padding: "16px 14px",
+                              borderBottom: "1px solid rgba(148,163,184,.14)",
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            {r.totalEntries}
-                          </span>
-                        </td>
+                            {h}
+                          </th>
+                        )
+                      )}
+                    </tr>
+                  </thead>
 
-                        <td style={{ padding: "16px 14px", borderBottom: "1px solid rgba(148,163,184,.10)" }}>
-                          <CompactListCell
-                            title="Accomplishments"
-                            items={Array.isArray(r.accomplishments) ? r.accomplishments : []}
-                            cellId={`${rowKey}__acc`}
-                            hoveredCellId={hoveredCellId}
-                            setHoveredCellId={setHoveredCellId}
-                          />
+                  <tbody>
+                    {rows.length === 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: 24, color: "#64748b" }}>
+                          No data
                         </td>
+                      </tr>
+                    )}
 
-                        <td style={{ padding: "16px 14px", borderBottom: "1px solid rgba(148,163,184,.10)" }}>
-                          <CompactListCell
-                            title="Blockers"
-                            items={Array.isArray(r.blockers) ? r.blockers : []}
-                            cellId={`${rowKey}__blk`}
-                            hoveredCellId={hoveredCellId}
-                            setHoveredCellId={setHoveredCellId}
-                          />
-                        </td>
+                    {rows.map((r, idx) => {
+                      const rowKey = `${(r as any).weekStart}__${(r as any).userId || (r as any).userName || idx}`;
+                      const hoursTone = colorForHours(Number((r as any).totalHours || 0));
 
-                        <td style={{ padding: "16px 14px", borderBottom: "1px solid rgba(148,163,184,.10)" }}>
-                          <CompactListCell
-                            title="Next"
-                            items={Array.isArray(r.next) ? r.next : []}
-                            cellId={`${rowKey}__next`}
-                            hoveredCellId={hoveredCellId}
-                            setHoveredCellId={setHoveredCellId}
-                          />
-                        </td>
+                      return (
+                        <tr key={rowKey} style={{ background: idx % 2 === 0 ? "#ffffff" : "#fcfdff" }}>
+                          <td
+                            style={{
+                              padding: "16px 14px",
+                              borderBottom: "1px solid rgba(148,163,184,.10)",
+                              whiteSpace: "nowrap",
+                              fontWeight: 800,
+                              color: "#0f172a",
+                            }}
+                          >
+                            {(r as any).weekStart}
+                          </td>
 
-                        <td
-                          style={{
-                            padding: "16px 14px",
-                            borderBottom: "1px solid rgba(148,163,184,.10)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <div
-                            style={{ position: "relative", display: "inline-block" }}
-                            onMouseEnter={() => setHoveredHoursKey(rowKey)}
-                            onMouseLeave={() =>
-                              setHoveredHoursKey((curr) => (curr === rowKey ? null : curr))
-                            }
+                          <td
+                            style={{
+                              padding: "16px 14px",
+                              borderBottom: "1px solid rgba(148,163,184,.10)",
+                              minWidth: 220,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => openDetailsModal(r)}
+                              style={{
+                                display: "block",
+                                width: "100%",
+                                textAlign: "left",
+                                border: "1px solid rgba(59,130,246,.16)",
+                                background: "linear-gradient(180deg, rgba(59,130,246,.06), rgba(255,255,255,1))",
+                                borderRadius: 14,
+                                padding: "10px 12px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                }}
+                              >
+                                <div style={{ minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      fontWeight: 900,
+                                      color: "#0f172a",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {(r as any).userName || (r as any).userId || "Anon"}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
+                                    {(r as any).employee_id || (r as any).employee_manager || "—"}
+                                  </div>
+                                </div>
+
+                                <i
+                                  className="material-icons"
+                                  style={{ fontSize: 18, color: "#2563eb", flex: "0 0 auto" }}
+                                >
+                                  open_in_new
+                                </i>
+                              </div>
+                            </button>
+                          </td>
+
+                          <td
+                            style={{
+                              padding: "16px 14px",
+                              borderBottom: "1px solid rgba(148,163,184,.10)",
+                            }}
                           >
                             <span
                               style={{
                                 display: "inline-flex",
-                                alignItems: "center",
-                                gap: 8,
-                                padding: "8px 12px",
+                                minWidth: 40,
+                                justifyContent: "center",
+                                padding: "6px 10px",
                                 borderRadius: 999,
-                                background: hoursTone.bg,
-                                color: hoursTone.text,
+                                background: "rgba(99,102,241,.10)",
+                                color: "#4338ca",
                                 fontWeight: 900,
-                                boxShadow: "inset 0 0 0 1px rgba(255,255,255,.12)",
-                                cursor: "default",
                               }}
                             >
-                              <i className="material-icons" style={{ fontSize: 16 }}>
-                                schedule
-                              </i>
-                              {Number(r.totalHours || 0).toFixed(1)}
+                              {(r as any).totalEntries}
                             </span>
+                          </td>
 
-                            {hoveredHoursKey === rowKey && (
-                              <HeatmapPopover
-                                weekStart={r.weekStart}
-                                timesheet={Array.isArray(r.timesheet) ? r.timesheet : []}
-                              />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
+                          <td style={{ padding: "16px 14px", borderBottom: "1px solid rgba(148,163,184,.10)" }}>
+                            <CompactListCell
+                              count={Array.isArray((r as any).accomplishments) ? (r as any).accomplishments.length : 0}
+                              tone="blue"
+                            />
+                          </td>
+
+                          <td style={{ padding: "16px 14px", borderBottom: "1px solid rgba(148,163,184,.10)" }}>
+                            <CompactListCell
+                              count={Array.isArray((r as any).blockers) ? (r as any).blockers.length : 0}
+                              tone="amber"
+                            />
+                          </td>
+
+                          <td style={{ padding: "16px 14px", borderBottom: "1px solid rgba(148,163,184,.10)" }}>
+                            <CompactListCell
+                              count={Array.isArray((r as any).next) ? (r as any).next.length : 0}
+                              tone="green"
+                            />
+                          </td>
+
+                          <td
+                            style={{
+                              padding: "16px 14px",
+                              borderBottom: "1px solid rgba(148,163,184,.10)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <div
+                              style={{ position: "relative", display: "inline-block" }}
+                              onMouseEnter={() => setHoveredHoursKey(rowKey)}
+                              onMouseLeave={() =>
+                                setHoveredHoursKey((curr) => (curr === rowKey ? null : curr))
+                              }
+                            >
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  padding: "8px 12px",
+                                  borderRadius: 999,
+                                  background: hoursTone.bg,
+                                  color: hoursTone.text,
+                                  fontWeight: 900,
+                                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,.12)",
+                                  cursor: "default",
+                                }}
+                              >
+                                <i className="material-icons" style={{ fontSize: 16 }}>
+                                  schedule
+                                </i>
+                                {Number((r as any).totalHours || 0).toFixed(1)}
+                              </span>
+
+                              {hoveredHoursKey === rowKey && (
+                                <HeatmapPopover
+                                  weekStart={(r as any).weekStart}
+                                  timesheet={Array.isArray((r as any).timesheet) ? (r as any).timesheet : []}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div ref={modalRef} className="modal modal-fixed-footer">
+        <div className="modal-content">
+          <h5 style={{ fontWeight: 1000, marginBottom: 6 }}>Missing Submission Review</h5>
+          <p className="grey-text" style={{ marginTop: 0, fontWeight: 700 }}>
+            Select exactly who should receive the reminder for week {selectedWeek || "—"}.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+              gap: 16,
+              marginTop: 14,
+            }}
+          >
+            {renderMissingSection("Missing Updates", "update", missingState.missingUpdates, "blue")}
+            {renderMissingSection("Missing Timesheets", "timesheet", missingState.missingTimesheets, "amber")}
+            {renderMissingSection("Missing Retro", "retro", missingState.missingRetro, "red")}
           </div>
+
+          <div
+            style={{
+              marginTop: 16,
+              padding: 14,
+              borderRadius: 16,
+              border: "1px solid rgba(148,163,184,.14)",
+              background: "#f8fafc",
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>
+              Selected recipients
+            </div>
+            <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, color: "#0f172a" }}>
+              {selectedMailUsers.length}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
+              {selectedMailUsers.length
+                ? selectedMailUsers.map(getUserName).join(", ")
+                : "No one selected"}
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn-flat" onClick={closeMissingModal}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={`btn waves-effect waves-light ${sendingReminder ? "disabled" : ""}`}
+            onClick={sendMissingReminderEmail}
+            disabled={sendingReminder}
+            style={{ borderRadius: 12, textTransform: "none", fontWeight: 900 }}
+          >
+            <i className="material-icons left">
+              {sendingReminder ? "hourglass_empty" : "send"}
+            </i>
+            {sendingReminder ? "Sending..." : "Send Reminder Email"}
+          </button>
+        </div>
+      </div>
+
+      <div ref={detailModalRef} className="modal modal-fixed-footer" style={{ maxHeight: "88%" }}>
+        <div className="modal-content" style={{ paddingBottom: 8 }}>
+          {!selectedDetailRow ? (
+            <div style={{ color: "#64748b", fontWeight: 700 }}>No employee selected.</div>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  marginBottom: 14,
+                }}
+              >
+                <div>
+                  <h5 style={{ fontWeight: 1000, margin: 0 }}>
+                    {safeStr((selectedDetailRow as any).userName || (selectedDetailRow as any).userId || "Employee")}
+                  </h5>
+                  <div style={{ marginTop: 6, color: "#64748b", fontWeight: 700 }}>
+                    Week {safeStr((selectedDetailRow as any).weekStart) || "—"}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <MetricChip
+                    icon="article"
+                    label="Entries"
+                    value={String(safeNum((selectedDetailRow as any).totalEntries))}
+                    tint="rgba(99,102,241,.10)"
+                    color="#4338ca"
+                  />
+                  <MetricChip
+                    icon="schedule"
+                    label="Hours"
+                    value={safeNum((selectedDetailRow as any).totalHours).toFixed(1)}
+                    tint="rgba(34,197,94,.12)"
+                    color="#166534"
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+                  gap: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <InfoBlock
+                  title="Email"
+                  value={getUserEmail(selectedDetailUser || {}) || "—"}
+                />
+                <InfoBlock
+                  title="Role"
+                  value={
+                    safeStr((selectedDetailUser as any)?.employee_title) ||
+                    safeStr((selectedDetailUser as any)?.employee_role) ||
+                    safeStr((selectedDetailUser as any)?.role) ||
+                    "—"
+                  }
+                />
+                <InfoBlock
+                  title="Username"
+                  value={
+                    safeStr((selectedDetailUser as any)?.username) ||
+                    safeStr((selectedDetailRow as any)?.userId) ||
+                    "—"
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid rgba(148,163,184,.14)",
+                  background: "linear-gradient(180deg,#ffffff 0%,#fbfdff 100%)",
+                  padding: 14,
+                  marginBottom: 16,
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 10 }}>
+                  Weekly Time Heatmap
+                </div>
+                <HeatmapGrid
+                  weekStart={safeStr((selectedDetailRow as any).weekStart)}
+                  timesheet={selectedDetailTimesheet}
+                />
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid rgba(148,163,184,.14)",
+                  background: "linear-gradient(180deg,#ffffff 0%,#fbfdff 100%)",
+                  padding: 14,
+                  marginBottom: 16,
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 10 }}>
+                  Timesheet Rows
+                </div>
+
+                {!selectedDetailTimesheet.length ? (
+                  <div style={{ fontSize: 13, color: "#64748b", fontWeight: 700 }}>
+                    No timesheet rows found.
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+                      <thead>
+                        <tr>
+                          {["Date", "Project", "Hours"].map((h) => (
+                            <th
+                              key={h}
+                              style={{
+                                textAlign: "left",
+                                padding: "10px 12px",
+                                fontSize: 11,
+                                textTransform: "uppercase",
+                                letterSpacing: ".06em",
+                                color: "#64748b",
+                                borderBottom: "1px solid rgba(148,163,184,.14)",
+                              }}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedDetailTimesheet.map((t: any, idx: number) => (
+                          <tr key={`${t?.date || "d"}-${idx}`}>
+                            <td
+                              style={{
+                                padding: "11px 12px",
+                                borderBottom: "1px solid rgba(148,163,184,.10)",
+                                color: "#0f172a",
+                                fontWeight: 800,
+                              }}
+                            >
+                              {safeStr(t?.date) || "—"}
+                            </td>
+                            <td
+                              style={{
+                                padding: "11px 12px",
+                                borderBottom: "1px solid rgba(148,163,184,.10)",
+                                color: "#334155",
+                                fontWeight: 700,
+                              }}
+                            >
+                              {safeStr(t?.projectId) || safeStr((selectedDetailRow as any)?.projectId) || "Unassigned"}
+                            </td>
+                            <td
+                              style={{
+                                padding: "11px 12px",
+                                borderBottom: "1px solid rgba(148,163,184,.10)",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  padding: "6px 10px",
+                                  borderRadius: 999,
+                                  background: "rgba(34,197,94,.12)",
+                                  color: "#166534",
+                                  fontWeight: 900,
+                                }}
+                              >
+                                {safeNum(t?.hours).toFixed(1)}h
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 16,
+                }}
+              >
+                <DetailList
+                  title="Accomplishments"
+                  items={Array.isArray((selectedDetailRow as any).accomplishments) ? (selectedDetailRow as any).accomplishments : []}
+                />
+                <DetailList
+                  title="Blockers"
+                  items={Array.isArray((selectedDetailRow as any).blockers) ? (selectedDetailRow as any).blockers : []}
+                />
+                <DetailList
+                  title="Next"
+                  items={Array.isArray((selectedDetailRow as any).next) ? (selectedDetailRow as any).next : []}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn-flat" onClick={closeDetailsModal}>
+            Close
+          </button>
         </div>
       </div>
     </div>

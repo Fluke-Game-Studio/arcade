@@ -4,3 +4,4 @@ export * from "./updates";
 export * from "./timelogs";
 export * from "./jobs";
 export * from "./applicants";
+export * from "./gamification";

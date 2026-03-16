@@ -1,16 +1,58 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import AccountProfileSecurity from "../components/account/AccountProfileSecurity";
 import AccountMyUpdates from "../components/account/AccountMyUpdates";
+import AccountGamification from "../components/account/AccountGamification";
 
 declare const M: any;
 
+type AccountTabKey = "updates" | "details" | "password" | "gamification";
+
 export default function Account() {
   const { user, api } = useAuth();
+  const [activeTab, setActiveTab] = useState<AccountTabKey>("updates");
 
   useEffect(() => {
     if (typeof M !== "undefined") setTimeout(() => M.updateTextFields(), 0);
-  }, []);
+  }, [activeTab]);
+
+  function TabButton({
+    tab,
+    icon,
+    label,
+  }: {
+    tab: AccountTabKey;
+    icon: string;
+    label: string;
+  }) {
+    const active = activeTab === tab;
+    return (
+      <button
+        type="button"
+        onClick={() => setActiveTab(tab)}
+        style={{
+          border: active ? "1px solid rgba(37,99,235,0.22)" : "1px solid #dbe5ec",
+          background: active
+            ? "linear-gradient(135deg, rgba(37,99,235,0.10), rgba(255,255,255,1))"
+            : "#fff",
+          color: active ? "#1d4ed8" : "#334155",
+          borderRadius: 14,
+          padding: "10px 14px",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          fontWeight: 900,
+          cursor: "pointer",
+          boxShadow: active ? "0 10px 20px rgba(37,99,235,0.08)" : "none",
+        }}
+      >
+        <i className="material-icons" style={{ fontSize: 18 }}>
+          {icon}
+        </i>
+        {label}
+      </button>
+    );
+  }
 
   return (
     <main className="container" style={{ paddingTop: 22, maxWidth: 1080 }}>
@@ -456,11 +498,34 @@ export default function Account() {
 
         .input-field { margin: 0.2rem 0 0.6rem !important; }
         input:focus { box-shadow: none !important; }
+
+        .accountTabBar{
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          margin: 0 0 14px 0;
+        }
       `}</style>
 
       <div className="accWrap">
-        <AccountProfileSecurity user={user} api={api} />
-        <AccountMyUpdates api={api} />
+        <div className="accountTabBar">
+          <TabButton tab="updates" icon="history" label="My Updates" />
+          <TabButton tab="details" icon="badge" label="Edit Details" />
+          <TabButton tab="password" icon="lock" label="Edit Password" />
+          <TabButton tab="gamification" icon="emoji_events" label="Achievements" />
+        </div>
+
+        {activeTab === "updates" && <AccountMyUpdates api={api} />}
+
+        {activeTab === "details" && (
+          <AccountProfileSecurity user={user} api={api} initialTab="details" />
+        )}
+
+        {activeTab === "password" && (
+          <AccountProfileSecurity user={user} api={api} initialTab="password" />
+        )}
+
+        {activeTab === "gamification" && <AccountGamification />}
       </div>
     </main>
   );

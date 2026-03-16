@@ -11,6 +11,7 @@ import Employees from "./pages/Employees";
 import Admin from "./pages/Admin";
 import SuperUser from "./pages/SuperUser";
 import SuperAI from "./pages/SuperAI";
+import SuperAwards from "./pages/SuperAwards";
 import Account from "./pages/Account";
 import Login from "./pages/Login";
 import ActivityReport from "./pages/ActivityReport";
@@ -18,7 +19,6 @@ import JobsAdmin from "./pages/JobsAdmin";
 import WeeklyUpdate from "./pages/WeeklyUpdate";
 import RetroBoard from "./pages/RetroBoard";
 import Applicants from "./pages/Applicants";
-import CharacterTutorialPage from "./pages/CharacterTutorialPage";
 import { UpdatesProvider } from "./pages/UpdatesContext";
 
 const router = createBrowserRouter([
@@ -34,7 +34,6 @@ const router = createBrowserRouter([
       { index: true, element: <Home /> },
       { path: "/employees", element: <Employees /> },
       { path: "/account", element: <Account /> },
-      { path: "/character-tutorial", element: <CharacterTutorialPage /> },
 
       {
         path: "/applicants",
@@ -97,6 +96,15 @@ const router = createBrowserRouter([
         element: (
           <Protected roles={["super"]}>
             <SuperAI />
+          </Protected>
+        ),
+      },
+
+      {
+        path: "/super/awards",
+        element: (
+          <Protected roles={["super"]}>
+            <SuperAwards />
           </Protected>
         ),
       },
