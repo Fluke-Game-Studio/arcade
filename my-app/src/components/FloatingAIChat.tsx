@@ -461,7 +461,6 @@ export default function FloatingAIChat() {
 
   const myRole = useMemo(() => getRoleLower(user), [user]);
   const isSuper = myRole === "super";
-  const isAdminish = myRole === "admin" || isSuper;
 
   const defaultContext: ChatContextType = isSuper ? "internal" : "public";
 
@@ -1171,10 +1170,6 @@ export default function FloatingAIChat() {
     : provider === "ollama" && currentWarmState === "error"
     ? runtimeWarmError[currentRuntime] || `Ollama warmup failed for ${currentModel}`
     : `${CONTEXT_META[selectedContext].label} • ${PROVIDER_META[provider].label} • ${currentModel}`;
-
-  const visibleSideCards: SidePanelKey[] = isSuper
-    ? ["context", "model", "session", "toggles", "generation", "identity", "advanced"]
-    : ["model"];
 
   const collapsedItems: Array<{ key: SidePanelKey; icon: string; label: string }> = isSuper
     ? [

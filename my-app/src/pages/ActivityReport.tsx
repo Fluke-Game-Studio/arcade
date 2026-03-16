@@ -587,68 +587,6 @@ function HeatmapPopover({
   );
 }
 
-function ListPopover({
-  title,
-  items,
-}: {
-  title: string;
-  items: string[];
-}) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: 0,
-        top: "calc(100% + 10px)",
-        width: 320,
-        maxWidth: "70vw",
-        zIndex: 9999,
-        background: "rgba(255,255,255,.98)",
-        border: "1px solid rgba(148,163,184,.18)",
-        borderRadius: 16,
-        boxShadow: "0 18px 50px rgba(15,23,42,.18)",
-        padding: 12,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 900,
-          color: "#0f172a",
-          marginBottom: 10,
-        }}
-      >
-        {title}
-      </div>
-
-      {items.length === 0 ? (
-        <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>No items</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {items.map((item, idx) => (
-            <div
-              key={`${title}-${idx}`}
-              style={{
-                fontSize: 12,
-                color: "#334155",
-                lineHeight: 1.45,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                padding: "8px 10px",
-                borderRadius: 12,
-                background: "#f8fafc",
-                border: "1px solid rgba(148,163,184,.12)",
-              }}
-            >
-              {idx + 1}. {item}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CompactListCell({
   count,
   tone = "blue",
@@ -1003,64 +941,6 @@ export default function ActivityReport() {
       noHours,
       underThree,
     };
-  }, [rows]);
-
-  const projectSeries = useMemo(() => {
-    const map = new Map<
-      string,
-      { projectId: string; totalHours: number; entries: number; contributors: Set<string> }
-    >();
-
-    for (const r of rows) {
-      const timesheet = Array.isArray((r as any).timesheet) ? (r as any).timesheet : [];
-      const fallbackProject = safeStr((r as any).projectId) || "Unassigned";
-      const userKey = safeStr((r as any).userId || (r as any).userName) || "Anon";
-
-      if (timesheet.length) {
-        for (const t of timesheet) {
-          const projectId = safeStr((t as any)?.projectId) || fallbackProject;
-          const hours = safeNum((t as any)?.hours);
-          const key = projectId || "Unassigned";
-
-          if (!map.has(key)) {
-            map.set(key, {
-              projectId: key,
-              totalHours: 0,
-              entries: 0,
-              contributors: new Set(),
-            });
-          }
-
-          const item = map.get(key)!;
-          item.totalHours += hours;
-          item.entries += 1;
-          if (hours > 0) item.contributors.add(userKey);
-        }
-      } else {
-        const key = fallbackProject || "Unassigned";
-        if (!map.has(key)) {
-          map.set(key, {
-            projectId: key,
-            totalHours: 0,
-            entries: 0,
-            contributors: new Set(),
-          });
-        }
-        const item = map.get(key)!;
-        item.totalHours += safeNum((r as any).totalHours);
-        item.entries += safeNum((r as any).totalEntries);
-        if (safeNum((r as any).totalHours) > 0) item.contributors.add(userKey);
-      }
-    }
-
-    return Array.from(map.values())
-      .map((x) => ({
-        projectId: x.projectId,
-        totalHours: Number(x.totalHours.toFixed(1)),
-        entries: x.entries,
-        contributors: x.contributors.size,
-      }))
-      .sort((a, b) => b.totalHours - a.totalHours || b.entries - a.entries);
   }, [rows]);
 
   const contributorSeries = useMemo(() => {

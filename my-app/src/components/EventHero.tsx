@@ -73,11 +73,6 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function safeStr(v: unknown) {
-  if (v === null || v === undefined) return "";
-  return String(v).trim();
-}
-
 function formatWhen(d: Date) {
   try {
     return new Intl.DateTimeFormat(undefined, {

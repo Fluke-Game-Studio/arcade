@@ -79,13 +79,6 @@ function getRecognitionType(item: RecognitionItem): "achievement" | "trophy" {
   return "achievement";
 }
 
-function getRecognitionIcon(item: RecognitionItem) {
-  return getRecognitionType(item) === "trophy" ? "emoji_events" : "military_tech";
-}
-
-function getRecognitionTone(item: RecognitionItem) {
-  return getRecognitionType(item) === "trophy" ? "amber" : "green";
-}
 
 function dedupeRecognition(items: RecognitionItem[]) {
   const seen = new Set<string>();

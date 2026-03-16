@@ -786,7 +786,7 @@ export default function AnalyticsInsightsPanel() {
                     label="Reported Hours"
                     value={safeNum(overview.totalHours)}
                     sublabel="Total hours in this scope"
-                    tone="purple"
+                    tone="slate"
                   />
                 </div>
 

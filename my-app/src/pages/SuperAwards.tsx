@@ -128,9 +128,8 @@ export default function SuperAwards() {
   const [savingRule, setSavingRule] = useState(false);
   const [rulesQuery, setRulesQuery] = useState("");
 
-  const isSuperOrAdmin =
-    safeStr((user as any)?.role).toLowerCase() === "super" ||
-    safeStr((user as any)?.role).toLowerCase() === "admin";
+  const userRole = safeStr((user as any)?.role).toLowerCase();
+  const isSuperOrAdmin = userRole === "super" || userRole === "admin";
 
   async function loadUsers() {
     setLoadingUsers(true);
@@ -138,11 +137,12 @@ export default function SuperAwards() {
       const data = await api.getUsers();
       const list = Array.isArray(data) ? data : [];
       setRows(list);
-      if (!selectedUsername && list[0]?.username) {
-        setSelectedUsername(list[0].username);
+
+      if (!selectedUsername && list[0] && safeStr((list[0] as any).username)) {
+        setSelectedUsername(safeStr((list[0] as any).username));
       }
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to load users", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to load users", classes: "red" });
     } finally {
       setLoadingUsers(false);
     }
@@ -157,26 +157,26 @@ export default function SuperAwards() {
       setAchievementRules(Array.isArray(ach) ? ach : []);
       setTrophyRules(Array.isArray(tro) ? tro : []);
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to load award rules", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to load award rules", classes: "red" });
     }
   }
 
   useEffect(() => {
-    loadUsers();
-    loadRules();
+    void loadUsers();
+    void loadRules();
   }, []);
 
   useEffect(() => {
-    if (typeof M !== "undefined") {
-      try {
-        M.Collapsible.init(document.querySelectorAll(".collapsible"), { accordion: false });
-      } catch {}
-    }
+    if (typeof M === "undefined") return;
+    try {
+      M.Collapsible.init(document.querySelectorAll(".collapsible"), { accordion: false });
+    } catch {}
   }, [achievementRules, trophyRules, editingAchievementRuleId, editingTrophyRuleId]);
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
+
     return rows.filter((u) => {
       const username = safeStr((u as any).username).toLowerCase();
       const name = safeStr((u as any).employee_name || (u as any).name || username).toLowerCase();
@@ -188,6 +188,7 @@ export default function SuperAwards() {
   const filteredAchievementRules = useMemo(() => {
     const q = rulesQuery.trim().toLowerCase();
     if (!q) return achievementRules;
+
     return achievementRules.filter((r) => {
       return (
         safeStr((r as any).id).toLowerCase().includes(q) ||
@@ -201,16 +202,15 @@ export default function SuperAwards() {
   const filteredTrophyRules = useMemo(() => {
     const q = rulesQuery.trim().toLowerCase();
     if (!q) return trophyRules;
-    return (
-      trophyRules.filter((r) => {
-        return (
-          safeStr((r as any).id).toLowerCase().includes(q) ||
-          safeStr((r as any).title).toLowerCase().includes(q) ||
-          safeStr((r as any).description).toLowerCase().includes(q) ||
-          safeStr((r as any).tier).toLowerCase().includes(q)
-        );
-      }) || []
-    );
+
+    return trophyRules.filter((r) => {
+      return (
+        safeStr((r as any).id).toLowerCase().includes(q) ||
+        safeStr((r as any).title).toLowerCase().includes(q) ||
+        safeStr((r as any).description).toLowerCase().includes(q) ||
+        safeStr((r as any).tier).toLowerCase().includes(q)
+      );
+    });
   }, [trophyRules, rulesQuery]);
 
   const trophyTierOptions = useMemo(() => {
@@ -238,22 +238,23 @@ export default function SuperAwards() {
   function onAchievementRuleChange(nextId: string) {
     setAchievementId(nextId);
     const rule = achievementRules.find((x) => safeStr((x as any).id) === safeStr(nextId));
-    setAchievementTitle((rule as any)?.title || "");
-    setAchievementDescription((rule as any)?.description || "");
+    setAchievementTitle(safeStr((rule as any)?.title));
+    setAchievementDescription(safeStr((rule as any)?.description));
   }
 
   function onTrophyRuleChange(nextId: string) {
     setTrophyId(nextId);
     const rule = trophyRules.find((x) => safeStr((x as any).id) === safeStr(nextId));
-    setTrophyTitle((rule as any)?.title || "");
-    setTrophyDescription((rule as any)?.description || "");
+    setTrophyTitle(safeStr((rule as any)?.title));
+    setTrophyDescription(safeStr((rule as any)?.description));
     setTrophyTier(safeStr((rule as any)?.tier).toLowerCase());
   }
 
   async function handleAwardAchievement(e: React.FormEvent) {
     e.preventDefault();
+
     if (!selectedUsername || !achievementId) {
-      M.toast({ html: "Select employee and achievement", classes: "red" });
+      M?.toast?.({ html: "Select employee and achievement", classes: "red" });
       return;
     }
 
@@ -266,12 +267,12 @@ export default function SuperAwards() {
         description: safeStr(achievementDescription) || undefined,
       });
 
-      M.toast({ html: "Achievement awarded", classes: "green" });
+      M?.toast?.({ html: "Achievement awarded", classes: "green" });
       setAchievementId("");
       setAchievementTitle("");
       setAchievementDescription("");
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to award achievement", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to award achievement", classes: "red" });
     } finally {
       setSaving(false);
     }
@@ -279,8 +280,9 @@ export default function SuperAwards() {
 
   async function handleAwardTrophy(e: React.FormEvent) {
     e.preventDefault();
+
     if (!selectedUsername || !trophyId) {
-      M.toast({ html: "Select employee and trophy", classes: "red" });
+      M?.toast?.({ html: "Select employee and trophy", classes: "red" });
       return;
     }
 
@@ -294,13 +296,13 @@ export default function SuperAwards() {
         tier: safeStr(trophyTier).toLowerCase() || undefined,
       });
 
-      M.toast({ html: "Trophy awarded", classes: "green" });
+      M?.toast?.({ html: "Trophy awarded", classes: "green" });
       setTrophyId("");
       setTrophyTitle("");
       setTrophyDescription("");
       setTrophyTier("");
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to award trophy", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to award trophy", classes: "red" });
     } finally {
       setSaving(false);
     }
@@ -308,8 +310,9 @@ export default function SuperAwards() {
 
   async function handleWeeklyMvp(e: React.FormEvent) {
     e.preventDefault();
+
     if (!selectedUsername || !mvpWeekStart) {
-      M.toast({ html: "Week start and employee required", classes: "red" });
+      M?.toast?.({ html: "Week start and employee required", classes: "red" });
       return;
     }
 
@@ -322,11 +325,11 @@ export default function SuperAwards() {
         notes: safeStr(mvpNotes) || undefined,
       });
 
-      M.toast({ html: "Weekly MVP assigned", classes: "green" });
+      M?.toast?.({ html: "Weekly MVP assigned", classes: "green" });
       setMvpScore("");
       setMvpNotes("");
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to set weekly MVP", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to set weekly MVP", classes: "red" });
     } finally {
       setSaving(false);
     }
@@ -373,7 +376,7 @@ export default function SuperAwards() {
       !safeStr(achievementRuleForm.metric) ||
       !safeStr(achievementRuleForm.threshold)
     ) {
-      M.toast({ html: "Achievement rule fields are required", classes: "red" });
+      M?.toast?.({ html: "Achievement rule fields are required", classes: "red" });
       return;
     }
 
@@ -389,16 +392,16 @@ export default function SuperAwards() {
 
       if (editingAchievementRuleId) {
         await (api as any).updateAwardAchievementRule(editingAchievementRuleId, payload);
-        M.toast({ html: "Achievement rule updated", classes: "green" });
+        M?.toast?.({ html: "Achievement rule updated", classes: "green" });
       } else {
         await (api as any).createAwardAchievementRule(payload);
-        M.toast({ html: "Achievement rule created", classes: "green" });
+        M?.toast?.({ html: "Achievement rule created", classes: "green" });
       }
 
       resetAchievementRuleEditor();
       await loadRules();
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to save achievement rule", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to save achievement rule", classes: "red" });
     } finally {
       setSavingRule(false);
     }
@@ -412,7 +415,7 @@ export default function SuperAwards() {
       !safeStr(trophyRuleForm.title) ||
       !safeStr(trophyRuleForm.achievementThreshold)
     ) {
-      M.toast({ html: "Trophy rule fields are required", classes: "red" });
+      M?.toast?.({ html: "Trophy rule fields are required", classes: "red" });
       return;
     }
 
@@ -428,16 +431,16 @@ export default function SuperAwards() {
 
       if (editingTrophyRuleId) {
         await (api as any).updateAwardTrophyRule(editingTrophyRuleId, payload);
-        M.toast({ html: "Trophy rule updated", classes: "green" });
+        M?.toast?.({ html: "Trophy rule updated", classes: "green" });
       } else {
         await (api as any).createAwardTrophyRule(payload);
-        M.toast({ html: "Trophy rule created", classes: "green" });
+        M?.toast?.({ html: "Trophy rule created", classes: "green" });
       }
 
       resetTrophyRuleEditor();
       await loadRules();
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to save trophy rule", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to save trophy rule", classes: "red" });
     } finally {
       setSavingRule(false);
     }
@@ -451,11 +454,11 @@ export default function SuperAwards() {
     setSavingRule(true);
     try {
       await (api as any).deleteAwardAchievementRule(id);
-      M.toast({ html: "Achievement rule deleted", classes: "green" });
+      M?.toast?.({ html: "Achievement rule deleted", classes: "green" });
       if (editingAchievementRuleId === id) resetAchievementRuleEditor();
       await loadRules();
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to delete achievement rule", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to delete achievement rule", classes: "red" });
     } finally {
       setSavingRule(false);
     }
@@ -469,11 +472,11 @@ export default function SuperAwards() {
     setSavingRule(true);
     try {
       await (api as any).deleteAwardTrophyRule(id);
-      M.toast({ html: "Trophy rule deleted", classes: "green" });
+      M?.toast?.({ html: "Trophy rule deleted", classes: "green" });
       if (editingTrophyRuleId === id) resetTrophyRuleEditor();
       await loadRules();
     } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to delete trophy rule", classes: "red" });
+      M?.toast?.({ html: err?.message || "Failed to delete trophy rule", classes: "red" });
     } finally {
       setSavingRule(false);
     }
@@ -726,19 +729,26 @@ export default function SuperAwards() {
                 <label className="active">Search employee</label>
               </div>
             </div>
+
             <div className="col s12 m4">
               <div className="input-field" style={{ marginTop: 0 }}>
                 <select
                   className="browser-default"
                   value={selectedUsername}
                   onChange={(e) => setSelectedUsername(e.target.value)}
+                  disabled={loadingUsers}
                 >
-                  <option value="">Select employee</option>
-                  {filteredUsers.map((u) => (
-                    <option key={u.username} value={u.username}>
-                      {safeStr((u as any).employee_name || u.username)} ({u.username})
-                    </option>
-                  ))}
+                  <option value="">
+                    {loadingUsers ? "Loading employees..." : "Select employee"}
+                  </option>
+                  {filteredUsers.map((u) => {
+                    const username = safeStr((u as any).username);
+                    return (
+                      <option key={username} value={username}>
+                        {safeStr((u as any).employee_name || username)} ({username})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
@@ -758,8 +768,8 @@ export default function SuperAwards() {
                     >
                       <option value="">Select achievement rule</option>
                       {achievementRules.map((r) => (
-                        <option key={(r as any).id} value={(r as any).id}>
-                          {(r as any).title} ({(r as any).id})
+                        <option key={safeStr((r as any).id)} value={safeStr((r as any).id)}>
+                          {safeStr((r as any).title)} ({safeStr((r as any).id)})
                         </option>
                       ))}
                     </select>
@@ -802,8 +812,8 @@ export default function SuperAwards() {
                     >
                       <option value="">Select trophy rule</option>
                       {trophyRules.map((r) => (
-                        <option key={(r as any).id} value={(r as any).id}>
-                          {(r as any).title} ({(r as any).id})
+                        <option key={safeStr((r as any).id)} value={safeStr((r as any).id)}>
+                          {safeStr((r as any).title)} ({safeStr((r as any).id)})
                         </option>
                       ))}
                     </select>
@@ -1208,7 +1218,9 @@ export default function SuperAwards() {
                           </div>
 
                           <div className="ruleMeta">
-                            <span className="rulePill">Tier: {formatTierLabel(safeStr((rule as any).tier))}</span>
+                            <span className="rulePill">
+                              Tier: {formatTierLabel(safeStr((rule as any).tier))}
+                            </span>
                             <span className="rulePill">
                               Achievement Threshold: {safeNum((rule as any).achievementThreshold)}
                             </span>
