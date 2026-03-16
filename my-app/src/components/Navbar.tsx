@@ -107,6 +107,7 @@ export default function Navbar() {
       items: [
         { to: "/super", label: "Super Console" },
         { to: "/super/ai", label: "Super AI" },
+        { to: "/super/awards", label: "Awards Console" },
       ],
     }),
     [isSuper]
@@ -752,7 +753,8 @@ export default function Navbar() {
             style={{
               padding: "22px 16px 16px",
               borderBottom: "1px solid rgba(56,189,248,0.10)",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))",
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

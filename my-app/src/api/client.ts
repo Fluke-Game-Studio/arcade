@@ -27,6 +27,45 @@ import type {
   QuestionBank,
 } from "./types";
 
+import type {
+  ApiAwardRuleAchievement,
+  ApiAwardRuleTrophy,
+  ApiMvpRule,
+  AwardAchievementBody,
+  AwardAchievementResponse,
+  AwardTrophyBody,
+  AwardTrophyResponse,
+  SetWeeklyMvpManualBody,
+  SetWeeklyMvpManualResponse,
+  AutoAwardWeeklyMvpBody,
+  AutoAwardWeeklyMvpResponse,
+  GetProgressAdminResponse,
+  GenerateAwardsNarrativeBody,
+  GenerateAwardsNarrativeResponse,
+  CreateAwardAchievementRuleBody,
+  UpdateAwardAchievementRuleBody,
+  DeleteAwardAchievementRuleResponse,
+  CreateAwardTrophyRuleBody,
+  UpdateAwardTrophyRuleBody,
+  DeleteAwardTrophyRuleResponse,
+  GetAllProgressResponse,
+  GetAllProgressSummaryResponse,
+  GetStudioSummaryResponse,
+  GetRecentAwardsResponse,
+} from "./types/gamification";
+
+import type {
+  AnalyticsContributorBreakdownResponse,
+  AnalyticsDashboardResponse,
+  AnalyticsMissingListResponse,
+  AnalyticsProjectBreakdownResponse,
+  AnalyticsQuery,
+  AnalyticsTeamOverviewResponse,
+  AnalyticsUnderReportedResponse,
+  AnalyticsWeeklyComplianceResponse,
+  AnalyticsWeeklySubmissionResponse,
+} from "./types/analytics";
+
 export class ApiClient {
   private token: string | null = null;
 
@@ -71,6 +110,51 @@ export class ApiClient {
       payload?.raw ||
       `HTTP ${status}`
     );
+  }
+
+  private buildAnalyticsQuery(query?: AnalyticsQuery): string {
+    const params = new URLSearchParams();
+
+    if (!query) return "";
+
+    if (query.weekStart) {
+      params.set("weekStart", query.weekStart);
+    } else if (query.weekOf) {
+      params.set("weekOf", query.weekOf);
+    }
+
+    if (query.projectId) params.set("projectId", query.projectId);
+    if (query.department) params.set("department", query.department);
+    if (query.role) params.set("role", query.role);
+
+    if (typeof query.minHours === "number" && Number.isFinite(query.minHours)) {
+      params.set("minHours", String(query.minHours));
+    }
+
+    if (typeof query.includeInactive === "boolean") {
+      params.set("includeInactive", String(query.includeInactive));
+    }
+
+    if (typeof query.includeRows === "boolean") {
+      params.set("includeRows", String(query.includeRows));
+    }
+
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  }
+
+  private async getAnalytics<T>(path: string, query?: AnalyticsQuery): Promise<T> {
+    const r = await fetch(`${API_BASE}${path}${this.buildAnalyticsQuery(query)}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `${path} failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as T;
   }
 
   async login(username: string, password: string): Promise<ApiLoginResponse> {
@@ -148,6 +232,62 @@ export class ApiClient {
     return payload?.ok ? payload : { ok: true };
   }
 
+  async sendAdminGenericEmail(body: {
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    htmlBody: string;
+    textBody?: string;
+    autoCc?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/admin/mail/generic`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `sendAdminGenericEmail failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async sendAdminNewsletter(body: any): Promise<any> {
+    const r = await fetch(`${API_BASE}/admin/mail/newsletter`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `sendAdminNewsletter failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async sendAdminActivityReportReminders(body: any): Promise<any> {
+    const r = await fetch(`${API_BASE}/admin/mail/activity-report-reminders`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `sendAdminActivityReportReminders failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
   async updateUser(body: UpdateUserBody): Promise<{ ok: true }> {
     const r = await fetch(`${API_BASE}/admin/updateUser`, {
       method: "POST",
@@ -203,10 +343,7 @@ export class ApiClient {
     const payload = await this.readJson(r);
     if (!r.ok) {
       throw new Error(
-        `setProjectInactive failed: ${this.extractErrorMessage(
-          payload,
-          r.status
-        )}`
+        `setProjectInactive failed: ${this.extractErrorMessage(payload, r.status)}`
       );
     }
     return payload?.ok ? payload : { ok: true };
@@ -281,10 +418,7 @@ export class ApiClient {
     const payload = await this.readJson(r);
     if (!r.ok) {
       throw new Error(
-        `createWeeklyUpdateUploadUrls failed: ${this.extractErrorMessage(
-          payload,
-          r.status
-        )}`
+        `createWeeklyUpdateUploadUrls failed: ${this.extractErrorMessage(payload, r.status)}`
       );
     }
     return {
@@ -621,6 +755,530 @@ export class ApiClient {
     if (Array.isArray(payload?.items)) return payload.items as ApiJob[];
     return [];
   }
+
+  /* ===================== */
+  /* Awards / Gamification */
+  /* ===================== */
+
+  async getAwardAchievementRules(): Promise<ApiAwardRuleAchievement[]> {
+    const r = await fetch(`${API_BASE}/gamification/rules/achievements`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getAwardAchievementRules failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    if (Array.isArray(payload)) return payload as ApiAwardRuleAchievement[];
+    if (Array.isArray(payload?.items)) return payload.items as ApiAwardRuleAchievement[];
+    return [];
+  }
+
+  async createAwardAchievementRule(
+    body: CreateAwardAchievementRuleBody
+  ): Promise<ApiAwardRuleAchievement> {
+    const r = await fetch(`${API_BASE}/gamification/rules/achievements`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `createAwardAchievementRule failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as ApiAwardRuleAchievement;
+  }
+
+  async updateAwardAchievementRule(
+    ruleId: string,
+    body: UpdateAwardAchievementRuleBody
+  ): Promise<ApiAwardRuleAchievement> {
+    const r = await fetch(
+      `${API_BASE}/gamification/rules/achievements/${encodeURIComponent(ruleId)}`,
+      {
+        method: "PUT",
+        headers: this.headers(true),
+        body: JSON.stringify(body),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `updateAwardAchievementRule failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as ApiAwardRuleAchievement;
+  }
+
+  async deleteAwardAchievementRule(
+    ruleId: string
+  ): Promise<DeleteAwardAchievementRuleResponse> {
+    const r = await fetch(
+      `${API_BASE}/gamification/rules/achievements/${encodeURIComponent(ruleId)}`,
+      {
+        method: "DELETE",
+        headers: this.headers(false),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `deleteAwardAchievementRule failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as DeleteAwardAchievementRuleResponse;
+  }
+
+  async getAwardTrophyRules(): Promise<ApiAwardRuleTrophy[]> {
+    const r = await fetch(`${API_BASE}/gamification/rules/trophies`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getAwardTrophyRules failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    if (Array.isArray(payload)) return payload as ApiAwardRuleTrophy[];
+    if (Array.isArray(payload?.items)) return payload.items as ApiAwardRuleTrophy[];
+    return [];
+  }
+
+  async createAwardTrophyRule(
+    body: CreateAwardTrophyRuleBody
+  ): Promise<ApiAwardRuleTrophy> {
+    const r = await fetch(`${API_BASE}/gamification/rules/trophies`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `createAwardTrophyRule failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as ApiAwardRuleTrophy;
+  }
+
+  async updateAwardTrophyRule(
+    ruleId: string,
+    body: UpdateAwardTrophyRuleBody
+  ): Promise<ApiAwardRuleTrophy> {
+    const r = await fetch(
+      `${API_BASE}/gamification/rules/trophies/${encodeURIComponent(ruleId)}`,
+      {
+        method: "PUT",
+        headers: this.headers(true),
+        body: JSON.stringify(body),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `updateAwardTrophyRule failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as ApiAwardRuleTrophy;
+  }
+
+  async deleteAwardTrophyRule(
+    ruleId: string
+  ): Promise<DeleteAwardTrophyRuleResponse> {
+    const r = await fetch(
+      `${API_BASE}/gamification/rules/trophies/${encodeURIComponent(ruleId)}`,
+      {
+        method: "DELETE",
+        headers: this.headers(false),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `deleteAwardTrophyRule failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as DeleteAwardTrophyRuleResponse;
+  }
+
+  async getMvpRule(): Promise<ApiMvpRule> {
+    const r = await fetch(`${API_BASE}/gamification/rules/mvp`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getMvpRule failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as ApiMvpRule;
+  }
+
+  async getProgressAdmin(username: string): Promise<GetProgressAdminResponse> {
+    const r = await fetch(
+      `${API_BASE}/awards/progress?username=${encodeURIComponent(username)}`,
+      {
+        method: "GET",
+        headers: this.headers(false),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getProgressAdmin failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as GetProgressAdminResponse;
+  }
+
+  async getAllProgress(): Promise<GetAllProgressResponse> {
+    const r = await fetch(`${API_BASE}/awards/progress/all`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getAllProgress failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+
+    return {
+      ...payload,
+      items: Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload)
+        ? payload
+        : [],
+      count:
+        Number(payload?.count) ||
+        (Array.isArray(payload?.items) ? payload.items.length : Array.isArray(payload) ? payload.length : 0),
+    } as GetAllProgressResponse;
+  }
+
+  async getAllProgressSummary(): Promise<GetAllProgressSummaryResponse> {
+    const r = await fetch(`${API_BASE}/awards/progress/summary/all`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getAllProgressSummary failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+
+    return {
+      ...payload,
+      items: Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload)
+        ? payload
+        : [],
+      count:
+        Number(payload?.count) ||
+        (Array.isArray(payload?.items) ? payload.items.length : Array.isArray(payload) ? payload.length : 0),
+    } as GetAllProgressSummaryResponse;
+  }
+
+  async getStudioSummary(weekStart?: string): Promise<GetStudioSummaryResponse> {
+    const qs = new URLSearchParams();
+    if (weekStart) qs.set("weekStart", weekStart);
+
+    const r = await fetch(
+      `${API_BASE}/awards/summary/studio${qs.toString() ? `?${qs.toString()}` : ""}`,
+      {
+        method: "GET",
+        headers: this.headers(false),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getStudioSummary failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as GetStudioSummaryResponse;
+  }
+
+  async getRecentAwards(params?: {
+    limit?: number;
+    weekStart?: string;
+  }): Promise<GetRecentAwardsResponse> {
+    const qs = new URLSearchParams();
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
+    }
+    if (params?.weekStart) qs.set("weekStart", params.weekStart);
+
+    const r = await fetch(
+      `${API_BASE}/awards/recent${qs.toString() ? `?${qs.toString()}` : ""}`,
+      {
+        method: "GET",
+        headers: this.headers(false),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getRecentAwards failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+
+    return {
+      ...payload,
+      items: Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload)
+        ? payload
+        : [],
+      count:
+        Number(payload?.count) ||
+        (Array.isArray(payload?.items) ? payload.items.length : Array.isArray(payload) ? payload.length : 0),
+      limit: Number(payload?.limit) || (typeof params?.limit === "number" ? params.limit : undefined),
+      weekStart: payload?.weekStart || params?.weekStart,
+    } as GetRecentAwardsResponse;
+  }
+
+  async awardAchievement(
+    body: AwardAchievementBody
+  ): Promise<AwardAchievementResponse> {
+    const r = await fetch(`${API_BASE}/awards/achievement`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `awardAchievement failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as AwardAchievementResponse;
+  }
+
+  async awardTrophy(body: AwardTrophyBody): Promise<AwardTrophyResponse> {
+    const r = await fetch(`${API_BASE}/awards/trophy`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `awardTrophy failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as AwardTrophyResponse;
+  }
+
+  async setWeeklyMvpManual(
+    body: SetWeeklyMvpManualBody
+  ): Promise<SetWeeklyMvpManualResponse> {
+    const r = await fetch(`${API_BASE}/awards/weekly-mvp`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `setWeeklyMvpManual failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as SetWeeklyMvpManualResponse;
+  }
+
+  async autoAwardWeeklyMvp(
+    body: AutoAwardWeeklyMvpBody
+  ): Promise<AutoAwardWeeklyMvpResponse> {
+    const r = await fetch(`${API_BASE}/awards/weekly-mvp/auto`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `autoAwardWeeklyMvp failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as AutoAwardWeeklyMvpResponse;
+  }
+
+  async generateAwardsNarrative(
+    body: GenerateAwardsNarrativeBody
+  ): Promise<GenerateAwardsNarrativeResponse> {
+    const finalBody = {
+      question:
+        body.question ||
+        "Create a polished narrative about how the studio functions, the culture of the team, and the awards and recognition the team has been earning.",
+      username: body.username,
+      weekStart: body.weekStart,
+      projectId: body.projectId,
+      provider: body.provider,
+      model: body.model,
+      context: "internal",
+    };
+
+    const r = await fetch(`${API_BASE}/ai/chat-sync/internal`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(finalBody),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `generateAwardsNarrative failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as GenerateAwardsNarrativeResponse;
+  }
+
+  async chatOverUpdates(body: {
+    question: string;
+    username?: string;
+    weekStart?: string;
+    projectId?: string;
+    provider?: "auto" | "openai" | "ollama";
+    model?: string;
+    context?: string;
+  }): Promise<GenerateAwardsNarrativeResponse> {
+    const r = await fetch(`${API_BASE}/ai/chat-sync/${body.context || "internal"}`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `chatOverUpdates failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as GenerateAwardsNarrativeResponse;
+  }
+
+  /* ===================== */
+  /* Analytics             */
+  /* ===================== */
+
+  async getAnalyticsDashboard(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsDashboardResponse> {
+    return this.getAnalytics<AnalyticsDashboardResponse>(
+      "/analytics/dashboard",
+      query
+    );
+  }
+
+  async getAnalyticsWeeklyCompliance(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsWeeklyComplianceResponse> {
+    return this.getAnalytics<AnalyticsWeeklyComplianceResponse>(
+      "/analytics/weekly-compliance",
+      query
+    );
+  }
+
+  async getAnalyticsSubmissionStatus(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsWeeklySubmissionResponse> {
+    return this.getAnalytics<AnalyticsWeeklySubmissionResponse>(
+      "/analytics/submission-status",
+      query
+    );
+  }
+
+  async getAnalyticsMissingUpdates(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsMissingListResponse> {
+    return this.getAnalytics<AnalyticsMissingListResponse>(
+      "/analytics/missing-updates",
+      query
+    );
+  }
+
+  async getAnalyticsMissingTimesheets(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsMissingListResponse> {
+    return this.getAnalytics<AnalyticsMissingListResponse>(
+      "/analytics/missing-timesheets",
+      query
+    );
+  }
+
+  async getAnalyticsUnderReportedHours(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsUnderReportedResponse> {
+    return this.getAnalytics<AnalyticsUnderReportedResponse>(
+      "/analytics/under-reported-hours",
+      query
+    );
+  }
+
+  async getAnalyticsNoActivity(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsMissingListResponse> {
+    return this.getAnalytics<AnalyticsMissingListResponse>(
+      "/analytics/no-activity",
+      query
+    );
+  }
+
+  async getAnalyticsProjectBreakdown(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsProjectBreakdownResponse> {
+    return this.getAnalytics<AnalyticsProjectBreakdownResponse>(
+      "/analytics/project-breakdown",
+      query
+    );
+  }
+
+  async getAnalyticsContributorBreakdown(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsContributorBreakdownResponse> {
+    return this.getAnalytics<AnalyticsContributorBreakdownResponse>(
+      "/analytics/contributor-breakdown",
+      query
+    );
+  }
+
+  async getAnalyticsTeamOverview(
+    query?: AnalyticsQuery
+  ): Promise<AnalyticsTeamOverviewResponse> {
+    return this.getAnalytics<AnalyticsTeamOverviewResponse>(
+      "/analytics/team-overview",
+      query
+    );
+  }
+
+  analytics = {
+    getDashboard: (query?: AnalyticsQuery) => this.getAnalyticsDashboard(query),
+    getWeeklyCompliance: (query?: AnalyticsQuery) =>
+      this.getAnalyticsWeeklyCompliance(query),
+    getSubmissionStatus: (query?: AnalyticsQuery) =>
+      this.getAnalyticsSubmissionStatus(query),
+    getMissingUpdates: (query?: AnalyticsQuery) =>
+      this.getAnalyticsMissingUpdates(query),
+    getMissingTimesheets: (query?: AnalyticsQuery) =>
+      this.getAnalyticsMissingTimesheets(query),
+    getUnderReportedHours: (query?: AnalyticsQuery) =>
+      this.getAnalyticsUnderReportedHours(query),
+    getNoActivity: (query?: AnalyticsQuery) =>
+      this.getAnalyticsNoActivity(query),
+    getProjectBreakdown: (query?: AnalyticsQuery) =>
+      this.getAnalyticsProjectBreakdown(query),
+    getContributorBreakdown: (query?: AnalyticsQuery) =>
+      this.getAnalyticsContributorBreakdown(query),
+    getTeamOverview: (query?: AnalyticsQuery) =>
+      this.getAnalyticsTeamOverview(query),
+  };
 }
 
 export const api = new ApiClient();
