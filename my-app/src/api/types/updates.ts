@@ -91,11 +91,17 @@ export type ApiUpdatesResponse = {
   summaries: ApiUpdateSummary[];
   count: number;
   summaryCount: number;
+  limit?: number;
+  cursor?: string;
+  nextCursor?: string | null;
 };
 
 export type ApiMyUpdatesResponse = {
   summaries: ApiUpdateSummary[];
   summaryCount: number;
+  limit?: number;
+  cursor?: string;
+  nextCursor?: string | null;
 };
 
 export type SubmitUpdateBody = {

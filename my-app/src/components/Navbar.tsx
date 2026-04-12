@@ -108,6 +108,10 @@ export default function Navbar() {
         { to: "/super", label: "Super Console" },
         { to: "/super/ai", label: "Super AI" },
         { to: "/super/awards", label: "Awards Console" },
+        { to: "/admin/endpoints", label: "Endpoint Access" },
+        { to: "/super/ai-character-training", label: "AI Character Training" },
+        { to: "/super/talking-head-page", label: "Talking Head Training" },
+        { to: "/super/manager-agent-builder", label: "Manager Agent Builder" },
       ],
     }),
     [isSuper]

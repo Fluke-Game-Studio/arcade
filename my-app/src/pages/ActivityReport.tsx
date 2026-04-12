@@ -26,6 +26,189 @@ function norm(v: any) {
   return safeStr(v).toLowerCase();
 }
 
+function mondayISO(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const day = x.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  x.setDate(x.getDate() + diff);
+  const yyyy = x.getFullYear();
+  const mm = String(x.getMonth() + 1).padStart(2, "0");
+  const dd = String(x.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function parseLocalISO(iso: string) {
+  const raw = safeStr(iso);
+  if (!raw) return null;
+  const [y, m, d] = raw.split("-").map((part) => Number(part));
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function toLocalISODate(date: Date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatWeekLabel(weekStart: string) {
+  const start = parseLocalISO(weekStart);
+  if (!start) return weekStart || "No week selected";
+  const end = addDays(start, 6);
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const startLabel = start.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: sameMonth ? undefined : "numeric",
+  });
+  const endLabel = end.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return `${startLabel} - ${endLabel}`;
+}
+
+function toMaterializeEventDate(dateIso: string) {
+  const date = parseLocalISO(dateIso);
+  return date ? date.toDateString() : "";
+}
+
+function restorePageScroll() {
+  try {
+    document.body.style.overflow = "";
+    document.documentElement.style.overflow = "";
+  } catch {}
+}
+
+function decorateMaterializeCalendar(instance: any, highlightedDateSet: Set<string>) {
+  const root = instance?.calendarEl as HTMLElement | null;
+  if (!root) return;
+
+  const rows = Array.from(root.querySelectorAll("tbody tr"));
+
+  rows.forEach((row) => {
+    row.classList.remove("activity-week-row", "activity-week-row--submitted", "activity-week-row--selected");
+
+    const cells = Array.from(row.querySelectorAll("td"));
+
+    cells.forEach((cell) => {
+      cell.classList.remove("activity-submit-day");
+      const button = cell.querySelector<HTMLButtonElement>(".datepicker-day-button");
+      if (!button) return;
+
+      const year = Number(button.getAttribute("data-year"));
+      const month = Number(button.getAttribute("data-month"));
+      const day = Number(button.getAttribute("data-day"));
+      if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return;
+
+      const date = new Date(year, month, day);
+      const dateIso = toLocalISODate(date);
+      if (highlightedDateSet.has(dateIso)) {
+        cell.classList.add("activity-submit-day");
+      }
+    });
+  });
+}
+
+function normalizeAttachments(value: any) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((a: any, idx: number) => {
+      const name = safeStr(a?.name || a?.fileName || a?.title || `Attachment ${idx + 1}`);
+      const publicUrl = safeStr(a?.publicUrl || a?.url);
+      const youtubeUrl = safeStr(a?.youtubeUrl);
+      const youtubeVideoId = safeStr(a?.youtubeVideoId);
+      const s3Key = safeStr(a?.s3Key);
+      if (!name && !publicUrl && !youtubeUrl && !youtubeVideoId && !s3Key) return null;
+      return {
+        name: name || `Attachment ${idx + 1}`,
+        mimeType: safeStr(a?.mimeType),
+        size: safeNum(a?.size),
+        s3Key,
+        publicUrl,
+        youtubeUrl,
+        youtubeVideoId,
+      };
+    })
+    .filter(Boolean) as Array<{
+    name: string;
+    mimeType?: string;
+    size?: number;
+    s3Key?: string;
+    publicUrl?: string;
+    youtubeUrl?: string;
+    youtubeVideoId?: string;
+  }>;
+}
+
+function attachmentHref(a: {
+  publicUrl?: string;
+  youtubeUrl?: string;
+  youtubeVideoId?: string;
+}) {
+  if (safeStr(a?.publicUrl)) return safeStr(a?.publicUrl);
+  if (safeStr(a?.youtubeUrl)) return safeStr(a?.youtubeUrl);
+  if (safeStr(a?.youtubeVideoId)) return `https://www.youtube.com/watch?v=${safeStr(a?.youtubeVideoId)}`;
+  return "";
+}
+
+function isLikelyUnsignedPrivateS3Url(url: string) {
+  const u = safeStr(url);
+  if (!u) return false;
+  try {
+    const parsed = new URL(u);
+    const host = parsed.hostname.toLowerCase();
+    const looksLikeS3 =
+      host.endsWith(".s3.amazonaws.com") ||
+      host.includes(".s3.") ||
+      host === "s3.amazonaws.com";
+    if (!looksLikeS3) return false;
+    const hasSignature =
+      parsed.searchParams.has("X-Amz-Signature") ||
+      parsed.searchParams.has("x-amz-signature");
+    return !hasSignature;
+  } catch {
+    return false;
+  }
+}
+
+function attachmentPreviewKind(a: {
+  mimeType?: string;
+  publicUrl?: string;
+  youtubeUrl?: string;
+  youtubeVideoId?: string;
+}) {
+  const mime = safeStr(a?.mimeType).toLowerCase();
+  const href = attachmentHref(a).toLowerCase();
+  if (safeStr(a?.youtubeUrl) || safeStr(a?.youtubeVideoId)) return "youtube";
+  if (mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(href)) return "image";
+  if (mime.startsWith("video/") || /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(href)) return "video";
+  if (mime.includes("pdf") || /\.pdf(\?|$)/i.test(href)) return "pdf";
+  return "none";
+}
+
+function activityYoutubeEmbed(a: { youtubeUrl?: string; youtubeVideoId?: string }) {
+  const id = safeStr(a?.youtubeVideoId);
+  if (id) return `https://www.youtube.com/embed/${id}`;
+  const raw = safeStr(a?.youtubeUrl);
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    const v = safeStr(u.searchParams.get("v"));
+    if (v) return `https://www.youtube.com/embed/${v}`;
+  } catch {}
+  return "";
+}
+
 function toast(html: string, classes = "") {
   try {
     M?.toast?.({ html, classes });
@@ -731,15 +914,162 @@ function DetailList({
   );
 }
 
+function SubmissionWeekCalendar({
+  highlightedDates,
+  selectedWeek,
+  visibleMonth,
+  onSelectDate,
+  onRequestClose,
+}: {
+  highlightedDates: string[];
+  selectedWeek: string;
+  visibleMonth: Date;
+  onSelectDate: (dateIso: string) => void;
+  onRequestClose: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const instanceRef = useRef<any>(null);
+  const highlightedDateSet = useMemo(
+    () => new Set(highlightedDates.map(safeStr).filter(Boolean)),
+    [highlightedDates]
+  );
+  const highlightedDateSetRef = useRef(highlightedDateSet);
+  const onSelectDateRef = useRef(onSelectDate);
+  const onRequestCloseRef = useRef(onRequestClose);
+
+  useEffect(() => {
+    highlightedDateSetRef.current = highlightedDateSet;
+    onSelectDateRef.current = onSelectDate;
+    onRequestCloseRef.current = onRequestClose;
+  }, [highlightedDateSet, onRequestClose, onSelectDate]);
+
+  useEffect(() => {
+    if (!inputRef.current || typeof M === "undefined" || !M?.Datepicker) return;
+
+    const initialDate = parseLocalISO(selectedWeek) || visibleMonth || new Date();
+    const instance = M.Datepicker.init(inputRef.current, {
+      autoClose: true,
+      format: "yyyy-mm-dd",
+      defaultDate: initialDate,
+      setDefaultDate: true,
+      firstDay: 1,
+      showDaysInNextAndPreviousMonths: true,
+      yearRange: [2024, 2030],
+      events: Array.from(highlightedDateSetRef.current).map(toMaterializeEventDate).filter(Boolean),
+      onDraw(instance: any) {
+        decorateMaterializeCalendar(instance, highlightedDateSetRef.current);
+      },
+      onOpen() {
+        decorateMaterializeCalendar(this, highlightedDateSetRef.current);
+      },
+      onClose() {
+        restorePageScroll();
+        onRequestCloseRef.current();
+      },
+      onSelect(selectedDate: Date) {
+        onSelectDateRef.current(toLocalISODate(selectedDate));
+      },
+    });
+
+    instanceRef.current = instance;
+    try {
+      instance.gotoDate(initialDate);
+      instance.open();
+    } catch {}
+
+    return () => {
+      try {
+        restorePageScroll();
+        instanceRef.current?.destroy?.();
+      } catch {}
+      restorePageScroll();
+      instanceRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance) return;
+
+    const nextDate = parseLocalISO(selectedWeek) || visibleMonth || new Date();
+    instance.options.events = Array.from(highlightedDateSet).map(toMaterializeEventDate).filter(Boolean);
+    try {
+      instance.gotoDate(nextDate);
+      instance.draw?.(true);
+      decorateMaterializeCalendar(instance, highlightedDateSet);
+    } catch {}
+  }, [highlightedDateSet, selectedWeek, visibleMonth]);
+
+  return (
+    <>
+      <style>{`
+        .activity-materialize-anchor {
+          position: fixed;
+          width: 0;
+          height: 0;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .datepicker-modal {
+          border-radius: 22px;
+          overflow: hidden;
+        }
+        .datepicker-modal .modal-content {
+          overflow: visible;
+        }
+        .datepicker-modal .datepicker-date-display {
+          background: linear-gradient(160deg, #0f766e 0%, #14b8a6 100%);
+        }
+        .datepicker-modal .datepicker-table td.has-event button.datepicker-day-button::after {
+          display: none;
+        }
+        .datepicker-modal .datepicker-table td.activity-submit-day button.datepicker-day-button {
+          position: relative;
+          color: #059669;
+          font-weight: 900;
+        }
+        .datepicker-modal .datepicker-table td.activity-submit-day button.datepicker-day-button::after {
+          content: "";
+          position: absolute;
+          bottom: 5px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 6px;
+          height: 6px;
+          border-radius: 999px;
+          background: #10b981;
+          box-shadow: 0 0 0 3px rgba(16,185,129,.10);
+        }
+        .datepicker-modal .datepicker-table td.activity-submit-day.is-selected button.datepicker-day-button {
+          color: #ffffff;
+        }
+        .datepicker-modal .datepicker-table td.activity-submit-day.is-selected button.datepicker-day-button::after {
+          background: #ffffff;
+          box-shadow: 0 0 0 3px rgba(255,255,255,.16);
+        }
+      `}</style>
+      <input ref={inputRef} className="activity-materialize-anchor" readOnly value={selectedWeek} onChange={() => {}} />
+    </>
+  );
+}
+
 export default function ActivityReport() {
-  const [weekOptions, setWeekOptions] = useState<string[]>([]);
   const [summaries, setSummaries] = useState<ApiUpdateSummary[]>([]);
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [error, setError] = useState("");
-  const [selectedWeek, setSelectedWeek] = useState("");
+  const [highlightedDates, setHighlightedDates] = useState<string[]>([]);
+  const [selectedWeek, setSelectedWeek] = useState<string>("");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
+  const [pageSize, setPageSize] = useState(25);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
   const [hoveredHoursKey, setHoveredHoursKey] = useState<string | null>(null);
+  const [detailAttachmentPreviewKey, setDetailAttachmentPreviewKey] = useState("");
+  const [detailSignedAttachmentUrls, setDetailSignedAttachmentUrls] = useState<Record<string, string>>({});
 
   const modalRef = useRef<HTMLDivElement | null>(null);
   const detailModalRef = useRef<HTMLDivElement | null>(null);
@@ -769,76 +1099,136 @@ export default function ActivityReport() {
 
   useEffect(() => {
     let mounted = true;
-
     (async () => {
       try {
-        setLoading(true);
-        setError("");
-
-        const [updatesResp, usersResp]: [ApiUpdatesResponse, ApiUser[]] = await Promise.all([
-          api.getUpdates(),
-          typeof (api as any).getUsers === "function"
-            ? (api as any).getUsers()
-            : Promise.resolve([]),
-        ]);
-
+        if (typeof (api as any).getUsers !== "function") return;
+        const usersResp: ApiUser[] = await (api as any).getUsers();
         if (!mounted) return;
-
-        const normalized = Array.isArray(updatesResp?.summaries) ? updatesResp.summaries : [];
-        const weeks = Array.from(
-          new Set(normalized.map((x) => safeStr((x as any).weekStart)).filter(Boolean))
-        ).sort((a, b) => String(b).localeCompare(String(a)));
-
-        setWeekOptions(weeks);
         setUsers(Array.isArray(usersResp) ? usersResp : []);
-        setSelectedWeek((prev) => prev || weeks[0] || "");
-      } catch (err: any) {
+      } catch {
         if (!mounted) return;
-        setError(err?.message || "Failed to load activity report.");
-      } finally {
-        if (mounted) setLoading(false);
       }
     })();
-
     return () => {
       mounted = false;
     };
   }, []);
 
   useEffect(() => {
-    if (!selectedWeek) {
-      setSummaries([]);
-      return;
-    }
-
-    let mounted = true;
+    let cancelled = false;
 
     (async () => {
       try {
-        setLoading(true);
-        setError("");
+        const foundWeeks = new Set<string>();
+        const foundDates = new Set<string>();
+        let cursor: string | undefined;
+        let pages = 0;
 
-        const resp: ApiUpdatesResponse = await api.getUpdates({
-          weekStart: selectedWeek,
-        });
+        do {
+          const resp: ApiUpdatesResponse = await api.getUpdates({
+            limit: 200,
+            cursor,
+          });
 
-        if (!mounted) return;
+          (Array.isArray(resp?.summaries) ? resp.summaries : []).forEach((row) => {
+            const week = safeStr((row as any)?.weekStart);
+            if (week) foundWeeks.add(week);
+          });
 
-        const normalized = Array.isArray(resp?.summaries) ? resp.summaries : [];
-        setSummaries(normalized);
+          (Array.isArray(resp?.items) ? resp.items : []).forEach((row) => {
+            const week = safeStr((row as any)?.weekStart);
+            if (week) foundWeeks.add(week);
+            const createdAt = safeStr((row as any)?.createdAt);
+            if (createdAt) {
+              const createdDate = new Date(createdAt);
+              if (!Number.isNaN(createdDate.getTime())) {
+                foundDates.add(toLocalISODate(createdDate));
+              }
+            }
+          });
+
+          cursor = resp?.nextCursor || undefined;
+          pages += 1;
+        } while (cursor && pages < 100);
+
+        if (cancelled) return;
+
+        const sortedWeeks = Array.from(foundWeeks).sort((a, b) => b.localeCompare(a));
+        const sortedDates = Array.from(foundDates).sort((a, b) => b.localeCompare(a));
+        setHighlightedDates(sortedDates);
+
+        const preferredWeek = sortedWeeks[0] || "";
+
+        if (preferredWeek) {
+          setSelectedWeek(preferredWeek);
+          const preferredDate = parseLocalISO(preferredWeek);
+          if (preferredDate) {
+            setCalendarMonth(new Date(preferredDate.getFullYear(), preferredDate.getMonth(), 1));
+          }
+        } else {
+          setSelectedWeek("");
+        }
       } catch (err: any) {
-        if (!mounted) return;
-        setError(err?.message || "Failed to load week data.");
-        setSummaries([]);
-      } finally {
-        if (mounted) setLoading(false);
+        if (cancelled) return;
+        setError((prev) => prev || err?.message || "Failed to load submission dates.");
       }
     })();
 
     return () => {
-      mounted = false;
+      cancelled = true;
     };
+  }, [api]);
+
+  useEffect(() => {
+    const picked = parseLocalISO(selectedWeek);
+    if (!picked) return;
+    setCalendarMonth((prev) => {
+      if (
+        prev.getFullYear() === picked.getFullYear() &&
+        prev.getMonth() === picked.getMonth()
+      ) {
+        return prev;
+      }
+      return new Date(picked.getFullYear(), picked.getMonth(), 1);
+    });
   }, [selectedWeek]);
+
+  async function loadWeekPage(cursor?: string | null, resetPaging?: boolean) {
+    if (!selectedWeek) {
+      setSummaries([]);
+      setNextCursor(null);
+      return;
+    }
+    try {
+      setLoading(true);
+      setError("");
+
+      const resp: ApiUpdatesResponse = await api.getUpdates({
+        weekStart: selectedWeek,
+        limit: pageSize,
+        cursor: cursor || undefined,
+      });
+
+      const normalized = Array.isArray(resp?.summaries) ? resp.summaries : [];
+      setSummaries(normalized);
+      setNextCursor(typeof resp?.nextCursor === "string" ? resp.nextCursor : null);
+      if (resetPaging) {
+        setCursorStack([]);
+        setPageIndex(0);
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to load week data.");
+      setSummaries([]);
+      setNextCursor(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadWeekPage(null, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWeek, pageSize]);
 
   const rows = useMemo(() => {
     return [...summaries].sort((a, b) => {
@@ -943,6 +1333,7 @@ export default function ActivityReport() {
     };
   }, [rows]);
 
+
   const contributorSeries = useMemo(() => {
     return rows
       .map((r) => ({
@@ -1002,6 +1393,8 @@ export default function ActivityReport() {
 
   function openDetailsModal(row: ApiUpdateSummary) {
     setSelectedDetailRow(row);
+    setDetailAttachmentPreviewKey("");
+    setDetailSignedAttachmentUrls({});
     if (!detailModalRef.current || typeof M === "undefined") return;
     const inst =
       M.Modal.getInstance(detailModalRef.current) || M.Modal.init(detailModalRef.current);
@@ -1009,6 +1402,8 @@ export default function ActivityReport() {
   }
 
   function closeDetailsModal() {
+    setDetailAttachmentPreviewKey("");
+    setDetailSignedAttachmentUrls({});
     if (!detailModalRef.current || typeof M === "undefined") return;
     const inst =
       M.Modal.getInstance(detailModalRef.current) || M.Modal.init(detailModalRef.current);
@@ -1067,6 +1462,47 @@ export default function ActivityReport() {
       : [];
     return [...ts].sort((a: any, b: any) => String(a?.date || "").localeCompare(String(b?.date || "")));
   }, [selectedDetailRow]);
+
+  const selectedDetailAttachments = useMemo(() => {
+    if (!selectedDetailRow) return [];
+    return normalizeAttachments(
+      (selectedDetailRow as any).attachments ||
+        (selectedDetailRow as any).uploadedFiles ||
+        (selectedDetailRow as any).files
+    );
+  }, [selectedDetailRow]);
+
+  function detailAttachmentKey(a: any, idx: number) {
+    const rowUser = safeStr((selectedDetailRow as any)?.userId || (selectedDetailRow as any)?.userName);
+    const rowWeek = safeStr((selectedDetailRow as any)?.weekStart);
+    return `${rowUser}::${rowWeek}::${safeStr(a?.s3Key) || safeStr(a?.name) || idx}`;
+  }
+
+  async function ensureDetailAttachmentUrl(a: any, idx: number): Promise<string> {
+    const key = detailAttachmentKey(a, idx);
+    const existing = safeStr(detailSignedAttachmentUrls[key]);
+    if (existing) return existing;
+
+    const raw = attachmentHref(a);
+    if (raw && !isLikelyUnsignedPrivateS3Url(raw)) return raw;
+
+    const s3Key = safeStr(a?.s3Key);
+    if (!s3Key) return "";
+
+    try {
+      const resp = await (api as any).getWeeklyUpdateAttachmentUrl?.({
+        s3Key,
+        userId: safeStr((selectedDetailRow as any)?.userId),
+        weekStart: safeStr((selectedDetailRow as any)?.weekStart),
+      });
+      const url = safeStr(resp?.url);
+      if (!url) return "";
+      setDetailSignedAttachmentUrls((prev) => ({ ...prev, [key]: url }));
+      return url;
+    } catch {
+      return "";
+    }
+  }
 
   async function sendMissingReminderEmail() {
     if (!selectedWeek) {
@@ -1368,32 +1804,17 @@ export default function ActivityReport() {
 
           <div className="row" style={{ marginBottom: 0, marginTop: 14 }}>
             <div className="col s12 m6 l4">
-              <div className="input-field" style={{ marginTop: 0 }}>
-                <select
-                  className="browser-default"
-                  value={selectedWeek}
-                  onChange={(e) => setSelectedWeek(e.target.value)}
+              <div
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid rgba(148,163,184,.16)",
+                  background: "linear-gradient(180deg,#ffffff 0%,#f8fafc 100%)",
+                  padding: 14,
+                }}
+              >
+                <div
                   style={{
-                    borderRadius: 14,
-                    border: "1px solid rgba(148,163,184,.25)",
-                    background: "#fff",
-                    padding: "10px 12px",
-                    height: 44,
-                  }}
-                >
-                  <option value="">Select week</option>
-                  {weekOptions.map((w) => (
-                    <option key={w} value={w}>
-                      {w}
-                    </option>
-                  ))}
-                </select>
-                <label
-                  className="active"
-                  style={{
-                    display: "block",
-                    position: "static",
-                    marginBottom: 6,
+                    marginBottom: 8,
                     color: "#475569",
                     fontWeight: 800,
                     fontSize: 12,
@@ -1401,8 +1822,39 @@ export default function ActivityReport() {
                     textTransform: "uppercase",
                   }}
                 >
-                  Week (Monday)
-                </label>
+                  Activity Week
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
+                  {selectedWeek ? formatWeekLabel(selectedWeek) : "No week selected"}
+                </div>
+                <div style={{ marginTop: 4, color: "#64748b", fontSize: 13, fontWeight: 700 }}>
+                  {selectedWeek || "Choose any highlighted date from the calendar."}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                  <button
+                    type="button"
+                    className="btn waves-effect waves-light"
+                    onClick={() => setCalendarOpen((open) => !open)}
+                    style={{ borderRadius: 12, textTransform: "none", fontWeight: 900 }}
+                  >
+                    <i className="material-icons left">calendar_month</i>
+                    {calendarOpen ? "Hide Calendar" : "Open Calendar"}
+                  </button>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      borderRadius: 999,
+                      padding: "8px 12px",
+                      background: "rgba(34,197,94,.10)",
+                      color: "#166534",
+                      fontSize: 12,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {highlightedDates.length} submit day{highlightedDates.length === 1 ? "" : "s"} found
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1453,6 +1905,87 @@ export default function ActivityReport() {
                   Review Missing + Send Mail
                 </button>
               </div>
+            </div>
+          </div>
+
+          {calendarOpen ? (
+            <div style={{ marginTop: 14 }}>
+              <SubmissionWeekCalendar
+                highlightedDates={highlightedDates}
+                selectedWeek={selectedWeek}
+                visibleMonth={calendarMonth}
+                onSelectDate={(dateIso) => {
+                  const picked = parseLocalISO(dateIso) || new Date(dateIso);
+                  setSelectedWeek(mondayISO(picked));
+                  setCalendarMonth(new Date(picked.getFullYear(), picked.getMonth(), 1));
+                  setCalendarOpen(false);
+                }}
+                onRequestClose={() => setCalendarOpen(false)}
+              />
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 10,
+              marginTop: 8,
+            }}
+          >
+            <div className="grey-text" style={{ fontWeight: 800, fontSize: 12 }}>
+              Page {pageIndex + 1} • Showing {rows.length} summaries (paginated)
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <select
+                className="browser-default"
+                value={String(pageSize)}
+                onChange={(e) => setPageSize(Number(e.target.value) || 50)}
+                style={{
+                  height: 34,
+                  borderRadius: 10,
+                  border: "1px solid rgba(148,163,184,.25)",
+                  padding: "2px 8px",
+                }}
+              >
+                {[25, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n}/page
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                className={`btn-small grey darken-2 ${pageIndex === 0 || loading ? "disabled" : ""}`}
+                disabled={pageIndex === 0 || loading}
+                onClick={() => {
+                  const prevCursor = cursorStack[pageIndex - 1] || null;
+                  setPageIndex((p) => Math.max(0, p - 1));
+                  loadWeekPage(prevCursor, false);
+                }}
+              >
+                <i className="material-icons left">chevron_left</i>Prev
+              </button>
+
+              <button
+                type="button"
+                className={`btn-small ${!nextCursor || loading ? "disabled" : ""}`}
+                disabled={!nextCursor || loading}
+                onClick={() => {
+                  const currentCursor = cursorStack[pageIndex] || "";
+                  const newStack = [...cursorStack];
+                  newStack[pageIndex] = currentCursor;
+                  newStack[pageIndex + 1] = nextCursor || "";
+                  setCursorStack(newStack);
+                  setPageIndex((p) => p + 1);
+                  loadWeekPage(nextCursor, false);
+                }}
+              >
+                Next<i className="material-icons right">chevron_right</i>
+              </button>
             </div>
           </div>
         </div>
@@ -1629,7 +2162,7 @@ export default function ActivityReport() {
                 >
                   <thead>
                     <tr style={{ background: "#f8fafc" }}>
-                      {["Week", "Employee", "Entries", "Accomplishments", "Blockers", "Next", "Hours"].map(
+                      {["Week", "Employee", "Entries", "Accomplishments", "Blockers", "Next", "Attachments", "Hours"].map(
                         (h) => (
                           <th
                             key={h}
@@ -1655,7 +2188,7 @@ export default function ActivityReport() {
                   <tbody>
                     {rows.length === 0 && (
                       <tr>
-                        <td colSpan={7} style={{ padding: 24, color: "#64748b" }}>
+                        <td colSpan={8} style={{ padding: 24, color: "#64748b" }}>
                           No data
                         </td>
                       </tr>
@@ -1776,6 +2309,33 @@ export default function ActivityReport() {
                               count={Array.isArray((r as any).next) ? (r as any).next.length : 0}
                               tone="green"
                             />
+                          </td>
+
+                          <td
+                            style={{
+                              padding: "16px 14px",
+                              borderBottom: "1px solid rgba(148,163,184,.10)",
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                minWidth: 40,
+                                justifyContent: "center",
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                background: "rgba(59,130,246,.10)",
+                                color: "#1d4ed8",
+                                fontWeight: 900,
+                              }}
+                              title="Attachments"
+                            >
+                              {normalizeAttachments(
+                                (r as any).attachments ||
+                                  (r as any).uploadedFiles ||
+                                  (r as any).files
+                              ).length}
+                            </span>
                           </td>
 
                           <td
@@ -1933,6 +2493,13 @@ export default function ActivityReport() {
                     tint="rgba(34,197,94,.12)"
                     color="#166534"
                   />
+                  <MetricChip
+                    icon="attach_file"
+                    label="Attachments"
+                    value={String(selectedDetailAttachments.length)}
+                    tint="rgba(59,130,246,.10)"
+                    color="#1d4ed8"
+                  />
                 </div>
               </div>
 
@@ -2074,6 +2641,184 @@ export default function ActivityReport() {
                   </div>
                 )}
               </div>
+
+              <div
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid rgba(148,163,184,.14)",
+                  background: "linear-gradient(180deg,#ffffff 0%,#fbfdff 100%)",
+                  padding: 14,
+                  marginBottom: 16,
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 10 }}>
+                  Attachments
+                </div>
+
+                {!selectedDetailAttachments.length ? (
+                  safeStr((selectedDetailRow as any)?.driveFolderLink) ? (
+                    <a
+                      href={safeStr((selectedDetailRow as any)?.driveFolderLink)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: 13, fontWeight: 900 }}
+                    >
+                      Open drive folder
+                    </a>
+                  ) : (
+                    <div style={{ fontSize: 13, color: "#64748b", fontWeight: 700 }}>
+                      No attachments found.
+                    </div>
+                  )
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {selectedDetailAttachments.map((a, idx) => {
+                      const dKey = detailAttachmentKey(a, idx);
+                      const hrefRaw = attachmentHref(a);
+                      const href =
+                        safeStr(detailSignedAttachmentUrls[dKey]) ||
+                        (isLikelyUnsignedPrivateS3Url(hrefRaw) ? "" : hrefRaw);
+                      const kind = attachmentPreviewKind(a);
+                      const previewKey = dKey;
+                      const canPreview = kind !== "none" && (!!href || !!safeStr((a as any)?.s3Key));
+                      const isPreviewing = detailAttachmentPreviewKey === previewKey;
+                      return (
+                        <div
+                          key={previewKey}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 10,
+                            border: "1px solid rgba(148,163,184,.14)",
+                            borderRadius: 12,
+                            background: "#fff",
+                            padding: "10px 12px",
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                color: "#0f172a",
+                                fontWeight: 900,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                              title={safeStr(a.name)}
+                            >
+                              {safeStr(a.name) || `Attachment ${idx + 1}`}
+                            </div>
+                            <div style={{ marginTop: 2, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                              {safeStr(a.mimeType) || (safeNum(a.size) > 0 ? `${safeNum(a.size)} bytes` : "Attachment")}
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            {canPreview ? (
+                              <button
+                                type="button"
+                                className="btn-flat"
+                                onClick={async () => {
+                                  const resolved = href || (await ensureDetailAttachmentUrl(a, idx));
+                                  if (!resolved) return;
+                                  setDetailAttachmentPreviewKey((curr) =>
+                                    curr === previewKey ? "" : previewKey
+                                  );
+                                }}
+                                style={{ fontWeight: 900, textTransform: "none" }}
+                              >
+                                {isPreviewing ? "Hide Preview" : "Preview"}
+                              </button>
+                            ) : null}
+
+                            {href ? (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ fontWeight: 900, textDecoration: "none" }}
+                              >
+                                Open
+                              </a>
+                            ) : safeStr((a as any)?.s3Key) ? (
+                              <button
+                                type="button"
+                                className="btn-flat"
+                                style={{ fontWeight: 900, textTransform: "none" }}
+                                onClick={async () => {
+                                  const resolved = await ensureDetailAttachmentUrl(a, idx);
+                                  if (resolved) window.open(resolved, "_blank", "noopener,noreferrer");
+                                }}
+                              >
+                                Open
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 800 }}>
+                                {safeStr((a as any)?.s3Key) ? "Private file (needs signed URL)" : "No URL"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {!!selectedDetailAttachments.length &&
+                selectedDetailAttachments.map((a, idx) => {
+                  const previewKey = detailAttachmentKey(a, idx);
+                  const hrefRaw = attachmentHref(a);
+                  const href =
+                    safeStr(detailSignedAttachmentUrls[previewKey]) ||
+                    (isLikelyUnsignedPrivateS3Url(hrefRaw) ? "" : hrefRaw);
+                  const kind = attachmentPreviewKind(a);
+                  if (detailAttachmentPreviewKey !== previewKey || !href || kind === "none") return null;
+                  return (
+                    <div
+                      key={`${previewKey}-panel`}
+                      style={{
+                        borderRadius: 18,
+                        border: "1px solid rgba(148,163,184,.14)",
+                        background: "linear-gradient(180deg,#ffffff 0%,#fbfdff 100%)",
+                        padding: 14,
+                        marginBottom: 16,
+                      }}
+                    >
+                      {kind === "image" && (
+                        <img
+                          src={href}
+                          alt={safeStr((a as any)?.name) || "Attachment preview"}
+                          style={{ maxWidth: "100%", maxHeight: 380, borderRadius: 8 }}
+                        />
+                      )}
+                      {kind === "video" && (
+                        <video
+                          controls
+                          src={href}
+                          style={{ width: "100%", maxHeight: 400, borderRadius: 8, background: "#000" }}
+                        />
+                      )}
+                      {kind === "pdf" && (
+                        <iframe
+                          title={`preview-${previewKey}`}
+                          src={href}
+                          style={{ width: "100%", height: 460, border: "1px solid #e8eef3", borderRadius: 8 }}
+                        />
+                      )}
+                      {kind === "youtube" && (
+                        <iframe
+                          title={`yt-${previewKey}`}
+                          src={activityYoutubeEmbed(a as any)}
+                          style={{ width: "100%", height: 360, border: "1px solid #e8eef3", borderRadius: 8 }}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      )}
+                    </div>
+                  );
+                })}
 
               <div
                 style={{

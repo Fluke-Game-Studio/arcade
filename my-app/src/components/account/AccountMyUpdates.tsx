@@ -40,6 +40,16 @@ type TimesheetEntry = {
   hours: number;
 };
 
+type AttachmentRef = {
+  name: string;
+  mimeType?: string;
+  size?: number;
+  s3Key?: string;
+  publicUrl?: string;
+  youtubeUrl?: string;
+  youtubeVideoId?: string;
+};
+
 type UpdateSummary = {
   userId?: string;
   userName?: string;
@@ -60,7 +70,82 @@ type UpdateSummary = {
     improve: string[];
   };
   timesheet: TimesheetEntry[];
+  attachments: AttachmentRef[];
+  driveFolderLink?: string;
 };
+
+function normalizeAttachments(value: any): AttachmentRef[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((a: any, idx: number) => {
+      const name = safeStr(a?.name || a?.fileName || a?.title || `Attachment ${idx + 1}`);
+      const publicUrl = safeStr(a?.publicUrl || a?.url);
+      const youtubeUrl = safeStr(a?.youtubeUrl);
+      const youtubeVideoId = safeStr(a?.youtubeVideoId);
+      const s3Key = safeStr(a?.s3Key);
+      if (!name && !publicUrl && !youtubeUrl && !youtubeVideoId && !s3Key) return null;
+      return {
+        name: name || `Attachment ${idx + 1}`,
+        mimeType: safeStr(a?.mimeType),
+        size: safeNum(a?.size),
+        s3Key,
+        publicUrl,
+        youtubeUrl,
+        youtubeVideoId,
+      };
+    })
+    .filter(Boolean) as AttachmentRef[];
+}
+
+function attachmentLink(a: AttachmentRef) {
+  if (safeStr(a.publicUrl)) return safeStr(a.publicUrl);
+  if (safeStr(a.youtubeUrl)) return safeStr(a.youtubeUrl);
+  if (safeStr(a.youtubeVideoId)) return `https://www.youtube.com/watch?v=${safeStr(a.youtubeVideoId)}`;
+  return "";
+}
+
+function isLikelyUnsignedPrivateS3Url(url: string) {
+  const u = safeStr(url);
+  if (!u) return false;
+  try {
+    const parsed = new URL(u);
+    const host = parsed.hostname.toLowerCase();
+    const looksLikeS3 =
+      host.endsWith(".s3.amazonaws.com") ||
+      host.includes(".s3.") ||
+      host === "s3.amazonaws.com";
+    if (!looksLikeS3) return false;
+    const hasSignature =
+      parsed.searchParams.has("X-Amz-Signature") ||
+      parsed.searchParams.has("x-amz-signature");
+    return !hasSignature;
+  } catch {
+    return false;
+  }
+}
+
+function previewKind(a: AttachmentRef): "image" | "video" | "pdf" | "youtube" | "none" {
+  const mime = safeStr(a.mimeType).toLowerCase();
+  const url = attachmentLink(a).toLowerCase();
+  if (safeStr(a.youtubeUrl) || safeStr(a.youtubeVideoId)) return "youtube";
+  if (mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(url)) return "image";
+  if (mime.startsWith("video/") || /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(url)) return "video";
+  if (mime.includes("pdf") || /\.pdf(\?|$)/i.test(url)) return "pdf";
+  return "none";
+}
+
+function youtubeEmbedUrl(a: AttachmentRef) {
+  const id = safeStr(a.youtubeVideoId);
+  if (id) return `https://www.youtube.com/embed/${id}`;
+  const raw = safeStr(a.youtubeUrl);
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    const v = safeStr(u.searchParams.get("v"));
+    if (v) return `https://www.youtube.com/embed/${v}`;
+  } catch {}
+  return "";
+}
 
 function Pill({
   icon,
@@ -139,6 +224,8 @@ function normalizeSummary(x: any): UpdateSummary {
           }))
           .filter((t: TimesheetEntry) => t.date || t.hours)
       : [],
+    attachments: normalizeAttachments(x?.attachments || x?.uploadedFiles || x?.files),
+    driveFolderLink: safeStr(x?.driveFolderLink),
   };
 }
 
@@ -228,54 +315,63 @@ export default function AccountMyUpdates({ api }: { api: any }) {
   const [loadingUpdates, setLoadingUpdates] = useState(true);
   const [updatesError, setUpdatesError] = useState("");
   const [selectedWeek, setSelectedWeek] = useState("");
+  const [previewAttachmentKey, setPreviewAttachmentKey] = useState("");
+  const [signedAttachmentUrls, setSignedAttachmentUrls] = useState<Record<string, string>>({});
+  const [pageSize, setPageSize] = useState(25);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+
+  async function loadMyUpdatesPage(cursor?: string | null, resetPaging?: boolean) {
+    try {
+      setLoadingUpdates(true);
+      setUpdatesError("");
+
+      if (typeof apiAny.getMyUpdates !== "function") {
+        setWeeks([]);
+        setUpdatesError("getMyUpdates() is not wired in the API client yet.");
+        return;
+      }
+
+      const resp = await apiAny.getMyUpdates({
+        limit: pageSize,
+        cursor: cursor || undefined,
+      });
+
+      const extracted = extractSummaries(resp);
+
+      const normalized = extracted
+        .map(normalizeSummary)
+        .filter((x) => x.weekStart || x.totalEntries || x.totalHours || x.timesheet.length)
+        .sort((a, b) => String(b.weekStart || "").localeCompare(String(a.weekStart || "")));
+
+      setWeeks(normalized);
+      setNextCursor(typeof resp?.nextCursor === "string" ? resp.nextCursor : null);
+      if (resetPaging) {
+        setCursorStack([]);
+        setPageIndex(0);
+      }
+
+      if (normalized.length) {
+        setSelectedWeek((prev) =>
+          normalized.some((w) => w.weekStart === prev) ? prev : normalized[0].weekStart
+        );
+      } else {
+        setSelectedWeek("");
+      }
+    } catch (err: any) {
+      setUpdatesError(err?.message || "Failed to load your updates.");
+      setWeeks([]);
+      setNextCursor(null);
+    } finally {
+      setLoadingUpdates(false);
+    }
+  }
 
   useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      try {
-        setLoadingUpdates(true);
-        setUpdatesError("");
-
-        if (typeof apiAny.getMyUpdates !== "function") {
-          if (mounted) {
-            setWeeks([]);
-            setUpdatesError("getMyUpdates() is not wired in the API client yet.");
-          }
-          return;
-        }
-
-        const resp = await apiAny.getMyUpdates();
-        if (!mounted) return;
-
-        const extracted = extractSummaries(resp);
-
-        const normalized = extracted
-          .map(normalizeSummary)
-          .filter((x) => x.weekStart || x.totalEntries || x.totalHours || x.timesheet.length)
-          .sort((a, b) => String(b.weekStart || "").localeCompare(String(a.weekStart || "")));
-
-        setWeeks(normalized);
-
-        if (normalized.length) {
-          setSelectedWeek((prev) =>
-            normalized.some((w) => w.weekStart === prev) ? prev : normalized[0].weekStart
-          );
-        } else {
-          setSelectedWeek("");
-        }
-      } catch (err: any) {
-        if (!mounted) return;
-        setUpdatesError(err?.message || "Failed to load your updates.");
-      } finally {
-        if (mounted) setLoadingUpdates(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [apiAny, api]);
+    loadMyUpdatesPage(null, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiAny, api, pageSize]);
 
   const sortedWeeks = useMemo(() => {
     return [...weeks].sort((a, b) =>
@@ -296,6 +392,36 @@ export default function AccountMyUpdates({ api }: { api: any }) {
     () => sortedWeeks.reduce((sum, w) => sum + safeNum(w.totalEntries), 0),
     [sortedWeeks]
   );
+
+  function attachmentStateKey(weekStart: string, idx: number, a: AttachmentRef) {
+    return `${weekStart || "week"}::${safeStr(a.s3Key) || safeStr(a.name) || idx}`;
+  }
+
+  async function ensureAttachmentUrl(
+    weekStart: string,
+    idx: number,
+    a: AttachmentRef
+  ): Promise<string> {
+    const key = attachmentStateKey(weekStart, idx, a);
+    const existing = safeStr(signedAttachmentUrls[key]);
+    if (existing) return existing;
+
+    const raw = attachmentLink(a);
+    if (raw && !isLikelyUnsignedPrivateS3Url(raw)) return raw;
+
+    const s3Key = safeStr(a.s3Key);
+    if (!s3Key || typeof apiAny.getWeeklyUpdateAttachmentUrl !== "function") return "";
+
+    try {
+      const resp = await apiAny.getWeeklyUpdateAttachmentUrl({ s3Key, weekStart });
+      const url = safeStr(resp?.url);
+      if (!url) return "";
+      setSignedAttachmentUrls((prev) => ({ ...prev, [key]: url }));
+      return url;
+    } catch {
+      return "";
+    }
+  }
 
   return (
     <div className="card z-depth-1 panelCard" style={{ marginTop: 14, overflow: "hidden" }}>
@@ -503,7 +629,7 @@ export default function AccountMyUpdates({ api }: { api: any }) {
 
         .amuHeroStats{
           display:grid;
-          grid-template-columns:repeat(3, minmax(120px, 1fr));
+          grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
           gap:10px;
           margin-top:16px;
         }
@@ -740,7 +866,77 @@ export default function AccountMyUpdates({ api }: { api: any }) {
             Cleaner weekly summaries with a sidebar selector and focused detail panel.
           </div>
         </div>
-        <Pill icon="history" text={`${sortedWeeks.length} weeks`} tone="green" />
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Pill icon="history" text={`${sortedWeeks.length} weeks`} tone="green" />
+          <span className="grey-text" style={{ fontWeight: 900, fontSize: 12 }}>
+            Page {pageIndex + 1}
+          </span>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 10,
+          padding: "0 16px 12px",
+          borderBottom: "1px solid #eef2f7",
+        }}
+      >
+        <div className="grey-text" style={{ fontWeight: 800, fontSize: 12 }}>
+          Showing {sortedWeeks.length} week summaries on this page
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <select
+            className="browser-default"
+            value={String(pageSize)}
+            onChange={(e) => setPageSize(Number(e.target.value) || 25)}
+            style={{
+              height: 34,
+              borderRadius: 10,
+              border: "1px solid rgba(148,163,184,.25)",
+              padding: "2px 8px",
+            }}
+          >
+            {[10, 25, 50].map((n) => (
+              <option key={n} value={n}>
+                {n}/page
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className={`btn-small grey darken-2 ${pageIndex === 0 || loadingUpdates ? "disabled" : ""}`}
+            disabled={pageIndex === 0 || loadingUpdates}
+            onClick={() => {
+              const prevCursor = cursorStack[pageIndex - 1] || null;
+              setPageIndex((p) => Math.max(0, p - 1));
+              loadMyUpdatesPage(prevCursor, false);
+            }}
+          >
+            <i className="material-icons left">chevron_left</i>Prev
+          </button>
+
+          <button
+            type="button"
+            className={`btn-small ${!nextCursor || loadingUpdates ? "disabled" : ""}`}
+            disabled={!nextCursor || loadingUpdates}
+            onClick={() => {
+              const currentCursor = cursorStack[pageIndex] || "";
+              const newStack = [...cursorStack];
+              newStack[pageIndex] = currentCursor;
+              newStack[pageIndex + 1] = nextCursor || "";
+              setCursorStack(newStack);
+              setPageIndex((p) => p + 1);
+              loadMyUpdatesPage(nextCursor, false);
+            }}
+          >
+            Next<i className="material-icons right">chevron_right</i>
+          </button>
+        </div>
       </div>
 
       <div className="card-content" style={{ padding: 0 }}>
@@ -833,7 +1029,7 @@ export default function AccountMyUpdates({ api }: { api: any }) {
                       </div>
                     </div>
 
-                    <div className="amuHeroStats">
+                      <div className="amuHeroStats">
                       <div className="amuHeroStat">
                         <div className="amuHeroStatK">Total Entries</div>
                         <div className="amuHeroStatV">{currentWeek.totalEntries}</div>
@@ -845,6 +1041,10 @@ export default function AccountMyUpdates({ api }: { api: any }) {
                       <div className="amuHeroStat">
                         <div className="amuHeroStatK">Timesheet Days</div>
                         <div className="amuHeroStatV">{currentWeek.timesheet.length}</div>
+                      </div>
+                      <div className="amuHeroStat">
+                        <div className="amuHeroStatK">Attachments</div>
+                        <div className="amuHeroStatV">{currentWeek.attachments.length}</div>
                       </div>
                     </div>
                   </div>
@@ -937,8 +1137,187 @@ export default function AccountMyUpdates({ api }: { api: any }) {
                             text={`${currentWeek.next.length} next items`}
                             tone="blue"
                           />
+                          <Pill
+                            icon="attach_file"
+                            text={`${currentWeek.attachments.length} attachments`}
+                            tone="grey"
+                          />
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="amuCard" style={{ marginTop: 14 }}>
+                    <div className="amuCardHead">
+                      <div>
+                        <div className="amuCardTitle">Attachments</div>
+                        <div className="amuCardSub">Files and links submitted with this week</div>
+                      </div>
+                      <Pill icon="attach_file" text={`${currentWeek.attachments.length}`} tone="blue" />
+                    </div>
+
+                    <div className="amuCardBody">
+                      {!currentWeek.attachments.length ? (
+                        currentWeek.driveFolderLink ? (
+                          <a
+                            href={currentWeek.driveFolderLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ fontWeight: 900 }}
+                          >
+                            Open drive folder
+                          </a>
+                        ) : (
+                          <EmptyState text="No attachments uploaded for this week." />
+                        )
+                      ) : (
+                        <div style={{ display: "grid", gap: 8 }}>
+                          {currentWeek.attachments.map((a, idx) => {
+                            const stateKey = attachmentStateKey(currentWeek.weekStart, idx, a);
+                            const hrefRaw = attachmentLink(a);
+                            const href =
+                              safeStr(signedAttachmentUrls[stateKey]) ||
+                              (isLikelyUnsignedPrivateS3Url(hrefRaw) ? "" : hrefRaw);
+                            const pk = previewKind(a);
+                            const previewKey = stateKey;
+                            const canPreview = pk !== "none" && (!!href || !!safeStr(a.s3Key));
+                            const isPreviewing = previewAttachmentKey === previewKey;
+                            return (
+                              <div
+                                key={previewKey}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  alignItems: "center",
+                                  border: "1px solid #e8eef3",
+                                  borderRadius: 12,
+                                  padding: "10px 12px",
+                                  background: "#fbfdff",
+                                }}
+                              >
+                                <div style={{ minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      fontWeight: 900,
+                                      color: "#0f172a",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                    title={a.name}
+                                  >
+                                    {a.name}
+                                  </div>
+                                  <div style={{ marginTop: 2, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                                    {safeStr(a.mimeType) || (safeNum(a.size) > 0 ? `${safeNum(a.size)} bytes` : "Attachment")}
+                                  </div>
+                                </div>
+
+                                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                  {canPreview ? (
+                                    <button
+                                      type="button"
+                                      className="btn-flat"
+                                      onClick={async () => {
+                                        const resolved = href || (await ensureAttachmentUrl(currentWeek.weekStart, idx, a));
+                                        if (!resolved) return;
+                                        setPreviewAttachmentKey((curr) =>
+                                          curr === previewKey ? "" : previewKey
+                                        );
+                                      }}
+                                      style={{ fontWeight: 900, textTransform: "none" }}
+                                    >
+                                      {isPreviewing ? "Hide Preview" : "Preview"}
+                                    </button>
+                                  ) : null}
+
+                                  {href ? (
+                                    <a
+                                      href={href}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{ fontWeight: 900, textDecoration: "none" }}
+                                    >
+                                      Open
+                                    </a>
+                                  ) : safeStr(a.s3Key) ? (
+                                    <button
+                                      type="button"
+                                      className="btn-flat"
+                                      style={{ fontWeight: 900, textTransform: "none" }}
+                                      onClick={async () => {
+                                        const resolved = await ensureAttachmentUrl(currentWeek.weekStart, idx, a);
+                                        if (resolved) window.open(resolved, "_blank", "noopener,noreferrer");
+                                      }}
+                                    >
+                                      Open
+                                    </button>
+                                  ) : (
+                                    <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 800 }}>
+                                      {safeStr(a.s3Key) ? "Private file (needs signed URL)" : "No URL"}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {currentWeek.attachments.map((a, idx) => {
+                        const stateKey = attachmentStateKey(currentWeek.weekStart, idx, a);
+                        const hrefRaw = attachmentLink(a);
+                        const href =
+                          safeStr(signedAttachmentUrls[stateKey]) ||
+                          (isLikelyUnsignedPrivateS3Url(hrefRaw) ? "" : hrefRaw);
+                        const pk = previewKind(a);
+                        const previewKey = stateKey;
+                        if (previewAttachmentKey !== previewKey || !href || pk === "none") return null;
+                        return (
+                          <div
+                            key={`${previewKey}-panel`}
+                            style={{
+                              marginTop: 10,
+                              border: "1px solid #e8eef3",
+                              borderRadius: 12,
+                              background: "#fff",
+                              padding: 10,
+                            }}
+                          >
+                            {pk === "image" && (
+                              <img
+                                src={href}
+                                alt={safeStr(a.name) || "Attachment preview"}
+                                style={{ maxWidth: "100%", maxHeight: 360, borderRadius: 8 }}
+                              />
+                            )}
+                            {pk === "video" && (
+                              <video
+                                controls
+                                src={href}
+                                style={{ width: "100%", maxHeight: 380, borderRadius: 8, background: "#000" }}
+                              />
+                            )}
+                            {pk === "pdf" && (
+                              <iframe
+                                title={`preview-${previewKey}`}
+                                src={href}
+                                style={{ width: "100%", height: 420, border: "1px solid #e8eef3", borderRadius: 8 }}
+                              />
+                            )}
+                            {pk === "youtube" && (
+                              <iframe
+                                title={`yt-${previewKey}`}
+                                src={youtubeEmbedUrl(a)}
+                                style={{ width: "100%", height: 360, border: "1px solid #e8eef3", borderRadius: 8 }}
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </>

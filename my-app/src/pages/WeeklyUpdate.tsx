@@ -243,8 +243,7 @@ export default function WeeklyUpdate() {
   const trimList = (list: string[]) =>
     list.map((s) => s.trim()).filter(Boolean);
 
-  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []);
+  function ingestFiles(files: File[]) {
     if (!files.length) return;
 
     const incoming: SelectedFile[] = files.map((file) => ({
@@ -268,8 +267,29 @@ export default function WeeklyUpdate() {
 
       return [...prev, ...deduped];
     });
+  }
+
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    ingestFiles(files);
 
     e.target.value = "";
+  }
+
+  function handleAttachmentPaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    const items = Array.from(e.clipboardData?.items || []);
+    if (!items.length) return;
+
+    const pastedImages: File[] = items
+      .filter((it) => it.kind === "file" && String(it.type || "").startsWith("image/"))
+      .map((it) => it.getAsFile())
+      .filter(Boolean) as File[];
+
+    if (!pastedImages.length) return;
+    e.preventDefault();
+    ingestFiles(pastedImages);
+    M?.toast?.({ html: `${pastedImages.length} image${pastedImages.length > 1 ? "s" : ""} pasted.` });
   }
 
   function removeSelectedFile(id: string) {
@@ -651,6 +671,8 @@ export default function WeeklyUpdate() {
                     padding: 16,
                     background: "rgba(248,250,252,.8)",
                   }}
+                  onPaste={handleAttachmentPaste}
+                  tabIndex={0}
                 >
                   <div
                     style={{
@@ -674,6 +696,9 @@ export default function WeeklyUpdate() {
                       <div style={{ color: "#64748b", fontSize: 13 }}>
                         Screenshots, docs, videos, zips, builds, or other weekly
                         evidence.
+                      </div>
+                      <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+                        Tip: click this box and press Ctrl/Cmd+V to paste copied screenshots.
                       </div>
                     </div>
 
