@@ -19,6 +19,8 @@ type EventHeroEvent = {
   agendaHref?: string;
   calendarHref?: string;
   shareHref?: string;
+  videoUrl?: string;
+  youtubeEmbedUrl?: string;
   status?: EventStatus;
 };
 
@@ -37,6 +39,8 @@ type EventHeroProps = {
   agendaHref?: string;
   calendarHref?: string;
   shareHref?: string;
+  videoUrl?: string;
+  youtubeEmbedUrl?: string;
   onJoin?: () => void;
   onAgenda?: () => void;
   onAddToCalendar?: () => void;
@@ -298,6 +302,8 @@ export default function EventHero({
   agendaHref,
   calendarHref,
   shareHref,
+  videoUrl,
+  youtubeEmbedUrl,
   onJoin,
   onAgenda,
   onAddToCalendar,
@@ -357,6 +363,8 @@ export default function EventHero({
         agendaHref: e.agendaHref,
         calendarHref: e.calendarHref,
         shareHref: e.shareHref,
+        videoUrl: e.videoUrl,
+        youtubeEmbedUrl: e.youtubeEmbedUrl,
         status: e.status || "AUTO",
       }));
     }
@@ -377,6 +385,8 @@ export default function EventHero({
         agendaHref,
         calendarHref,
         shareHref,
+        videoUrl,
+        youtubeEmbedUrl,
         status,
       },
     ];
@@ -395,6 +405,8 @@ export default function EventHero({
     agendaHref,
     calendarHref,
     shareHref,
+    videoUrl,
+    youtubeEmbedUrl,
     status,
   ]);
 
@@ -593,9 +605,6 @@ export default function EventHero({
   const accentBg = getAccentGradient(accent);
   const tiltRef = useParallaxTilt(!motionOff && showParallax);
 
-  const gotoPrev = () => setActiveIndex(activeIndex - 1);
-  const gotoNext = () => setActiveIndex(activeIndex + 1);
-
   const doJoin = () => (onJoin ? onJoin() : safeOpen(active.joinHref));
   const doAgenda = () => (onAgenda ? onAgenda() : safeOpen(active.agendaHref));
 
@@ -650,25 +659,62 @@ export default function EventHero({
             background: "#eee",
           }}
         >
-          <img
-            className="eh-bg"
-            src={imgUrl}
-            onError={onImgError}
-            alt={posterAlt}
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              filter: "saturate(1.05) contrast(1.02)",
-            }}
-          />
+          {active.youtubeEmbedUrl ? (
+            <iframe
+              className="eh-bg"
+              src={active.youtubeEmbedUrl}
+              title={active.title || posterAlt}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                border: 0,
+                filter: "saturate(1.05) contrast(1.02)",
+              }}
+            />
+          ) : active.videoUrl ? (
+            <video
+              className="eh-bg"
+              src={active.videoUrl}
+              autoPlay
+              muted
+              loop
+              controls
+              playsInline
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                filter: "saturate(1.05) contrast(1.02)",
+              }}
+            />
+          ) : (
+            <img
+              className="eh-bg"
+              src={imgUrl}
+              onError={onImgError}
+              alt={posterAlt}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                filter: "saturate(1.05) contrast(1.02)",
+              }}
+            />
+          )}
 
           <div
             style={{
               position: "absolute",
               inset: 0,
+              pointerEvents: "none",
               background:
                 "radial-gradient(1200px 520px at 18% 12%, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0.02) 72%)",
             }}
@@ -677,6 +723,7 @@ export default function EventHero({
             style={{
               position: "absolute",
               inset: 0,
+              pointerEvents: "none",
               background:
                 "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.35) 48%, rgba(0,0,0,0.82) 100%)",
             }}
@@ -727,26 +774,6 @@ export default function EventHero({
             <StatusPill status={resolvedStatus} livePulse={!motionOff} />
 
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {normalizedEvents.length > 1 && (
-                <>
-                  <IconBtn
-                    icon="chevron_left"
-                    label="Previous event"
-                    onClick={gotoPrev}
-                    disabled={activeIndex <= 0}
-                  />
-                  <div style={{ color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: 900 }}>
-                    {activeIndex + 1}/{normalizedEvents.length}
-                  </div>
-                  <IconBtn
-                    icon="chevron_right"
-                    label="Next event"
-                    onClick={gotoNext}
-                    disabled={activeIndex >= normalizedEvents.length - 1}
-                  />
-                </>
-              )}
-
               {showMuteMotion && (
                 <IconToggle
                   icon={muteMotion ? "motion_photos_off" : "motion_photos_on"}
@@ -832,37 +859,6 @@ export default function EventHero({
                   ))}
                 </div>
               )}
-
-              {normalizedEvents.length > 1 && (
-                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {normalizedEvents.slice(0, 5).map((e, idx) => {
-                    const activePill = idx === activeIndex;
-                    return (
-                      <button
-                        key={e.id}
-                        type="button"
-                        className="btn-flat"
-                        onClick={() => setActiveIndex(idx)}
-                        title={e.title}
-                        style={{
-                          height: 30,
-                          padding: "0 10px",
-                          borderRadius: 999,
-                          background: activePill ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.12)",
-                          border: "1px solid rgba(255,255,255,0.18)",
-                          color: "white",
-                          fontSize: 11,
-                          fontWeight: 900,
-                          letterSpacing: 0.2,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {idx + 1}. {e.title.length > 18 ? `${e.title.slice(0, 18)}…` : e.title}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
             <div
@@ -936,6 +932,45 @@ export default function EventHero({
               )}
             </div>
           </div>
+
+          {normalizedEvents.length > 1 && (
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 8,
+                display: "flex",
+                justifyContent: "center",
+                gap: 8,
+                zIndex: 5,
+              }}
+            >
+              {normalizedEvents.map((e, idx) => {
+                const activeDot = idx === activeIndex;
+                return (
+                  <button
+                    key={`event-dot-${e.id}`}
+                    type="button"
+                    onClick={() => setActiveIndex(idx)}
+                    title={e.title}
+                    aria-label={`Go to slide ${idx + 1}`}
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 999,
+                      border: activeDot
+                        ? "1px solid rgba(33,150,243,0.95)"
+                        : "1px solid rgba(255,255,255,0.70)",
+                      background: activeDot ? "#2196f3" : "rgba(255,255,255,0.72)",
+                      padding: 0,
+                      cursor: "pointer",
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {showRemindMe && remindOn && resolvedStatus === "SCHEDULED" && reminderState !== "ON" && (

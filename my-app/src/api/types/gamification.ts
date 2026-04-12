@@ -291,6 +291,7 @@ export type GenerateAwardsNarrativeResponse = {
   contextLabel?: string;
   reply: string;
   meta?: Record<string, any>;
+  manager?: Record<string, any>;
 };
 
 export type CreateAwardAchievementRuleBody = {
@@ -386,6 +387,8 @@ export type GamificationApiClient = {
     provider?: "auto" | "openai" | "ollama";
     model?: string;
     context?: string;
+    agentRole?: string;
+    perform?: boolean;
   }) => Promise<GenerateAwardsNarrativeResponse>;
 };
 

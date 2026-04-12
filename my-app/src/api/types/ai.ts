@@ -115,6 +115,10 @@ export type AIStartChatBody = {
   weekStart?: string;
   projectId?: string;
   context?: AIContextId;
+  agentEmployeeId?: string;
+  agentId?: string;
+  agentRole?: string;
+  perform?: boolean;
 };
 
 export type AIStartChatResponse = {
@@ -183,6 +187,25 @@ async function request<T>(
 }
 
 export function createAIAPI(baseUrl: string, token?: string) {
+  const withDefaultAgent = (contextId: AIContextId, body: AIStartChatBody): AIStartChatBody => {
+    const ctx = String(contextId || body.context || "internal").trim().toLowerCase();
+    if (body.agentEmployeeId || body.agentId || body.agentRole) return body;
+    if (ctx === "internal" || ctx === "flukegames" || ctx === "public") {
+      return {
+        ...body,
+        context: body.context || contextId,
+        agentEmployeeId: "project_manager_core",
+        agentRole: "project_manager",
+      };
+    }
+    return {
+      ...body,
+      context: body.context || contextId,
+      agentEmployeeId: "assistant_default",
+      agentRole: "assistant",
+    };
+  };
+
   return {
     async getAIDoc(id: string) {
       return request<GetAIDocResponse>(
@@ -204,13 +227,14 @@ export function createAIAPI(baseUrl: string, token?: string) {
     },
 
     async startChat(contextId: AIContextId, body: AIStartChatBody) {
-      console.log("AI_STARTCHAT_BODY_OBJECT", body);
-      console.log("AI_STARTCHAT_BODY_JSON", JSON.stringify(body));
+      const finalBody = withDefaultAgent(contextId, body);
+      console.log("AI_STARTCHAT_BODY_OBJECT", finalBody);
+      console.log("AI_STARTCHAT_BODY_JSON", JSON.stringify(finalBody));
       return request<AIStartChatResponse>(
         joinUrl(baseUrl, `/ai/chat/${encodeURIComponent(contextId)}`),
         {
           method: "POST",
-          body: JSON.stringify(body),
+          body: JSON.stringify(finalBody),
         },
         token
       );

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
 export type Role = "EMPLOYEE" | "ADMIN" | "SUPER";
@@ -10,8 +10,13 @@ export type SessionUser = {
   role: Role;
 };
 
+export type AuthStatus = "checking" | "authenticated" | "unauthenticated";
+export type AuthBootReason = "" | "no_token" | "ok" | "invalid_token" | "network";
+
 type AuthCtx = {
   user: SessionUser | null;
+  status: AuthStatus;
+  bootReason: AuthBootReason;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   // convenient passthroughs
@@ -28,6 +33,17 @@ function mapRole(r: "super" | "admin" | "employee"): Role {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const hadStoredToken = (() => {
+    try {
+      const raw = localStorage.getItem(LS_AUTH);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw) as SessionUser;
+      return !!String(parsed?.token || "").trim();
+    } catch {
+      return false;
+    }
+  })();
+
   const [user, setUser] = useState<SessionUser | null>(() => {
     const raw = localStorage.getItem(LS_AUTH);
     if (!raw) return null;
@@ -35,6 +51,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     api.setToken(parsed.token);
     return parsed;
   });
+
+  const [status, setStatus] = useState<AuthStatus>(() => (user ? "checking" : "unauthenticated"));
+  const [bootReason, setBootReason] = useState<AuthBootReason>(() =>
+    hadStoredToken ? "" : "no_token"
+  );
+
+  function setSession(next: SessionUser | null, nextStatus: AuthStatus) {
+    setUser(next);
+    setStatus(nextStatus);
+
+    if (next) {
+      api.setToken(next.token);
+      localStorage.setItem(LS_AUTH, JSON.stringify(next));
+    } else {
+      api.setToken(null);
+      localStorage.removeItem(LS_AUTH);
+    }
+  }
 
   async function login(username: string, password: string) {
     try {
@@ -45,8 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: res.name,
         role: mapRole(res.role),
       };
-      setUser(session);
-      localStorage.setItem(LS_AUTH, JSON.stringify(session));
+      setSession(session, "authenticated");
       return true;
     } catch (e) {
       console.error(e);
@@ -55,12 +88,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   function logout() {
-    setUser(null);
-    api.setToken(null);
-    localStorage.removeItem(LS_AUTH);
+    setSession(null, "unauthenticated");
   }
 
-  const value = useMemo(() => ({ user, login, logout, api }), [user]);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function validateToken() {
+      if (!user?.token) {
+        if (!cancelled) {
+          setStatus("unauthenticated");
+          setBootReason("no_token");
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setStatus("checking");
+        setBootReason("");
+      }
+
+      try {
+        const me: any = await api.getMe();
+        if (cancelled) return;
+
+        const refreshed: SessionUser = {
+          token: user.token,
+          username: String(me?.username || user.username),
+          name: String(me?.employee_name || me?.name || user.name),
+          role: mapRole(String(me?.employee_role || me?.role || "employee").toLowerCase() as any),
+        };
+
+        setSession(refreshed, "authenticated");
+        setBootReason("ok");
+      } catch (e: any) {
+        if (cancelled) return;
+        const msg = String(e?.message || e || "");
+        const looksAuthError =
+          msg.includes("(401)") || msg.includes("(403)") || msg.includes(" 401") || msg.includes(" 403");
+
+        if (looksAuthError) {
+          setSession(null, "unauthenticated");
+          setBootReason("invalid_token");
+          return;
+        }
+
+        // If backend is temporarily unreachable, do not attempt to open protected routes.
+        // Treat as unauthenticated so the user sees the login form cleanly.
+        setSession(null, "unauthenticated");
+        setBootReason("network");
+      }
+    }
+
+    void validateToken();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.token]);
+
+  const value = useMemo(
+    () => ({ user, status, bootReason, login, logout, api }),
+    [user, status, bootReason]
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
