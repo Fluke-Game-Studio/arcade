@@ -1,0 +1,712 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { type ApiUpdateSummary, type ApiUpdatesResponse, type ApiUser } from "../../api";
+import { useAuth } from "../../auth/AuthContext";
+
+declare const M: any;
+
+type EditForm = {
+  username: string;
+  employee_name: string;
+  employee_email: string;
+  employee_role: string;
+  employee_title: string;
+  employee_picture: string;
+  employee_phonenumber: string;
+  department: string;
+  location: string;
+  project_id: string;
+  employee_id: string;
+  revoked: boolean;
+};
+
+const EMPTY_EDIT: EditForm = {
+  username: "",
+  employee_name: "",
+  employee_email: "",
+  employee_role: "employee",
+  employee_title: "",
+  employee_picture: "",
+  employee_phonenumber: "",
+  department: "",
+  location: "",
+  project_id: "",
+  employee_id: "",
+  revoked: false,
+};
+
+function safeStr(v: any) {
+  if (v === null || v === undefined) return "";
+  return String(v).trim();
+}
+
+function norm(v: any) {
+  return safeStr(v).toLowerCase();
+}
+
+function initials(nameOrUser: string) {
+  const s = safeStr(nameOrUser);
+  if (!s) return "FG";
+  const parts = s.split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] || "").toUpperCase() + (parts[1]?.[0] || parts[0]?.[1] || "").toUpperCase()) || "FG";
+}
+
+function getUserKey(user: Partial<ApiUser>) {
+  return (
+    norm((user as any)?.username) ||
+    norm((user as any)?.employee_username) ||
+    norm((user as any)?.employee_email) ||
+    norm((user as any)?.email)
+  );
+}
+
+function getUserName(user: Partial<ApiUser>) {
+  return (
+    safeStr((user as any)?.employee_name) ||
+    safeStr((user as any)?.name) ||
+    safeStr((user as any)?.username) ||
+    safeStr((user as any)?.employee_email) ||
+    "Unknown"
+  );
+}
+
+function getUserAvatar(user: Partial<ApiUser>) {
+  return safeStr((user as any)?.employee_picture) || safeStr((user as any)?.employee_profilepicture);
+}
+
+function getRole(user: any) {
+  return norm(user?.employee_role || user?.role || "employee") || "employee";
+}
+
+function normalizeAttachments(value: any) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((a: any, idx: number) => {
+      const name = safeStr(a?.name || a?.fileName || a?.title || `Attachment ${idx + 1}`);
+      const url = safeStr(a?.publicUrl || a?.url || a?.youtubeUrl || "");
+      const s3Key = safeStr(a?.s3Key);
+      if (!name && !url && !s3Key && !safeStr(a?.youtubeVideoId)) return null;
+      return { name: name || `Attachment ${idx + 1}`, mimeType: safeStr(a?.mimeType), url, s3Key, youtubeUrl: safeStr(a?.youtubeUrl), youtubeVideoId: safeStr(a?.youtubeVideoId) };
+    })
+    .filter(Boolean) as Array<{ name: string; mimeType?: string; url?: string; s3Key?: string; youtubeUrl?: string; youtubeVideoId?: string }>;
+}
+
+function attachmentKind(a: any) {
+  const mime = safeStr(a?.mimeType).toLowerCase();
+  const href = safeStr(a?.url || a?.youtubeUrl || "").toLowerCase();
+  if (safeStr(a?.youtubeUrl) || safeStr(a?.youtubeVideoId)) return "youtube";
+  if (mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(href)) return "image";
+  if (mime.startsWith("video/") || /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(href)) return "video";
+  if (mime.includes("pdf") || /\.pdf(\?|$)/i.test(href)) return "pdf";
+  return "none";
+}
+
+function formatWeek(weekStart: string) {
+  const d = new Date(`${weekStart}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return weekStart || "No week selected";
+  const end = new Date(d);
+  end.setDate(end.getDate() + 6);
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} - ${end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+function weekdayShort(date: string) {
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(undefined, { weekday: "short" });
+}
+
+function formatDate(date: string) {
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(undefined, { month: "short", day: "2-digit" });
+}
+
+function DetailList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div style={{ borderRadius: 16, border: "1px solid rgba(148,163,184,.14)", background: "#fff", padding: 14 }}>
+      <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 10 }}>{title}</div>
+      {!items.length ? (
+        <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>None</div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {items.map((item, idx) => (
+            <div key={`${title}-${idx}`} style={{ borderRadius: 12, border: "1px solid rgba(148,163,184,.12)", background: "linear-gradient(180deg,#f8fbff 0%,#ffffff 100%)", padding: "10px 12px", color: "#0f172a", fontWeight: 700, lineHeight: 1.45 }}>
+              {item}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetricBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        border: "1px solid rgba(148,163,184,.14)",
+        background: "linear-gradient(180deg,#ffffff 0%,#f8fbff 100%)",
+        padding: "10px 12px",
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 4, fontSize: 22, fontWeight: 1000, color: "#0f172a" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+export default function EmployeeExplorerPanel({ currentUser }: { currentUser: any }) {
+  const { api } = useAuth();
+  const isSuper = getRole(currentUser) === "super";
+  const isAdmin = isSuper || getRole(currentUser) === "admin";
+  const [users, setUsers] = useState<ApiUser[]>([]);
+  const [search, setSearch] = useState("");
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [usersError, setUsersError] = useState("");
+  const [selectedKey, setSelectedKey] = useState("");
+  const [summaries, setSummaries] = useState<ApiUpdateSummary[]>([]);
+  const [loadingSummaries, setLoadingSummaries] = useState(false);
+  const [summariesError, setSummariesError] = useState("");
+  const [selectedWeek, setSelectedWeek] = useState("");
+  const [selectedAttachment, setSelectedAttachment] = useState("");
+  const [signedAttachmentUrls, setSignedAttachmentUrls] = useState<Record<string, string>>({});
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editingUsername, setEditingUsername] = useState("");
+  const [editForm, setEditForm] = useState<EditForm>({ ...EMPTY_EDIT });
+  const editModalRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoadingUsers(true);
+        setUsersError("");
+        const resp = await api.getUsers();
+        if (!mounted) return;
+        setUsers(Array.isArray(resp) ? resp : []);
+      } catch (e: any) {
+        if (mounted) setUsersError(e?.message || "Failed to load employees.");
+      } finally {
+        if (mounted) setLoadingUsers(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [api]);
+
+  useEffect(() => {
+    if (!editModalRef.current || typeof M === "undefined") return;
+    M.Modal.init(editModalRef.current, { dismissible: true, opacity: 0.45 });
+  }, []);
+
+  const filteredUsers = useMemo(() => {
+    const q = norm(search);
+    return [...users]
+      .filter((u) => {
+        if (!q) return true;
+        const hay = [
+          safeStr((u as any).employee_name),
+          safeStr((u as any).employee_email),
+          safeStr((u as any).employee_role),
+          safeStr((u as any).username),
+          safeStr((u as any).department),
+          safeStr((u as any).employee_title),
+          safeStr((u as any).employee_id),
+        ].join(" ").toLowerCase();
+        return hay.includes(q);
+      })
+      .sort((a, b) => getUserName(a).localeCompare(getUserName(b)));
+  }, [users, search]);
+
+  useEffect(() => {
+    if (selectedKey) return;
+    const first = filteredUsers[0];
+    const key = first ? getUserKey(first) : "";
+    if (key) setSelectedKey(key);
+  }, [filteredUsers, selectedKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const userId = safeStr(selectedKey);
+    if (!userId) {
+      setSummaries([]);
+      setSummariesError("");
+      return;
+    }
+
+    (async () => {
+      try {
+        setLoadingSummaries(true);
+        setSummariesError("");
+        const rows: ApiUpdateSummary[] = [];
+        const seen = new Set<string>();
+        let cursor: string | undefined;
+        let pages = 0;
+
+        do {
+          const resp: ApiUpdatesResponse = await api.getUpdates({ userId, limit: 200, cursor });
+          (Array.isArray(resp?.summaries) ? resp.summaries : []).forEach((row) => {
+            const key = `${safeStr((row as any)?.userId)}::${safeStr((row as any)?.weekStart)}`;
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            rows.push(row);
+          });
+          cursor = resp?.nextCursor || undefined;
+          pages += 1;
+        } while (cursor && pages < 200);
+
+        rows.sort((a, b) => safeStr((b as any)?.weekStart).localeCompare(safeStr((a as any)?.weekStart)));
+        if (cancelled) return;
+        setSummaries(rows);
+        setSelectedWeek(safeStr((rows[0] as any)?.weekStart));
+      } catch (e: any) {
+        if (!cancelled) {
+          setSummaries([]);
+          setSummariesError(e?.message || "Failed to load employee activity.");
+        }
+      } finally {
+        if (!cancelled) setLoadingSummaries(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, selectedKey]);
+
+  useEffect(() => {
+    setSelectedAttachment("");
+    setSignedAttachmentUrls({});
+  }, [selectedWeek, selectedKey]);
+
+  const selectedUser = useMemo(() => filteredUsers.find((u) => getUserKey(u) === norm(selectedKey)) || null, [filteredUsers, selectedKey]);
+  const selectedSummary = useMemo(() => summaries.find((r) => safeStr((r as any)?.weekStart) === safeStr(selectedWeek)) || summaries[0] || null, [summaries, selectedWeek]);
+  const selectedTimesheet = useMemo(() => {
+    if (!selectedSummary) return [];
+    const ts = Array.isArray((selectedSummary as any).timesheet) ? (selectedSummary as any).timesheet : [];
+    return [...ts].sort((a: any, b: any) => safeStr(a?.date).localeCompare(safeStr(b?.date)));
+  }, [selectedSummary]);
+  const attachments = useMemo(() => {
+    if (!selectedSummary) return [];
+    return normalizeAttachments((selectedSummary as any).attachments || (selectedSummary as any).uploadedFiles || (selectedSummary as any).files);
+  }, [selectedSummary]);
+  const totals = useMemo(() => ({
+    weeks: summaries.length,
+    entries: summaries.reduce((acc, row) => acc + Number((row as any)?.totalEntries || 0), 0),
+    hours: summaries.reduce((acc, row) => acc + Number((row as any)?.totalHours || 0), 0),
+    attachments: summaries.reduce((acc, row) => acc + normalizeAttachments((row as any).attachments || (row as any).uploadedFiles || (row as any).files).length, 0),
+  }), [summaries]);
+
+  function openEdit(userRow: ApiUser) {
+    if (!isAdmin) return;
+    setEditingUsername(safeStr((userRow as any)?.username));
+    setEditForm({
+      username: safeStr((userRow as any)?.username),
+      employee_name: safeStr((userRow as any)?.employee_name),
+      employee_email: safeStr((userRow as any)?.employee_email),
+      employee_role: safeStr((userRow as any)?.employee_role) || "employee",
+      employee_title: safeStr((userRow as any)?.employee_title),
+      employee_picture: safeStr((userRow as any)?.employee_picture) || safeStr((userRow as any)?.employee_profilepicture),
+      employee_phonenumber: safeStr((userRow as any)?.employee_phonenumber),
+      department: safeStr((userRow as any)?.department),
+      location: safeStr((userRow as any)?.location),
+      project_id: safeStr((userRow as any)?.project_id),
+      employee_id: safeStr((userRow as any)?.employee_id),
+      revoked: !!(userRow as any)?.revoked,
+    });
+    setEditOpen(true);
+    requestAnimationFrame(() => {
+      const inst = M?.Modal?.getInstance?.(editModalRef.current) || M?.Modal?.init?.(editModalRef.current);
+      inst?.open?.();
+      setTimeout(() => {
+        try {
+          M?.updateTextFields?.();
+        } catch {}
+      }, 0);
+    });
+  }
+
+  function closeEdit() {
+    const inst = M?.Modal?.getInstance?.(editModalRef.current) || M?.Modal?.init?.(editModalRef.current);
+    inst?.close?.();
+    setEditOpen(false);
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isAdmin || !editingUsername) return;
+    try {
+      setEditSaving(true);
+      const patch: any = {
+        username: editingUsername,
+        employee_name: safeStr(editForm.employee_name) || undefined,
+        employee_email: safeStr(editForm.employee_email) || undefined,
+        employee_role: safeStr(editForm.employee_role) || undefined,
+        employee_title: safeStr(editForm.employee_title) || undefined,
+        employee_picture: safeStr(editForm.employee_picture) || undefined,
+        employee_profilepicture: safeStr(editForm.employee_picture) || undefined,
+        employee_phonenumber: safeStr(editForm.employee_phonenumber) || undefined,
+        department: safeStr(editForm.department) || undefined,
+        location: safeStr(editForm.location) || undefined,
+        project_id: safeStr(editForm.project_id) || undefined,
+        employee_id: safeStr(editForm.employee_id) || undefined,
+        revoked: !!editForm.revoked,
+      };
+      if (safeStr(editForm.password)) patch.password = editForm.password;
+      await api.updateUser(patch);
+      M?.toast?.({ html: "Employee updated.", classes: "green" });
+      setEditSaving(false);
+      closeEdit();
+      const resp = await api.getUsers();
+      setUsers(Array.isArray(resp) ? resp : []);
+    } catch (e: any) {
+      setEditSaving(false);
+      M?.toast?.({ html: e?.message || "Failed to save employee.", classes: "red" });
+    }
+  }
+
+  async function resolveAttachmentUrl(a: any, idx: number) {
+    const key = `${safeStr((selectedSummary as any)?.userId)}::${safeStr((selectedSummary as any)?.weekStart)}::${safeStr(a?.s3Key) || safeStr(a?.name) || idx}`;
+    const cached = safeStr(signedAttachmentUrls[key]);
+    if (cached) return cached;
+    const raw = safeStr(a?.url || a?.publicUrl || a?.youtubeUrl || "");
+    if (raw && !safeStr(a?.s3Key)) return raw;
+    const s3Key = safeStr(a?.s3Key);
+    if (!s3Key) return "";
+    try {
+      const resp = await (api as any).getWeeklyUpdateAttachmentUrl?.({
+        s3Key,
+        userId: safeStr((selectedSummary as any)?.userId),
+        weekStart: safeStr((selectedSummary as any)?.weekStart),
+      });
+      const url = safeStr(resp?.url);
+      if (url) setSignedAttachmentUrls((prev) => ({ ...prev, [key]: url }));
+      return url;
+    } catch {
+      return "";
+    }
+  }
+
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "330px 1fr", gap: 16, alignItems: "start" }}>
+        <div style={{ borderRadius: 18, overflow: "hidden", border: "1px solid rgba(148,163,184,.14)", background: "#fff" }}>
+          <div style={{ padding: 14, borderBottom: "1px solid rgba(148,163,184,.12)", background: "radial-gradient(420px 140px at 0% 0%, rgba(34,197,94,.10), transparent 55%), linear-gradient(135deg,#ffffff 0%,#fbfdff 60%,#f7fafc 100%)" }}>
+            <div style={{ fontWeight: 1000, color: "#0f172a" }}>Employees</div>
+            <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700 }}>Search, select, and edit employees.</div>
+            <div style={{ marginTop: 10 }}>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name, role, department..."
+                style={{
+                  display: "block",
+                  width: "100%",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                  height: 46,
+                  minHeight: 46,
+                  border: "1px solid #dbe5ef",
+                  borderRadius: 12,
+                  padding: "0 12px",
+                  fontWeight: 800,
+                  outline: "none",
+                  lineHeight: "46px",
+                  background: "#fff",
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ maxHeight: 650, overflow: "auto" }}>
+            {loadingUsers ? (
+              <div style={{ padding: 14, color: "#64748b", fontWeight: 800 }}>Loading employees…</div>
+            ) : usersError ? (
+              <div style={{ padding: 14, color: "#b91c1c", fontWeight: 900 }}>{usersError}</div>
+            ) : (
+              filteredUsers.map((u) => {
+                const key = getUserKey(u);
+                const avatar = getUserAvatar(u);
+                const selected = norm(selectedKey) === key;
+                return (
+                  <div
+                    key={key}
+                    onClick={() => setSelectedKey(key)}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px", borderBottom: "1px solid rgba(148,163,184,.10)", background: selected ? "rgba(59,130,246,.08)" : "#fff", cursor: "pointer" }}
+                  >
+                    <div style={{ width: 38, height: 38, borderRadius: 999, overflow: "hidden", border: "1px solid rgba(148,163,184,.22)", background: "rgba(148,163,184,.10)", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto" }}>
+                      {avatar ? <img src={avatar} alt={getUserName(u)} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontWeight: 1000, color: "#64748b" }}>{initials(getUserName(u))}</span>}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 950, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{getUserName(u)}</div>
+                      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {safeStr((u as any)?.employee_title) || safeStr((u as any)?.department) || getRole(u) || "employee"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEdit(u);
+                      }}
+                      title="Edit employee details"
+                      disabled={!isAdmin}
+                      style={{ borderRadius: 10, textTransform: "none", background: "rgba(15,23,42,.06)", color: "#0f172a", boxShadow: "none", minWidth: 36 }}
+                    >
+                      <i className="material-icons" style={{ fontSize: 18 }}>edit</i>
+                    </button>
+                  </div>
+                );
+              })
+            )}
+            {!loadingUsers && !usersError && !filteredUsers.length ? <div style={{ padding: 14, color: "#64748b", fontWeight: 800 }}>No employees found.</div> : null}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ borderRadius: 18, overflow: "hidden", border: "1px solid rgba(148,163,184,.14)", background: "#fff" }}>
+            <div style={{ padding: 14, borderBottom: "1px solid rgba(148,163,184,.12)", background: "radial-gradient(520px 160px at 10% 0%, rgba(59,130,246,.12), transparent 55%), linear-gradient(135deg,#ffffff 0%,#fbfdff 60%,#f7fafc 100%)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 999, overflow: "hidden", border: "1px solid rgba(148,163,184,.22)", background: "rgba(148,163,184,.10)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {selectedUser && getUserAvatar(selectedUser) ? <img src={getUserAvatar(selectedUser)} alt={getUserName(selectedUser)} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <i className="material-icons" style={{ fontSize: 22, color: "#64748b" }}>person_search</i>}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 1000, color: "#0f172a" }}>{selectedUser ? getUserName(selectedUser) : "Select an employee"}</div>
+                  <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>{selectedUser ? safeStr((selectedUser as any)?.employee_title) : "Weekly summaries appear here."}</div>
+                </div>
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <button
+                  type="button"
+                  className="btn-small"
+                  disabled={!selectedUser || !isAdmin}
+                  onClick={() => selectedUser && openEdit(selectedUser)}
+                  style={{ borderRadius: 10, textTransform: "none", fontWeight: 900, background: "rgba(15,23,42,.06)", color: "#0f172a", boxShadow: "none" }}
+                  title="Edit employee details"
+                >
+                  <i className="material-icons left">edit</i>
+                  Edit employee
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12, marginBottom: 16 }}>
+                <MetricBox label="Weeks" value={String(totals.weeks)} />
+                <MetricBox label="Entries" value={String(totals.entries)} />
+                <MetricBox label="Hours" value={totals.hours.toFixed(1)} />
+                <MetricBox label="Attachments" value={String(totals.attachments)} />
+              </div>
+
+              {loadingSummaries ? (
+                <div style={{ color: "#64748b", fontWeight: 800 }}>Loading employee activity…</div>
+              ) : summariesError ? (
+                <div style={{ color: "#b91c1c", fontWeight: 900 }}>{summariesError}</div>
+              ) : !selectedKey ? (
+                <div style={{ color: "#64748b", fontWeight: 800 }}>Pick an employee on the left.</div>
+              ) : !summaries.length ? (
+                <div style={{ color: "#64748b", fontWeight: 800 }}>No updates found for this employee.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 14, alignItems: "start" }}>
+                    <div style={{ borderRadius: 16, border: "1px solid rgba(148,163,184,.14)", background: "#fff", overflow: "hidden" }}>
+                      <div style={{ padding: 12, borderBottom: "1px solid rgba(148,163,184,.12)" }}>
+                        <div style={{ fontWeight: 1000, color: "#0f172a" }}>Weekly updates</div>
+                        <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>Click a week to inspect details.</div>
+                      </div>
+                      <div style={{ maxHeight: 520, overflow: "auto" }}>
+                        {summaries.map((row) => {
+                          const week = safeStr((row as any)?.weekStart);
+                          const selected = safeStr(selectedWeek) === week;
+                          return (
+                            <button
+                              key={`${safeStr((row as any)?.userId)}::${week}`}
+                              type="button"
+                              onClick={() => setSelectedWeek(week)}
+                              style={{ width: "100%", textAlign: "left", border: "none", borderBottom: "1px solid rgba(148,163,184,.10)", background: selected ? "rgba(59,130,246,.08)" : "#fff", padding: "12px", cursor: "pointer" }}
+                            >
+                              <div style={{ fontWeight: 1000, color: "#0f172a" }}>{week || "—"}</div>
+                              <div style={{ marginTop: 3, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                                {safeStr((row as any)?.totalEntries)} entries · {safeStr((row as any)?.totalHours)}h · {normalizeAttachments((row as any).attachments || (row as any).uploadedFiles || (row as any).files).length} attachments
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 14 }}>
+                      <div style={{ borderRadius: 16, border: "1px solid rgba(148,163,184,.14)", background: "#fff", padding: 14 }}>
+                        <div style={{ fontSize: 16, fontWeight: 1000, color: "#0f172a" }}>{formatWeek(safeStr(selectedSummary as any)?.weekStart)}</div>
+                        <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                          {safeStr((selectedSummary as any)?.totalEntries)} entries · {safeStr((selectedSummary as any)?.totalHours)}h
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
+                        <DetailList title="Accomplishments" items={Array.isArray((selectedSummary as any)?.accomplishments) ? (selectedSummary as any).accomplishments : []} />
+                        <DetailList title="Blockers" items={Array.isArray((selectedSummary as any)?.blockers) ? (selectedSummary as any).blockers : []} />
+                        <DetailList title="Next" items={Array.isArray((selectedSummary as any)?.next) ? (selectedSummary as any).next : []} />
+                      </div>
+
+                      <div style={{ borderRadius: 16, border: "1px solid rgba(148,163,184,.14)", background: "#fff", padding: 14 }}>
+                        <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 10 }}>Timesheet rows</div>
+                        {!selectedTimesheet.length ? (
+                          <div style={{ color: "#64748b", fontWeight: 700 }}>No timesheet rows found.</div>
+                        ) : (
+                          <div style={{ overflowX: "auto" }}>
+                            <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+                              <thead>
+                                <tr>
+                                  {["Day", "Date", "Hours"].map((h) => (
+                                    <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".06em", color: "#64748b", borderBottom: "1px solid rgba(148,163,184,.14)" }}>
+                                      {h}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedTimesheet.map((t: any, idx: number) => (
+                                  <tr key={`${t?.date || "d"}-${idx}`}>
+                                    <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(148,163,184,.10)", fontWeight: 800 }}>{weekdayShort(safeStr(t?.date))}</td>
+                                    <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(148,163,184,.10)", fontWeight: 800 }}>{formatDate(safeStr(t?.date))}</td>
+                                    <td style={{ padding: "10px 12px", borderBottom: "1px solid rgba(148,163,184,.10)", fontWeight: 900 }}>{safeStr(t?.hours)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ borderRadius: 16, border: "1px solid rgba(148,163,184,.14)", background: "#fff", padding: 14 }}>
+                        <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 10 }}>Attachments</div>
+                        {!attachments.length ? (
+                          <div style={{ color: "#64748b", fontWeight: 700 }}>No attachments.</div>
+                        ) : (
+                          <div style={{ display: "grid", gap: 10 }}>
+                            {attachments.map((a, idx) => {
+                              const previewKey = `${safeStr((selectedSummary as any)?.userId)}::${safeStr((selectedSummary as any)?.weekStart)}::${safeStr(a?.s3Key) || safeStr(a?.name) || idx}`;
+                              const kind = attachmentKind(a);
+                              const href = signedAttachmentUrls[previewKey] || safeStr(a?.url || a?.youtubeUrl || "");
+                              return (
+                                <div key={previewKey} style={{ borderRadius: 14, border: "1px solid rgba(148,163,184,.12)", background: "#f8fbff", padding: 12 }}>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                                    <div style={{ fontWeight: 900, color: "#0f172a" }}>{safeStr(a?.name) || `Attachment ${idx + 1}`}</div>
+                                    {kind !== "none" ? (
+                                      <button
+                                        type="button"
+                                        className="btn-small"
+                                        style={{ borderRadius: 10, textTransform: "none" }}
+                                        onClick={async () => {
+                                          const url = href || (await resolveAttachmentUrl(a, idx));
+                                          if (url) setSelectedAttachment(previewKey);
+                                        }}
+                                      >
+                                        Preview
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                  {selectedAttachment === previewKey ? (
+                                    <div style={{ marginTop: 12 }}>
+                                      {kind === "image" ? (
+                                        <img src={href} alt={safeStr(a?.name)} style={{ maxWidth: "100%", maxHeight: 360, borderRadius: 8 }} />
+                                      ) : kind === "video" ? (
+                                        <video controls src={href} style={{ width: "100%", maxHeight: 360, borderRadius: 8, background: "#000" }} />
+                                      ) : kind === "pdf" ? (
+                                        <iframe title={`pdf-${previewKey}`} src={href} style={{ width: "100%", height: 420, border: "1px solid #e8eef3", borderRadius: 8 }} />
+                                      ) : kind === "youtube" ? (
+                                        <iframe title={`yt-${previewKey}`} src={href} style={{ width: "100%", height: 360, border: "1px solid #e8eef3", borderRadius: 8 }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div ref={editModalRef} className={`modal modal-fixed-footer ${editOpen ? "open" : ""}`} style={{ maxHeight: "90%" }}>
+        <form onSubmit={saveEdit}>
+          <div className="modal-content">
+            <h5 style={{ fontWeight: 1000, marginBottom: 6 }}>Edit Employee</h5>
+            <p className="grey-text" style={{ marginTop: 0, fontWeight: 700 }}>Update employee details and save changes.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(12, minmax(0,1fr))", gap: 10, marginTop: 12 }}>
+              {[
+                ["Username", "username", 4, !isSuper],
+                ["Employee Name", "employee_name", 4, false],
+                ["Employee Email", "employee_email", 4, false],
+                ["Title", "employee_title", 4, false],
+                ["Employee Picture URL", "employee_picture", 4, false],
+                ["Phone", "employee_phonenumber", 4, false],
+                ["Department", "department", 4, false],
+                ["Location", "location", 4, false],
+                ["Project ID", "project_id", 6, false],
+                ["Employee ID", "employee_id", 6, !isSuper],
+              ].map(([label, key, span, disabled]) => (
+                <div key={String(key)} style={{ gridColumn: `span ${span}` }}>
+                  <div className="input-field">
+                    <input
+                      id={`edit_${key}`}
+                      value={(editForm as any)[key] || ""}
+                      onChange={(e) =>
+                        setEditForm((p) => ({
+                          ...p,
+                          [key]: e.target.value,
+                        }))
+                      }
+                      disabled={!!disabled}
+                    />
+                    <label className={(editForm as any)[key] ? "active" : ""} htmlFor={`edit_${key}`}>
+                      {String(label)}
+                    </label>
+                  </div>
+                </div>
+              ))}
+              {isSuper ? (
+                <div style={{ gridColumn: "span 4" }}>
+                  <div className="input-field">
+                    <select className="browser-default" value={editForm.employee_role} onChange={(e) => setEditForm((p) => ({ ...p, employee_role: e.target.value }))}>
+                      <option value="employee">employee</option>
+                      <option value="admin">admin</option>
+                      <option value="super">super</option>
+                    </select>
+                  </div>
+                </div>
+              ) : null}
+              <div style={{ gridColumn: "span 12" }}>
+                <label>
+                  <input type="checkbox" className="filled-in" checked={editForm.revoked} onChange={(e) => setEditForm((p) => ({ ...p, revoked: e.target.checked }))} />
+                  <span>Revoked</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <a className="modal-close btn-flat" onClick={closeEdit}>Cancel</a>
+            <button type="submit" className={`btn ${editSaving ? "disabled" : ""}`} disabled={editSaving} style={{ textTransform: "none", fontWeight: 900 }}>
+              <i className="material-icons left">{editSaving ? "hourglass_empty" : "save"}</i>
+              {editSaving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+}
