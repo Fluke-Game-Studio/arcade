@@ -14,6 +14,16 @@ export type ApiUser = {
   employee_dob?: string;
   employee_profilepicture?: string;
   employee_picture?: string;
+  linkedin_connected?: boolean;
+  linkedin_connected_at?: string;
+  linkedin_member_id?: string;
+  linkedin_name?: string;
+  linkedin_email?: string;
+  discord_connected?: boolean;
+  discord_connected_at?: string;
+  discord_member_id?: string;
+  discord_name?: string;
+  discord_email?: string;
   employee_phonenumber?: string;
   employment_type?: string;
   department?: string;
@@ -34,6 +44,16 @@ export type CreateUserBody = {
   employee_dob?: string;
   employee_profilepicture?: string;
   employee_picture?: string;
+  linkedin_connected?: boolean;
+  linkedin_connected_at?: string;
+  linkedin_member_id?: string;
+  linkedin_name?: string;
+  linkedin_email?: string;
+  discord_connected?: boolean;
+  discord_connected_at?: string;
+  discord_member_id?: string;
+  discord_name?: string;
+  discord_email?: string;
   employee_phonenumber?: string;
   employee_email?: string;
   employee_title?: string;
@@ -50,4 +70,26 @@ export type UpdateUserBody = Partial<CreateUserBody> & {
   employee_last_update_week?: string;
   employee_last_update_hours?: string;
   employee_last_update_summary?: string;
+};
+
+export type StartLinkedInConnectBody = {
+  returnTo?: string;
+};
+
+export type StartLinkedInConnectResponse = {
+  ok: boolean;
+  authorizeUrl: string;
+  returnTo?: string;
+  scopes?: string[];
+};
+
+export type StartDiscordConnectBody = {
+  returnTo?: string;
+};
+
+export type StartDiscordConnectResponse = {
+  ok: boolean;
+  authorizeUrl: string;
+  returnTo?: string;
+  scopes?: string[];
 };

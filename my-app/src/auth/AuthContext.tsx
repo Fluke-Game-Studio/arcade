@@ -8,6 +8,18 @@ export type SessionUser = {
   username: string;
   name: string;
   role: Role;
+  linkedin_connected?: boolean;
+  linkedin_connected_at?: string;
+  linkedin_member_id?: string;
+  linkedin_name?: string;
+  linkedin_email?: string;
+  discord_connected?: boolean;
+  discord_connected_at?: string;
+  discord_member_id?: string;
+  discord_name?: string;
+  discord_email?: string;
+  employee_picture?: string;
+  employee_profilepicture?: string;
 };
 
 export type AuthStatus = "checking" | "authenticated" | "unauthenticated";
@@ -18,6 +30,7 @@ type AuthCtx = {
   status: AuthStatus;
   bootReason: AuthBootReason;
   login: (username: string, password: string) => Promise<boolean>;
+  refreshSession: () => Promise<void>;
   logout: () => void;
   // convenient passthroughs
   api: typeof api;
@@ -91,6 +104,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null, "unauthenticated");
   }
 
+  async function refreshSession() {
+    if (!user?.token) return;
+
+    try {
+      const me: any = await api.getMe();
+      const refreshed: SessionUser = {
+        token: user.token,
+        username: String(me?.username || user.username),
+        name: String(me?.employee_name || me?.name || user.name),
+        role: mapRole(String(me?.employee_role || me?.role || "employee").toLowerCase() as any),
+        ...(me || {}),
+      } as SessionUser;
+      setSession(refreshed, "authenticated");
+    } catch {}
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -148,8 +177,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.token]);
 
   const value = useMemo(
-    () => ({ user, status, bootReason, login, logout, api }),
-    [user, status, bootReason]
+    () => ({ user, status, bootReason, login, refreshSession, logout, api }),
+    [user, status, bootReason, refreshSession]
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

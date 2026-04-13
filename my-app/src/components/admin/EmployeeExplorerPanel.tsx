@@ -73,6 +73,22 @@ function getUserAvatar(user: Partial<ApiUser>) {
   return safeStr((user as any)?.employee_picture) || safeStr((user as any)?.employee_profilepicture);
 }
 
+function isLinkedInConnected(user: Partial<ApiUser>) {
+  return Boolean(
+    (user as any)?.linkedin_connected ||
+      safeStr((user as any)?.linkedin_connected_at) ||
+      safeStr((user as any)?.linkedin_member_id)
+  );
+}
+
+function isDiscordConnected(user: Partial<ApiUser>) {
+  return Boolean(
+    (user as any)?.discord_connected ||
+      safeStr((user as any)?.discord_connected_at) ||
+      safeStr((user as any)?.discord_member_id)
+  );
+}
+
 function getRole(user: any) {
   return norm(user?.employee_role || user?.role || "employee") || "employee";
 }
@@ -448,6 +464,44 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                       <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {safeStr((u as any)?.employee_title) || safeStr((u as any)?.department) || getRole(u) || "employee"}
                       </div>
+                      {isLinkedInConnected(u) ? (
+                        <div style={{ marginTop: 4 }}>
+                          <span style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "4px 9px",
+                            borderRadius: 999,
+                            background: "rgba(34,197,94,0.12)",
+                            color: "#166534",
+                            border: "1px solid rgba(34,197,94,0.20)",
+                            fontSize: 11,
+                            fontWeight: 900,
+                          }}>
+                            <i className="material-icons" style={{ fontSize: 14 }}>check_circle</i>
+                            LinkedIn Connected
+                          </span>
+                        </div>
+                      ) : null}
+                      {isDiscordConnected(u) ? (
+                        <div style={{ marginTop: 4 }}>
+                          <span style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "4px 9px",
+                            borderRadius: 999,
+                            background: "rgba(88,101,242,0.12)",
+                            color: "#312e81",
+                            border: "1px solid rgba(88,101,242,0.20)",
+                            fontSize: 11,
+                            fontWeight: 900,
+                          }}>
+                            <i className="material-icons" style={{ fontSize: 14 }}>check_circle</i>
+                            Discord Connected
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                     <button
                       type="button"
@@ -480,6 +534,48 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                 <div>
                   <div style={{ fontWeight: 1000, color: "#0f172a" }}>{selectedUser ? getUserName(selectedUser) : "Select an employee"}</div>
                   <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>{selectedUser ? safeStr((selectedUser as any)?.employee_title) : "Weekly summaries appear here."}</div>
+                  {selectedUser ? (
+                    <div style={{ marginTop: 6 }}>
+                      <span style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 9px",
+                        borderRadius: 999,
+                        background: isLinkedInConnected(selectedUser) ? "rgba(34,197,94,0.12)" : "rgba(148,163,184,0.12)",
+                        color: isLinkedInConnected(selectedUser) ? "#166534" : "#475569",
+                        border: isLinkedInConnected(selectedUser) ? "1px solid rgba(34,197,94,0.20)" : "1px solid rgba(148,163,184,0.18)",
+                        fontSize: 11,
+                        fontWeight: 900,
+                      }}>
+                        <i className="material-icons" style={{ fontSize: 14 }}>
+                          {isLinkedInConnected(selectedUser) ? "check_circle" : "link"}
+                        </i>
+                        {isLinkedInConnected(selectedUser) ? "LinkedIn Connected" : "LinkedIn Not Connected"}
+                      </span>
+                    </div>
+                  ) : null}
+                  {selectedUser ? (
+                    <div style={{ marginTop: 6 }}>
+                      <span style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 9px",
+                        borderRadius: 999,
+                        background: isDiscordConnected(selectedUser) ? "rgba(88,101,242,0.12)" : "rgba(148,163,184,0.12)",
+                        color: isDiscordConnected(selectedUser) ? "#312e81" : "#475569",
+                        border: isDiscordConnected(selectedUser) ? "1px solid rgba(88,101,242,0.20)" : "1px solid rgba(148,163,184,0.18)",
+                        fontSize: 11,
+                        fontWeight: 900,
+                      }}>
+                        <i className="material-icons" style={{ fontSize: 14 }}>
+                          {isDiscordConnected(selectedUser) ? "check_circle" : "sports_esports"}
+                        </i>
+                        {isDiscordConnected(selectedUser) ? "Discord Connected" : "Discord Not Connected"}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div style={{ marginLeft: "auto" }}>

@@ -1,6 +1,7 @@
 // src/components/account/AccountEditDetails.tsx
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ApiUser } from "../../api";
+import AwardUnlockModal from "./AwardUnlockModal";
 
 declare const M: any;
 
@@ -188,13 +189,135 @@ export default function AccountEditDetails({
   });
 
   const [savingProfile, setSavingProfile] = useState(false);
+  const [linkedinConnecting, setLinkedinConnecting] = useState(false);
+  const [discordConnecting, setDiscordConnecting] = useState(false);
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [unlockItems, setUnlockItems] = useState<any[]>([]);
   const [pulse, setPulse] = useState(false);
+  const [socialRewardsChecked, setSocialRewardsChecked] = useState(false);
 
   const [picError, setPicError] = useState(false);
   const [employeePicError, setEmployeePicError] = useState(false);
 
   useEffect(() => {
     if (typeof M !== "undefined") setTimeout(() => M.updateTextFields(), 0);
+  }, [api]);
+
+  function showUnlocks(resp: any, achievement: any) {
+    const achievementItem =
+      resp?.awarded === false
+        ? null
+        : {
+            kind: "achievement",
+            id: achievement?.achievementId || achievement?.id,
+            title: achievement?.title,
+            description: achievement?.description,
+            metric: achievement?.metric,
+            threshold: achievement?.threshold,
+            setKey: achievement?.setKey,
+          };
+    const trophyItems = Array.isArray(resp?.unlockedTrophies)
+      ? resp.unlockedTrophies.map((t: any) => ({
+          kind: "trophy",
+          id: t?.id,
+          title: t?.title,
+          description: t?.description,
+          tier: t?.tier,
+          imageUrl: t?.imageUrl,
+          achievementSetKey: t?.achievementSetKey,
+        }))
+      : [];
+    const items = [achievementItem, ...trophyItems].filter((x: any) => !!x?.id || !!x?.title);
+
+    if (items.length) {
+      setUnlockItems(items);
+      setUnlockOpen(true);
+    }
+  }
+
+  useEffect(() => {
+    function onLinkedInMessage(event: MessageEvent) {
+      const data = event?.data || {};
+      if (data?.type === "linkedin-connected") {
+        setLinkedinConnecting(false);
+        refreshMeSafe();
+        setEdit("employee_picture", false);
+        void api
+          .awardAchievement({
+            achievementId: "linkedin_connect",
+            title: "Connect To Linked-In",
+            description: "Connect to LinkedIn to autofill your profile data.",
+            metric: "linkedinSocials",
+            setKey: "connectSocials",
+            threshold: 1,
+          })
+          .then((resp: any) => {
+            showUnlocks(resp, {
+              id: "linkedin_connect",
+              title: "Connect To Linked-In",
+              description: "Connect to LinkedIn to autofill your profile data.",
+              metric: "linkedinSocials",
+              setKey: "connectSocials",
+              threshold: 1,
+            });
+          })
+          .catch(() => {});
+        if (typeof M !== "undefined") {
+          M.toast({ html: "LinkedIn photo synced.", classes: "green" });
+        }
+      }
+      if (data?.type === "linkedin-error") {
+        setLinkedinConnecting(false);
+        if (typeof M !== "undefined") {
+          M.toast({ html: data?.message || "LinkedIn connect failed.", classes: "red" });
+        }
+      }
+    }
+
+    window.addEventListener("message", onLinkedInMessage);
+    return () => window.removeEventListener("message", onLinkedInMessage);
+  }, [api]);
+
+  useEffect(() => {
+    function onDiscordMessage(event: MessageEvent) {
+      const data = event?.data || {};
+      if (data?.type === "discord-connected") {
+        setDiscordConnecting(false);
+        refreshMeSafe();
+        void api
+          .awardAchievement({
+            achievementId: "discord_connect",
+            title: "Join Discord Server",
+            description: "Connect to the Fluke Games Discord server.",
+            metric: "connectSocials",
+            setKey: "connectSocials",
+            threshold: 1,
+          })
+          .then((resp: any) => {
+            showUnlocks(resp, {
+              id: "discord_connect",
+              title: "Join Discord Server",
+              description: "Connect to the Fluke Games Discord server.",
+              metric: "connectSocials",
+              setKey: "connectSocials",
+              threshold: 1,
+            });
+          })
+          .catch(() => {});
+        if (typeof M !== "undefined") {
+          M.toast({ html: "Discord avatar synced.", classes: "green" });
+        }
+      }
+      if (data?.type === "discord-error") {
+        setDiscordConnecting(false);
+        if (typeof M !== "undefined") {
+          M.toast({ html: data?.message || "Discord connect failed.", classes: "red" });
+        }
+      }
+    }
+
+    window.addEventListener("message", onDiscordMessage);
+    return () => window.removeEventListener("message", onDiscordMessage);
   }, []);
 
   useEffect(() => {
@@ -237,6 +360,46 @@ export default function AccountEditDetails({
   const email = safeStr((me as any)?.employee_email) || username || "—";
   const role = (safeStr((me as any)?.employee_role) || "employee").toUpperCase();
   const title = safeStr((me as any)?.employee_title) || "—";
+  const linkedinConnected = Boolean(
+    (me as any)?.linkedin_connected ||
+      safeStr((me as any)?.linkedin_connected_at) ||
+      safeStr((me as any)?.linkedin_member_id)
+  );
+  const linkedinConnectedAt = safeStr((me as any)?.linkedin_connected_at);
+  const discordConnected = Boolean(
+    (me as any)?.discord_connected ||
+      safeStr((me as any)?.discord_connected_at) ||
+      safeStr((me as any)?.discord_member_id)
+  );
+  const discordConnectedAt = safeStr((me as any)?.discord_connected_at);
+
+  useEffect(() => {
+    if (!me) return;
+    if (!linkedinConnected || !discordConnected) return;
+    if (socialRewardsChecked) return;
+
+    setSocialRewardsChecked(true);
+    void api
+      .awardAchievement({
+        achievementId: "linkedin_connect",
+        title: "Connect To Linked-In",
+        description: "Connect to LinkedIn to autofill your profile data.",
+        metric: "linkedinSocials",
+        setKey: "connectSocials",
+        threshold: 1,
+      })
+      .then((resp: any) => {
+        showUnlocks(resp, {
+          id: "linkedin_connect",
+          title: "Connect To Linked-In",
+          description: "Connect to LinkedIn to autofill your profile data.",
+          metric: "linkedinSocials",
+          setKey: "connectSocials",
+          threshold: 1,
+        });
+      })
+      .catch(() => {});
+  }, [api, me, linkedinConnected, discordConnected, socialRewardsChecked]);
 
   const dept = safeStr((me as any)?.department) || "—";
   const employmentType = safeStr((me as any)?.employment_type) || "—";
@@ -371,6 +534,92 @@ export default function AccountEditDetails({
     }
   }
 
+  async function connectLinkedInPhoto() {
+    if (linkedinConnecting || savingProfile) return;
+
+    const popup = window.open(
+      "",
+      "linkedin-connect",
+      "width=560,height=760,left=120,top=120"
+    );
+
+    if (!popup) {
+      M?.toast?.({ html: "Popup blocked. Please allow popups and try again.", classes: "red" });
+      return;
+    }
+
+    try {
+      setLinkedinConnecting(true);
+      popup.document.write("<p style='font-family:Arial,sans-serif;padding:20px'>Opening LinkedIn...</p>");
+      const popupMonitor = window.setInterval(() => {
+        try {
+          if (popup.closed) {
+            window.clearInterval(popupMonitor);
+            setLinkedinConnecting(false);
+          }
+        } catch {
+          window.clearInterval(popupMonitor);
+          setLinkedinConnecting(false);
+        }
+      }, 500);
+      const resp = await api.startLinkedInConnect({ returnTo: window.location.href });
+      if (!resp?.authorizeUrl) {
+        throw new Error("Missing LinkedIn authorize URL.");
+      }
+      popup.location.href = resp.authorizeUrl;
+      popup.focus();
+    } catch (err: any) {
+      setLinkedinConnecting(false);
+      try {
+        popup.close();
+      } catch {}
+      M?.toast?.({ html: err?.message || "Failed to start LinkedIn connect.", classes: "red" });
+    }
+  }
+
+  async function connectDiscordPhoto() {
+    if (discordConnecting || savingProfile) return;
+
+    const popup = window.open(
+      "",
+      "discord-connect",
+      "width=560,height=760,left=140,top=140"
+    );
+
+    if (!popup) {
+      M?.toast?.({ html: "Popup blocked. Please allow popups and try again.", classes: "red" });
+      return;
+    }
+
+    try {
+      setDiscordConnecting(true);
+      popup.document.write("<p style='font-family:Arial,sans-serif;padding:20px'>Opening Discord...</p>");
+      const popupMonitor = window.setInterval(() => {
+        try {
+          if (popup.closed) {
+            window.clearInterval(popupMonitor);
+            setDiscordConnecting(false);
+          }
+        } catch {
+          window.clearInterval(popupMonitor);
+          setDiscordConnecting(false);
+        }
+      }, 500);
+      const resp = await api.startDiscordConnect({ returnTo: window.location.href });
+      if (!resp?.authorizeUrl) {
+        throw new Error("Missing Discord authorize URL.");
+      }
+      popup.location.href = resp.authorizeUrl;
+      popup.focus();
+    } catch (err: any) {
+      setDiscordConnecting(false);
+      try {
+        popup.close();
+      } catch {}
+      M?.toast?.({ html: err?.message || "Failed to start Discord connect.", classes: "red" });
+    }
+  }
+
   return (
     <>
       <style>{`
@@ -459,6 +708,25 @@ export default function AccountEditDetails({
           flex-wrap: wrap;
           justify-content:flex-end;
         }
+        .accHeroActions{
+          display:flex;
+          flex-direction:column;
+          align-items:flex-end;
+          gap: 10px;
+          max-width: 560px;
+        }
+        .accHeroConnectRow{
+          display:flex;
+          flex-wrap:wrap;
+          gap: 8px;
+          justify-content:flex-end;
+        }
+        .accHeroStatusRow{
+          display:flex;
+          flex-wrap:wrap;
+          gap: 8px;
+          justify-content:flex-end;
+        }
         .accPill{
           display:inline-flex;
           align-items:center;
@@ -486,12 +754,25 @@ export default function AccountEditDetails({
           border-bottom: 1px solid #eceff1;
           background: linear-gradient(135deg, #ffffff 0%, #fbfdff 60%, #f7fafc 100%);
           display:flex;
-          align-items:flex-start;
-          justify-content:space-between;
+          flex-direction:column;
+          align-items:stretch;
           gap: 12px;
         }
         .panelHead .h{ font-weight: 1000; color: #0f172a; font-size: 14.5px; }
         .panelHead .p{ margin-top: 2px; color:#607d8b; font-size: 12px; }
+        .panelHeadTop{
+          display:flex;
+          justify-content:space-between;
+          gap: 12px;
+          align-items:flex-start;
+        }
+        .panelConnectRow{
+          display:flex;
+          flex-wrap:wrap;
+          gap: 8px;
+          align-items:center;
+          justify-content:flex-start;
+        }
 
         .pulseGreen{ animation: pulseGlow 900ms ease both; }
         @keyframes pulseGlow {
@@ -636,70 +917,131 @@ export default function AccountEditDetails({
         input:focus { box-shadow: none !important; }
       `}</style>
 
-      <div className="accHero" style={{ marginBottom: 14 }}>
+                  <div className="accHero" style={{ marginBottom: 14 }}>
         <div className="accHeroInner">
-          <div className="accMiniProfile">
-            <div className="accAvatar" title={displayName}>
-              {isHttpUrl(heroAvatarUrl) && !(picError && employeePicError) ? (
-                <img
-                  src={heroAvatarUrl}
-                  alt="profile"
-                  onError={() => {
-                    if (heroAvatarUrl === pic) setPicError(true);
-                    else setEmployeePicError(true);
-                  }}
-                />
-              ) : (
-                <span style={{ fontSize: 22 }}>{avatarFallback}</span>
-              )}
-              <span className="accDot" title="Active" />
-            </div>
+          <div className="accMiniProfile" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+              <div className="accAvatar" title={displayName}>
+                {isHttpUrl(heroAvatarUrl) && !(picError && employeePicError) ? (
+                  <img
+                    src={heroAvatarUrl}
+                    alt="profile"
+                    onError={() => {
+                      if (heroAvatarUrl === pic) setPicError(true);
+                      else setEmployeePicError(true);
+                    }}
+                  />
+                ) : (
+                  <span style={{ fontSize: 22 }}>{avatarFallback}</span>
+                )}
+                <span className="accDot" title="Active" />
+              </div>
 
-            <div style={{ minWidth: 0 }}>
-              <div className="accTitle" title={displayName}>
-                {displayName}
-              </div>
-              <div className="accSub" title={email}>
-                {email}
-              </div>
-              <div className="accSub" title={title !== "—" ? title : ""}>
-                {title !== "—" ? title : " "}
+              <div style={{ minWidth: 0 }}>
+                <div className="accTitle" title={displayName}>{displayName}</div>
+                <div className="accSub" title={email}>{email}</div>
+                <div className="accSub" title={title !== "—" ? title : ""}>{title !== "—" ? title : " "}</div>
               </div>
             </div>
           </div>
 
           <div className="accPills">
             <Pill icon="verified" text={role} tone="blue" />
-            <Pill
-              icon="apartment"
-              text={dept !== "—" ? dept : "Department"}
-              tone="grey"
-            />
-            <Pill
-              icon="work_outline"
-              text={employmentType !== "—" ? employmentType : "Employment"}
-              tone="amber"
-            />
+            <Pill icon="apartment" text={dept !== "—" ? dept : "Department"} tone="grey" />
+            <Pill icon="work_outline" text={employmentType !== "—" ? employmentType : "Employment"} tone="amber" />
           </div>
         </div>
       </div>
 
       <div className={`card z-depth-1 panelCard ${pulse ? "pulseGreen" : ""}`}>
         <div className="panelHead">
-          <div>
-            <div className="h">Profile & Personal</div>
-            <div className="p">
-              Editable cards are grouped into compact dropdowns.
+          <div className="panelHeadTop">
+            <div>
+              <div className="h">Profile & Personal</div>
+              <div className="p">Editable cards are grouped into compact dropdowns.</div>
             </div>
+            <Pill icon="badge" text="Self Service" tone="green" />
           </div>
-          <Pill icon="badge" text="Self Service" tone="green" />
         </div>
 
         <div className="card-content" style={{ padding: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 14,
+              padding: 14,
+              borderRadius: 16,
+              border: "1px solid #e6edf2",
+              background: "linear-gradient(135deg, #f8fbff 0%, #ffffff 70%, #f7fafc 100%)",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 1000, color: "#0f172a", fontSize: 14 }}>
+                Social Connections
+              </div>
+              <div style={{ fontSize: 12, color: "#607d8b", fontWeight: 700, marginTop: 2 }}>
+                Connect LinkedIn and Discord to sync profile details and unlock social achievements.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="accBtn subtle"
+                onClick={connectLinkedInPhoto}
+                disabled={savingProfile || linkedinConnecting || discordConnecting}
+                style={{ padding: "7px 10px", fontSize: 12 }}
+              >
+                <i className="material-icons" style={{ fontSize: 18 }}>{linkedinConnecting ? "hourglass_empty" : "link"}</i>
+                <span>{linkedinConnecting ? "Connecting..." : "Connect LinkedIn"}</span>
+              </button>
+              <button
+                type="button"
+                className="accBtn subtle"
+                onClick={connectDiscordPhoto}
+                disabled={savingProfile || linkedinConnecting || discordConnecting}
+                style={{ padding: "7px 10px", fontSize: 12 }}
+              >
+                <i className="material-icons" style={{ fontSize: 18 }}>{discordConnecting ? "hourglass_empty" : "sports_esports"}</i>
+                <span>{discordConnecting ? "Connecting..." : "Connect Discord"}</span>
+              </button>
+              <Pill icon={linkedinConnected ? "check_circle" : "link"} text={linkedinConnected ? "LinkedIn Connected" : "LinkedIn Not Connected"} tone={linkedinConnected ? "green" : "grey"} />
+              <Pill icon={discordConnected ? "check_circle" : "sports_esports"} text={discordConnected ? "Discord Connected" : "Discord Not Connected"} tone={discordConnected ? "blue" : "grey"} />
+            </div>
+          </div>
           {loadingMe ? (
             <div className="emptyState">Loading…</div>
           ) : (
             <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 16,
+                  border: "1px solid #e6edf2",
+                  background: "linear-gradient(135deg, #f8fbff 0%, #ffffff 65%, #f7fafc 100%)",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: "#0f172a", fontSize: 14 }}>
+                    LinkedIn sync {linkedinConnected ? "• Connected" : "• Not connected"}
+                  </div>
+                <div style={{ fontSize: 12, color: "#607d8b", fontWeight: 700, marginTop: 2 }}>
+                  {linkedinConnected && linkedinConnectedAt
+                    ? `Last connected ${fmtMaybeDate(linkedinConnectedAt)}.`
+                    : "Pull your LinkedIn photo into Employee Picture."}
+                </div>
+                </div>
+              </div>
+
               <div className="tileGrid">
                 <EditableDropdown
                   open={editing.employee_profilepicture}
@@ -789,19 +1131,19 @@ export default function AccountEditDetails({
                         </label>
                       </div>
                     </div>
-                    <div className="editActions">
-                      <SmallAction
-                        icon="close"
-                        text="Cancel"
-                        subtle
-                        onClick={() => setEdit("employee_picture", false)}
-                        disabled={savingProfile}
-                      />
-                      <SmallAction
-                        icon="save"
-                        text={savingProfile ? "Saving…" : "Save"}
-                        onClick={() => saveOne("employee_picture")}
-                        disabled={savingProfile}
+                        <div className="editActions">
+                          <SmallAction
+                            icon="close"
+                            text="Cancel"
+                            subtle
+                            onClick={() => setEdit("employee_picture", false)}
+                            disabled={savingProfile}
+                          />
+                          <SmallAction
+                            icon="save"
+                            text={savingProfile ? "Saving…" : "Save"}
+                            onClick={() => saveOne("employee_picture")}
+                            disabled={savingProfile}
                       />
                     </div>
                   </div>
@@ -1058,6 +1400,12 @@ export default function AccountEditDetails({
           )}
         </div>
       </div>
+      <AwardUnlockModal open={unlockOpen} items={unlockItems} onClose={() => setUnlockOpen(false)} />
     </>
   );
 }
+
+
+
+
+

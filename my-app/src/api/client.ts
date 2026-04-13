@@ -26,8 +26,12 @@ import type {
   SubmitUpdateBody,
   SubmitUpdateResponse,
   UpdateUserBody,
-  UpsertJobBody,
-  QuestionBank,
+    UpsertJobBody,
+    QuestionBank,
+    StartLinkedInConnectBody,
+    StartLinkedInConnectResponse,
+    StartDiscordConnectBody,
+    StartDiscordConnectResponse,
 } from "./types";
 
 import type {
@@ -318,6 +322,50 @@ export class ApiClient {
       );
     }
     return payload?.ok ? payload : { ok: true };
+  }
+
+  async startLinkedInConnect(
+    body?: StartLinkedInConnectBody
+  ): Promise<StartLinkedInConnectResponse> {
+    const r = await fetch(`${API_BASE}/integrations/linkedin/start`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `startLinkedInConnect failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      authorizeUrl: String(payload?.authorizeUrl || ""),
+      returnTo: typeof payload?.returnTo === "string" ? payload.returnTo : undefined,
+      scopes: Array.isArray(payload?.scopes) ? payload.scopes : undefined,
+    };
+  }
+
+  async startDiscordConnect(
+    body?: StartDiscordConnectBody
+  ): Promise<StartDiscordConnectResponse> {
+    const r = await fetch(`${API_BASE}/integrations/discord/start`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `startDiscordConnect failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      authorizeUrl: String(payload?.authorizeUrl || ""),
+      returnTo: typeof payload?.returnTo === "string" ? payload.returnTo : undefined,
+      scopes: Array.isArray(payload?.scopes) ? payload.scopes : undefined,
+    };
   }
 
   async getProjects(): Promise<ApiProject[]> {
