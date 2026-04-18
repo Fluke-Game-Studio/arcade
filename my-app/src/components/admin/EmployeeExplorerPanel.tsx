@@ -16,6 +16,7 @@ type EditForm = {
   location: string;
   project_id: string;
   employee_id: string;
+  password?: string;
   revoked: boolean;
 };
 
@@ -31,6 +32,7 @@ const EMPTY_EDIT: EditForm = {
   location: "",
   project_id: "",
   employee_id: "",
+  password: "",
   revoked: false,
 };
 
@@ -334,6 +336,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
       location: safeStr((userRow as any)?.location),
       project_id: safeStr((userRow as any)?.project_id),
       employee_id: safeStr((userRow as any)?.employee_id),
+      password: "",
       revoked: !!(userRow as any)?.revoked,
     });
     setEditOpen(true);
@@ -640,7 +643,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
 
                     <div style={{ display: "grid", gap: 14 }}>
                       <div style={{ borderRadius: 16, border: "1px solid rgba(148,163,184,.14)", background: "#fff", padding: 14 }}>
-                        <div style={{ fontSize: 16, fontWeight: 1000, color: "#0f172a" }}>{formatWeek(safeStr(selectedSummary as any)?.weekStart)}</div>
+                        <div style={{ fontSize: 16, fontWeight: 1000, color: "#0f172a" }}>{formatWeek(safeStr((selectedSummary as any)?.weekStart))}</div>
                         <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
                           {safeStr((selectedSummary as any)?.totalEntries)} entries · {safeStr((selectedSummary as any)?.totalHours)}h
                         </div>
@@ -744,23 +747,30 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
             <h5 style={{ fontWeight: 1000, marginBottom: 6 }}>Edit Employee</h5>
             <p className="grey-text" style={{ marginTop: 0, fontWeight: 700 }}>Update employee details and save changes.</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(12, minmax(0,1fr))", gap: 10, marginTop: 12 }}>
-              {[
-                ["Username", "username", 4, !isSuper],
-                ["Employee Name", "employee_name", 4, false],
-                ["Employee Email", "employee_email", 4, false],
-                ["Title", "employee_title", 4, false],
-                ["Employee Picture URL", "employee_picture", 4, false],
-                ["Phone", "employee_phonenumber", 4, false],
-                ["Department", "department", 4, false],
-                ["Location", "location", 4, false],
-                ["Project ID", "project_id", 6, false],
-                ["Employee ID", "employee_id", 6, !isSuper],
-              ].map(([label, key, span, disabled]) => (
+              {(
+                [
+                  { label: "Username", key: "username", span: 4, disabled: !isSuper },
+                  { label: "Employee Name", key: "employee_name", span: 4, disabled: false },
+                  { label: "Employee Email", key: "employee_email", span: 4, disabled: false },
+                  { label: "Title", key: "employee_title", span: 4, disabled: false },
+                  { label: "Employee Picture URL", key: "employee_picture", span: 4, disabled: false },
+                  { label: "Phone", key: "employee_phonenumber", span: 4, disabled: false },
+                  { label: "Department", key: "department", span: 4, disabled: false },
+                  { label: "Location", key: "location", span: 4, disabled: false },
+                  { label: "Project ID", key: "project_id", span: 6, disabled: false },
+                  { label: "Employee ID", key: "employee_id", span: 6, disabled: !isSuper },
+                ] satisfies Array<{
+                  label: string;
+                  key: Exclude<keyof EditForm, "revoked">;
+                  span: number;
+                  disabled: boolean;
+                }>
+              ).map(({ label, key, span, disabled }) => (
                 <div key={String(key)} style={{ gridColumn: `span ${span}` }}>
                   <div className="input-field">
                     <input
                       id={`edit_${key}`}
-                      value={(editForm as any)[key] || ""}
+                      value={editForm[key] || ""}
                       onChange={(e) =>
                         setEditForm((p) => ({
                           ...p,
@@ -769,8 +779,8 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                       }
                       disabled={!!disabled}
                     />
-                    <label className={(editForm as any)[key] ? "active" : ""} htmlFor={`edit_${key}`}>
-                      {String(label)}
+                    <label className={editForm[key] ? "active" : ""} htmlFor={`edit_${key}`}>
+                      {label}
                     </label>
                   </div>
                 </div>

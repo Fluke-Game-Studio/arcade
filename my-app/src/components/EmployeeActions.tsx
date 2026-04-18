@@ -1,6 +1,5 @@
 // src/components/EmployeeActions.tsx
 import { Link } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
 
 type Action = {
   to: string;
@@ -87,8 +86,6 @@ function ActionCard({ a }: { a: Action }) {
 }
 
 export default function EmployeeActions() {
-  const { user } = useAuth() as any;
-
   const actions: Action[] = [
     { to: "/updates/new", title: "Fill Timesheet", subtitle: "Log hours for this week", icon: "edit_note", tone: "primary" },
     { to: "/updates/board", title: "Retro Board", subtitle: "Wins, blockers, next steps", icon: "view_kanban", tone: "neutral" },

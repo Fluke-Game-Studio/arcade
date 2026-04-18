@@ -379,7 +379,6 @@ export default function AccountEditDetails({
       safeStr((me as any)?.discord_connected_at) ||
       safeStr((me as any)?.discord_member_id)
   );
-  const discordConnectedAt = safeStr((me as any)?.discord_connected_at);
 
   useEffect(() => {
     if (!me) return;

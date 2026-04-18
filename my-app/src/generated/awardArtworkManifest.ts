@@ -22,4 +22,5 @@ export const TROPHY_ARTWORK_OPTIONS: TrophyArtworkOption[] = [
   { label: "Silver 3", value: encodeURI("/awards/silver 3.png") },
   { label: "Silver Pro", value: encodeURI("/awards/silver pro.png") },
   { label: "Social Connect", value: encodeURI("/awards/social_connect.png") },
+  { label: "Web Programmer", value: encodeURI("/awards/Web Programmer.png") },
 ];
