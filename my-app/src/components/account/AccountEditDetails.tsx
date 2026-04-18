@@ -49,6 +49,8 @@ function fmtMaybeDate(v: any) {
 type EditableKey =
   | "employee_profilepicture"
   | "employee_picture"
+  | "linkedin_url"
+  | "discord_url"
   | "employee_phonenumber"
   | "employee_dob"
   | "employee_address"
@@ -174,6 +176,8 @@ export default function AccountEditDetails({
 
   const [pic, setPic] = useState("");
   const [employeePic, setEmployeePic] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [discordUrl, setDiscordUrl] = useState("");
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [dob, setDob] = useState("");
@@ -182,6 +186,8 @@ export default function AccountEditDetails({
   const [editing, setEditing] = useState<Record<EditableKey, boolean>>({
     employee_profilepicture: false,
     employee_picture: false,
+    linkedin_url: false,
+    discord_url: false,
     employee_phonenumber: false,
     employee_dob: false,
     employee_address: false,
@@ -332,6 +338,8 @@ export default function AccountEditDetails({
         setMe(mine);
         setPic(safeStr((mine as any).employee_profilepicture));
         setEmployeePic(safeStr((mine as any).employee_picture));
+        setLinkedinUrl(safeStr((mine as any).linkedin_url));
+        setDiscordUrl(safeStr((mine as any).discord_url));
         setPhone(safeStr((mine as any).employee_phonenumber));
         setLocation(safeStr((mine as any).location));
         setDob(safeStr((mine as any).employee_dob));
@@ -430,6 +438,12 @@ export default function AccountEditDetails({
         setEmployeePic(safeStr((me as any).employee_picture));
         setEmployeePicError(false);
       }
+      if (k === "linkedin_url") {
+        setLinkedinUrl(safeStr((me as any).linkedin_url));
+      }
+      if (k === "discord_url") {
+        setDiscordUrl(safeStr((me as any).discord_url));
+      }
       if (k === "employee_phonenumber") {
         setPhone(safeStr((me as any).employee_phonenumber));
       }
@@ -451,6 +465,8 @@ export default function AccountEditDetails({
       setMe(mine);
       setPic(safeStr((mine as any).employee_profilepicture));
       setEmployeePic(safeStr((mine as any).employee_picture));
+      setLinkedinUrl(safeStr((mine as any).linkedin_url));
+      setDiscordUrl(safeStr((mine as any).discord_url));
       setPhone(safeStr((mine as any).employee_phonenumber));
       setLocation(safeStr((mine as any).location));
       setDob(safeStr((mine as any).employee_dob));
@@ -497,6 +513,28 @@ export default function AccountEditDetails({
       }
     }
 
+    if (k === "linkedin_url") {
+      const p = safeStr(linkedinUrl);
+      if (p && !isHttpUrl(p)) {
+        M.toast({
+          html: "LinkedIn URL must be a full http(s) URL.",
+          classes: "red",
+        });
+        return;
+      }
+    }
+
+    if (k === "discord_url") {
+      const p = safeStr(discordUrl);
+      if (p && !isHttpUrl(p)) {
+        M.toast({
+          html: "Discord URL must be a full http(s) URL.",
+          classes: "red",
+        });
+        return;
+      }
+    }
+
     setSavingProfile(true);
     try {
       const patch: any = { username };
@@ -506,6 +544,12 @@ export default function AccountEditDetails({
       }
       if (k === "employee_picture") {
         patch.employee_picture = safeStr(employeePic) || undefined;
+      }
+      if (k === "linkedin_url") {
+        patch.linkedin_url = safeStr(linkedinUrl) || undefined;
+      }
+      if (k === "discord_url") {
+        patch.discord_url = safeStr(discordUrl) || undefined;
       }
       if (k === "employee_phonenumber") {
         patch.employee_phonenumber = safeStr(phone) || undefined;
@@ -1144,6 +1188,106 @@ export default function AccountEditDetails({
                             text={savingProfile ? "Saving…" : "Save"}
                             onClick={() => saveOne("employee_picture")}
                             disabled={savingProfile}
+                      />
+                    </div>
+                  </div>
+                </EditableDropdown>
+
+                <EditableDropdown
+                  open={editing.linkedin_url}
+                  onToggle={(next) => setEdit("linkedin_url", next)}
+                  summary={
+                    <InfoTile
+                      icon="link"
+                      label="LinkedIn URL"
+                      value={linkedinUrl ? linkedinUrl : "—"}
+                      right={
+                        editing.linkedin_url ? (
+                          <Pill icon="expand_less" text="Open" tone="amber" />
+                        ) : (
+                          <Pill icon="expand_more" text="Dropdown" tone="grey" />
+                        )
+                      }
+                    />
+                  }
+                >
+                  <div className="editPanel">
+                    <div className="left">
+                      <div className="input-field">
+                        <input
+                          id="edit_linkedin_url"
+                          value={linkedinUrl}
+                          onChange={(e) => setLinkedinUrl(e.target.value)}
+                          placeholder="https://www.linkedin.com/in/..."
+                        />
+                        <label htmlFor="edit_linkedin_url" className={linkedinUrl ? "active" : ""}>
+                          LinkedIn Profile URL
+                        </label>
+                      </div>
+                    </div>
+                    <div className="editActions">
+                      <SmallAction
+                        icon="close"
+                        text="Cancel"
+                        subtle
+                        onClick={() => setEdit("linkedin_url", false)}
+                        disabled={savingProfile}
+                      />
+                      <SmallAction
+                        icon="save"
+                        text={savingProfile ? "Saving…" : "Save"}
+                        onClick={() => saveOne("linkedin_url")}
+                        disabled={savingProfile}
+                      />
+                    </div>
+                  </div>
+                </EditableDropdown>
+
+                <EditableDropdown
+                  open={editing.discord_url}
+                  onToggle={(next) => setEdit("discord_url", next)}
+                  summary={
+                    <InfoTile
+                      icon="sports_esports"
+                      label="Discord URL"
+                      value={discordUrl ? discordUrl : "—"}
+                      right={
+                        editing.discord_url ? (
+                          <Pill icon="expand_less" text="Open" tone="amber" />
+                        ) : (
+                          <Pill icon="expand_more" text="Dropdown" tone="grey" />
+                        )
+                      }
+                    />
+                  }
+                >
+                  <div className="editPanel">
+                    <div className="left">
+                      <div className="input-field">
+                        <input
+                          id="edit_discord_url"
+                          value={discordUrl}
+                          onChange={(e) => setDiscordUrl(e.target.value)}
+                          placeholder="https://discord.com/users/..."
+                        />
+                        <label htmlFor="edit_discord_url" className={discordUrl ? "active" : ""}>
+                          Discord Profile URL
+                        </label>
+                      </div>
+                    </div>
+                    <div className="editActions">
+                      <SmallAction
+                        icon="close"
+                        text="Cancel"
+                        subtle
+                        onClick={() => setEdit("discord_url", false)}
+                        disabled={savingProfile}
+                      />
+                      <SmallAction
+                        icon="save"
+                        text={savingProfile ? "Saving…" : "Save"}
+                        onClick={() => saveOne("discord_url")}
+                        disabled={savingProfile}
                       />
                     </div>
                   </div>

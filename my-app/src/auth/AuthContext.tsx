@@ -13,11 +13,13 @@ export type SessionUser = {
   linkedin_member_id?: string;
   linkedin_name?: string;
   linkedin_email?: string;
+  linkedin_url?: string;
   discord_connected?: boolean;
   discord_connected_at?: string;
   discord_member_id?: string;
   discord_name?: string;
   discord_email?: string;
+  discord_url?: string;
   employee_picture?: string;
   employee_profilepicture?: string;
 };
