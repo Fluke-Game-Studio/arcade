@@ -8,13 +8,12 @@ import Protected from "./auth/Protected";
 import App from "./pages/App";
 import Home from "./pages/Home";
 import Employees from "./pages/Employees";
-import Admin from "./pages/Admin";
+import AdminWorkspace from "./pages/AdminWorkspace";
 import SuperUser from "./pages/SuperUser";
 import SuperAI from "./pages/SuperAI";
 import SuperAwards from "./pages/SuperAwards";
 import Account from "./pages/Account";
 import Login from "./pages/Login";
-import ActivityReport from "./pages/ActivityReport";
 import JobsAdmin from "./pages/JobsAdmin";
 import ApiEndpoints from "./pages/ApiEndpoints";
 import ApiEndpointsReadOnly from "./pages/ApiEndpointsReadOnly";
@@ -152,7 +151,7 @@ const router = createBrowserRouter([
         path: "/updates/activity",
         element: (
           <Protected roles={["admin", "super"]}>
-            <ActivityReport />
+            <AdminWorkspace initialTab="activity" />
           </Protected>
         ),
       },
@@ -161,7 +160,7 @@ const router = createBrowserRouter([
         path: "/admin",
         element: (
           <Protected roles={["admin", "super"]}>
-            <Admin />
+            <AdminWorkspace initialTab="employees" />
           </Protected>
         ),
       },

@@ -4,6 +4,7 @@ export type ApiAwardRuleAchievement = {
   title: string;
   description?: string;
   metric?: string;
+  setKey?: string;
   threshold?: number;
   isActive?: boolean;
 };
@@ -14,6 +15,8 @@ export type ApiAwardRuleTrophy = {
   title: string;
   description?: string;
   tier?: string;
+  imageUrl?: string;
+  achievementSetKey?: string;
   achievementThreshold?: number;
   isActive?: boolean;
 };
@@ -62,6 +65,7 @@ export type ApiProgressTrophy = {
   title: string;
   description?: string;
   tier?: string;
+  imageUrl?: string;
   source?: string;
   awardedBy?: string;
   awardedAt?: string;
@@ -128,6 +132,7 @@ export type ApiAwardsRecentItem = {
   title?: string;
   description?: string;
   tier?: string;
+  imageUrl?: string;
   achievementId?: string;
   trophyId?: string;
   weekStart?: string;
@@ -179,20 +184,33 @@ export type ApiAwardsStudioSummary = {
 };
 
 export type AwardAchievementBody = {
-  username: string;
+  username?: string;
   achievementId?: string;
   id?: string;
   title?: string;
   description?: string;
   metric?: string;
   threshold?: number;
+  setKey?: string;
+};
+
+export type PublicAwardAchievementResponse = {
+  ok: boolean;
+  public: true;
+  awarded: false;
+  achievement: ApiAwardRuleAchievement;
+  message?: string;
 };
 
 export type AwardAchievementResponse = {
   ok: boolean;
-  username: string;
-  achievement: ApiProgressAchievement;
-  progress: ApiUserProgress;
+  public?: boolean;
+  awarded?: boolean;
+  username?: string;
+  achievement: ApiProgressAchievement | ApiAwardRuleAchievement;
+  progress?: ApiUserProgress | null;
+  unlockedTrophies?: ApiProgressTrophy[];
+  message?: string;
 };
 
 export type AwardTrophyBody = {
@@ -202,6 +220,8 @@ export type AwardTrophyBody = {
   title?: string;
   description?: string;
   tier?: string;
+  imageUrl?: string;
+  achievementSetKey?: string;
 };
 
 export type AwardTrophyResponse = {
@@ -299,6 +319,7 @@ export type CreateAwardAchievementRuleBody = {
   title: string;
   description?: string;
   metric: string;
+  setKey?: string;
   threshold: number;
   isActive?: boolean;
 };
@@ -307,6 +328,7 @@ export type UpdateAwardAchievementRuleBody = {
   title?: string;
   description?: string;
   metric?: string;
+  setKey?: string;
   threshold?: number;
   isActive?: boolean;
 };
@@ -321,6 +343,8 @@ export type CreateAwardTrophyRuleBody = {
   title: string;
   description?: string;
   tier?: string;
+  imageUrl?: string;
+  achievementSetKey?: string;
   achievementThreshold: number;
   isActive?: boolean;
 };
@@ -329,6 +353,8 @@ export type UpdateAwardTrophyRuleBody = {
   title?: string;
   description?: string;
   tier?: string;
+  imageUrl?: string;
+  achievementSetKey?: string;
   achievementThreshold?: number;
   isActive?: boolean;
 };

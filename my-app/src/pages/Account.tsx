@@ -1,20 +1,141 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import AccountEditDetails from "../components/account/AccountEditDetails";
 import AccountProfileSecurity from "../components/account/AccountProfileSecurity";
 import AccountMyUpdates from "../components/account/AccountMyUpdates";
 import AccountGamification from "../components/account/AccountGamification";
+import AwardUnlockModal from "../components/account/AwardUnlockModal";
 
 declare const M: any;
 
 type AccountTabKey = "updates" | "details" | "password" | "gamification";
 
 export default function Account() {
-  const { user, api } = useAuth();
+  const { user, api, refreshSession } = useAuth();
   const [activeTab, setActiveTab] = useState<AccountTabKey>("updates");
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [unlockItems, setUnlockItems] = useState<any[]>([]);
 
   useEffect(() => {
     if (typeof M !== "undefined") setTimeout(() => M.updateTextFields(), 0);
   }, [activeTab]);
+
+  function showUnlocks(resp: any, achievement: any) {
+    const achievementItem =
+      resp?.awarded === false
+        ? null
+        : {
+            kind: "achievement",
+            id: achievement?.achievementId || achievement?.id,
+            title: achievement?.title,
+            description: achievement?.description,
+            metric: achievement?.metric,
+            threshold: achievement?.threshold,
+            setKey: achievement?.setKey,
+          };
+    const trophyItems = Array.isArray(resp?.unlockedTrophies)
+      ? resp.unlockedTrophies.map((t: any) => ({
+          kind: "trophy",
+          id: t?.id,
+          title: t?.title,
+          description: t?.description,
+          tier: t?.tier,
+          imageUrl: t?.imageUrl,
+          achievementSetKey: t?.achievementSetKey,
+        }))
+      : [];
+    const items = [achievementItem, ...trophyItems].filter((x: any) => !!x?.id || !!x?.title);
+
+    if (items.length) {
+      setUnlockItems(items);
+      setUnlockOpen(true);
+    }
+  }
+
+  useEffect(() => {
+    function onLinkedInMessage(event: MessageEvent) {
+      const data = event?.data || {};
+      if (data?.type !== "linkedin-connected") return;
+
+      const achievementId = "linkedin_connect";
+      api
+        .awardAchievement({
+          achievementId,
+          title: "Connect To Linked-In",
+          description: "Connect to LinkedIn to autofill your profile data.",
+          metric: "linkedinSocials",
+          setKey: "connectSocials",
+          threshold: 1,
+        })
+        .then((resp: any) => {
+          showUnlocks(resp, {
+            id: achievementId,
+            title: "Connect To Linked-In",
+            description: "Connect to LinkedIn to autofill your profile data.",
+            metric: "linkedinSocials",
+            setKey: "connectSocials",
+            threshold: 1,
+          });
+          void refreshSession();
+          if (typeof M !== "undefined") {
+            M.toast({ html: "LinkedIn achievement awarded.", classes: "green" });
+          }
+        })
+        .catch((err: any) => {
+          if (typeof M !== "undefined") {
+            M.toast({
+              html: err?.message || "LinkedIn achievement could not be awarded.",
+              classes: "orange",
+            });
+          }
+        });
+    }
+
+    window.addEventListener("message", onLinkedInMessage);
+    return () => window.removeEventListener("message", onLinkedInMessage);
+  }, [api, refreshSession]);
+
+  useEffect(() => {
+    function onDiscordMessage(event: MessageEvent) {
+      const data = event?.data || {};
+      if (data?.type !== "discord-connected") return;
+
+      api
+        .awardAchievement({
+          achievementId: "discord_connect",
+          title: "Join Discord Server",
+          description: "Connect to the Fluke Games Discord server.",
+          metric: "connectSocials",
+          setKey: "connectSocials",
+          threshold: 1,
+        })
+        .then((resp: any) => {
+          showUnlocks(resp, {
+            id: "discord_connect",
+            title: "Join Discord Server",
+            description: "Connect to the Fluke Games Discord server.",
+            metric: "connectSocials",
+            setKey: "connectSocials",
+            threshold: 1,
+          });
+          void refreshSession();
+          if (typeof M !== "undefined") {
+            M.toast({ html: "Discord achievement awarded.", classes: "green" });
+          }
+        })
+        .catch((err: any) => {
+          if (typeof M !== "undefined") {
+            M.toast({
+              html: err?.message || "Discord achievement could not be awarded.",
+              classes: "orange",
+            });
+          }
+        });
+    }
+
+    window.addEventListener("message", onDiscordMessage);
+    return () => window.removeEventListener("message", onDiscordMessage);
+  }, [api, refreshSession]);
 
   function TabButton({
     tab,
@@ -508,17 +629,19 @@ export default function Account() {
       `}</style>
 
       <div className="accWrap">
-        <div className="accountTabBar">
-          <TabButton tab="updates" icon="history" label="My Updates" />
-          <TabButton tab="details" icon="badge" label="Edit Details" />
-          <TabButton tab="password" icon="lock" label="Edit Password" />
-          <TabButton tab="gamification" icon="emoji_events" label="Achievements" />
+        <div className="accountTabBar" style={{ alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
+            <TabButton tab="updates" icon="history" label="My Updates" />
+            <TabButton tab="details" icon="badge" label="Edit Details" />
+            <TabButton tab="password" icon="lock" label="Edit Password" />
+            <TabButton tab="gamification" icon="emoji_events" label="Achievements" />
+          </div>
         </div>
 
         {activeTab === "updates" && <AccountMyUpdates api={api} />}
 
         {activeTab === "details" && (
-          <AccountProfileSecurity user={user} api={api} initialTab="details" />
+          <AccountEditDetails user={user} api={api} />
         )}
 
         {activeTab === "password" && (
@@ -527,6 +650,7 @@ export default function Account() {
 
         {activeTab === "gamification" && <AccountGamification />}
       </div>
+      <AwardUnlockModal open={unlockOpen} items={unlockItems} onClose={() => setUnlockOpen(false)} />
     </main>
   );
 }

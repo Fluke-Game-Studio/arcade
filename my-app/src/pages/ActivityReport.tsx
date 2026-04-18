@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type ApiUpdateSummary,
@@ -1010,6 +1010,31 @@ function SubmissionWeekCalendar({
           opacity: 0;
           pointer-events: none;
         }
+        .activity-calendar-toggle,
+        .activity-calendar-toggle:hover,
+        .activity-calendar-toggle:focus,
+        .activity-calendar-toggle:active {
+          border: 0 !important;
+          background: linear-gradient(135deg, #2db7ad 0%, #1fa99f 100%) !important;
+          background-color: #2db7ad !important;
+          color: #ffffff !important;
+          box-shadow: 0 10px 18px rgba(31, 169, 159, 0.24) !important;
+          border-radius: 12px !important;
+          text-transform: none !important;
+          font-weight: 900 !important;
+          height: auto !important;
+          line-height: 1.2 !important;
+          padding: 0 16px !important;
+        }
+        .activity-calendar-toggle i,
+        .activity-calendar-toggle:hover i,
+        .activity-calendar-toggle:focus i,
+        .activity-calendar-toggle:active i {
+          color: #ffffff !important;
+        }
+        .activity-calendar-toggle:hover {
+          filter: brightness(0.98);
+        }
         .datepicker-modal {
           border-radius: 22px;
           overflow: hidden;
@@ -1053,7 +1078,7 @@ function SubmissionWeekCalendar({
   );
 }
 
-export default function ActivityReport() {
+export default function ActivityReport({ embedded = false }: { embedded?: boolean } = {}) {
   const [summaries, setSummaries] = useState<ApiUpdateSummary[]>([]);
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1725,21 +1750,29 @@ export default function ActivityReport() {
   }
 
   return (
-    <div className="container" style={{ paddingTop: 24, paddingBottom: 24 }}>
+    <div
+      className={embedded ? undefined : "container"}
+      style={
+        embedded
+          ? { width: "100%", maxWidth: "none", paddingTop: 0, paddingBottom: 0, margin: 0 }
+          : { paddingTop: 24, paddingBottom: 24 }
+      }
+    >
       <div
-        className="card"
+        className={embedded ? undefined : "card"}
         style={{
-          borderRadius: 24,
+          borderRadius: embedded ? 0 : 24,
           overflow: "visible",
-          border: "1px solid rgba(148,163,184,.14)",
-          boxShadow: "0 16px 40px rgba(15,23,42,.08)",
-          background:
-            "linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(255,255,255,1) 100%)",
+          border: embedded ? "none" : "1px solid rgba(148,163,184,.14)",
+          boxShadow: embedded ? "none" : "0 16px 40px rgba(15,23,42,.08)",
+          background: embedded
+            ? "transparent"
+            : "linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(255,255,255,1) 100%)",
         }}
       >
         <div
           style={{
-            padding: 22,
+            padding: embedded ? 0 : 22,
             borderBottom: "1px solid rgba(148,163,184,.12)",
             background:
               "radial-gradient(circle at top right, rgba(34,197,94,.08), transparent 30%), radial-gradient(circle at top left, rgba(59,130,246,.07), transparent 28%)",
@@ -1833,9 +1866,9 @@ export default function ActivityReport() {
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
                   <button
                     type="button"
-                    className="btn waves-effect waves-light"
+                    className="waves-effect waves-light activity-calendar-toggle"
                     onClick={() => setCalendarOpen((open) => !open)}
-                    style={{ borderRadius: 12, textTransform: "none", fontWeight: 900 }}
+                    style={{}}
                   >
                     <i className="material-icons left">calendar_month</i>
                     {calendarOpen ? "Hide Calendar" : "Open Calendar"}

@@ -291,7 +291,7 @@ export default function Home() {
             linear-gradient(180deg, var(--bg2) 0%, var(--bg) 70%, var(--bg) 100%);
         }
 
-        .portalWrap { padding: 18px 0 28px; }
+        .portalWrap { padding: 0 0 28px; }
         .portalGridGap { margin-top: 10px; }
         .stack, .stackTight { display: grid; gap: 12px; }
 
@@ -756,7 +756,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="container portalWrap">
+      <div className="portalWrap" style={{ width: "100%", maxWidth: "none" }}>
         {/* âœ… Theme toggle is now global (doesn't affect column alignment) */}
         <div className="portalTopBar">
           <div className="themePill">

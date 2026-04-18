@@ -1,6 +1,7 @@
 // src/pages/Admin.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import ActivityReport from "./ActivityReport";
 import type {
   ApiUser,
   CreateUserBody,
@@ -10,6 +11,8 @@ import type {
 import AdminMailerComposerModal from "../components/AdminMailerComposerModal";
 
 declare const M: any;
+
+type AdminTab = "activity" | "employees";
 
 type AdminForm = CreateUserBody & {
   employee_manager?: string;
@@ -222,7 +225,11 @@ function ModalSection({
   );
 }
 
-export default function Admin() {
+export default function Admin({
+  initialTab = "employees",
+}: {
+  initialTab?: AdminTab;
+} = {}) {
   const { api, user } = useAuth();
 
   const myRole = useMemo(() => getRoleLower(user), [user]);
@@ -244,6 +251,7 @@ export default function Admin() {
   const composerModalRef = useRef<HTMLDivElement | null>(null);
 
   const [mailerOpen, setMailerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
 
   const [composerEmployee, setComposerEmployee] = useState<ApiUser | null>(null);
   const [composerRoleTitle, setComposerRoleTitle] = useState("");
@@ -308,6 +316,10 @@ export default function Admin() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -831,6 +843,83 @@ export default function Admin() {
             </div>
           </div>
 
+          <div
+            style={{
+              marginTop: 14,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: 6,
+                borderRadius: 999,
+                border: "1px solid rgba(148,163,184,.18)",
+                background: "rgba(255,255,255,.75)",
+                boxShadow: "0 8px 18px rgba(15,23,42,.05)",
+              }}
+              aria-label="Admin page sections"
+            >
+              <button
+                type="button"
+                onClick={() => setActiveTab("activity")}
+                style={{
+                  border: "none",
+                  cursor: "pointer",
+                  borderRadius: 999,
+                  padding: "8px 14px",
+                  fontWeight: 1000,
+                  fontSize: 12,
+                  background: activeTab === "activity" ? "rgba(59,130,246,.16)" : "transparent",
+                  color: activeTab === "activity" ? "#1d4ed8" : "#334155",
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <i className="material-icons" style={{ fontSize: 16 }}>insights</i>
+                  Cumulative Activity
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("employees")}
+                style={{
+                  border: "none",
+                  cursor: "pointer",
+                  borderRadius: 999,
+                  padding: "8px 14px",
+                  fontWeight: 1000,
+                  fontSize: 12,
+                  background: activeTab === "employees" ? "rgba(34,197,94,.16)" : "transparent",
+                  color: activeTab === "employees" ? "#166534" : "#334155",
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <i className="material-icons" style={{ fontSize: 16 }}>groups</i>
+                  Each Employee
+                </span>
+              </button>
+            </div>
+
+            <span className="adm-chip" title="Active admin section">
+              <i className="material-icons" style={{ fontSize: 16 }}>
+                {activeTab === "activity" ? "insights" : "groups"}
+              </i>
+              {activeTab === "activity" ? "Activity" : "Employees"}
+            </span>
+          </div>
+
+          <div style={{ marginTop: 14, display: activeTab === "activity" ? "block" : "none" }}>
+            <div className="card z-depth-1 adm-card">
+              <ActivityReport compact />
+            </div>
+          </div>
+
+          <div style={{ display: activeTab === "employees" ? "block" : "none" }}>
           <div className="card z-depth-1 adm-card" style={{ marginTop: 14 }}>
             <div className="adm-cardHead">
               <div>
@@ -992,6 +1081,7 @@ export default function Admin() {
                 </div>
               )}
             </div>
+          </div>
           </div>
         </div>
       </main>

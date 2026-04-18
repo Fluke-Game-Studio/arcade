@@ -540,9 +540,30 @@ function BadgeIcon({
 function RecognitionIcon({ item }: { item: StudioRecentItem }) {
   const badge = getBadgeKeyForItem(item);
   const tone = getItemTone(item);
+  const imageUrl = safeStr((item as any).imageUrl);
 
   if (badge) {
     return <BadgeIcon badge={badge} size={72} glow={getItemType(item) === "trophy"} />;
+  }
+
+  if (imageUrl) {
+    return (
+      <div
+        className={`arsFallbackIcon ${tone}`}
+        style={{ overflow: "hidden", padding: 8, background: "rgba(255,255,255,.95)" }}
+      >
+        <img
+          src={imageUrl}
+          alt=""
+          aria-hidden="true"
+          onError={(e) => {
+            const el = e.currentTarget;
+            el.style.display = "none";
+          }}
+          style={{ width: "88%", height: "88%", objectFit: "contain", display: "block" }}
+        />
+      </div>
+    );
   }
 
   const icon =

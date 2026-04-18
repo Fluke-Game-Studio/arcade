@@ -256,15 +256,20 @@ function buildRequestPackage(ep: EndpointDoc, variantKey?: string) {
 function SchemaTabs({
   node,
   requestSamples,
+  defaultVariant,
 }: {
   node: unknown;
   requestSamples: Record<string, Record<string, any>>;
+  defaultVariant?: string;
 }) {
   const [view, setView] = useState<"pretty" | "request">("pretty");
   const variantKeys = useMemo(() => Object.keys(requestSamples || {}), [requestSamples]);
-  const preferredDefault = variantKeys.includes("authenticated")
-    ? "authenticated"
-    : variantKeys[0] || "default";
+  const preferredDefault =
+    defaultVariant && variantKeys.includes(defaultVariant)
+      ? defaultVariant
+      : variantKeys.includes("authenticated")
+        ? "authenticated"
+        : variantKeys[0] || "default";
   const [variant, setVariant] = useState<string>(preferredDefault);
 
   useEffect(() => {
@@ -272,8 +277,14 @@ function SchemaTabs({
     const keys = Object.keys(requestSamples || {});
     if (!keys.length) return;
     if (keys.includes(variant)) return;
-    setVariant(keys.includes("authenticated") ? "authenticated" : keys[0]);
-  }, [requestSamples, variant]);
+    setVariant(
+      defaultVariant && keys.includes(defaultVariant)
+        ? defaultVariant
+        : keys.includes("authenticated")
+          ? "authenticated"
+          : keys[0]
+    );
+  }, [defaultVariant, requestSamples, variant]);
 
   const activeSample = requestSamples?.[variant] || requestSamples?.default || {};
   const sample = useMemo(() => JSON.stringify(activeSample || {}, null, 2), [activeSample]);
@@ -919,19 +930,30 @@ export default function EndpointCatalogPage({ editable }: Props) {
                             const meta = isObj(schema?.xRequestSamples) ? schema.xRequestSamples : null;
                             const keys = meta ? Object.keys(meta) : [];
                             const requestSamples: Record<string, Record<string, any>> = {};
+                            const endpointAuthMode = String((ep as any)?.authMode || (ep as any)?.auth || "").trim().toLowerCase();
+                            const routePath = String(ep?.path || "").trim();
+                            const isPublicEndpoint =
+                              endpointAuthMode === "public" || routePath === "/directory" || routePath === "/updates";
 
                             if (keys.length) {
                               for (const k of keys) {
                                 requestSamples[k] = buildRequestPackage(ep, k);
                               }
+                              if (isPublicEndpoint && !requestSamples.public) {
+                                requestSamples.public = buildRequestPackage(ep, "public");
+                              }
                             } else {
-                              requestSamples.default = buildRequestPackage(ep);
+                              requestSamples[isPublicEndpoint ? "public" : "default"] = buildRequestPackage(
+                                ep,
+                                isPublicEndpoint ? "public" : undefined
+                              );
                             }
 
                             return (
                               <SchemaTabs
                                 node={ep.schema || {}}
                                 requestSamples={requestSamples}
+                                defaultVariant={isPublicEndpoint ? "public" : undefined}
                               />
                             );
                           })()}

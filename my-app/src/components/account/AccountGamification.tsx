@@ -10,6 +10,7 @@ type TimelineItem = {
   title: string;
   subtitle: string;
   meta?: string;
+  imageUrl?: string;
 };
 
 type StatItem = {
@@ -130,6 +131,7 @@ function buildTimeline(progress: ApiUserProgress | null): TimelineItem[] {
       meta: safeStr((t as any).awardedBy)
         ? `Awarded by ${safeStr((t as any).awardedBy)}`
         : "System awarded",
+      imageUrl: safeStr((t as any).imageUrl),
     });
   }
 
@@ -975,7 +977,21 @@ export default function AccountGamification() {
                                 boxShadow: `0 0 0 7px rgba(255,255,255,0.85), 0 8px 20px ${tone.glow}`,
                               }}
                             >
-                              <i className="material-icons">{item.icon}</i>
+                              {item.imageUrl ? (
+                                <img
+                                  src={item.imageUrl}
+                                  alt=""
+                                  aria-hidden="true"
+                                  style={{
+                                    width: "84%",
+                                    height: "84%",
+                                    objectFit: "contain",
+                                    display: "block",
+                                  }}
+                                />
+                              ) : (
+                                <i className="material-icons">{item.icon}</i>
+                              )}
                             </div>
 
                             <div className="agTimelineCard">
