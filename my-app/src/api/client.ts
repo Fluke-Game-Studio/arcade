@@ -9,6 +9,9 @@ import type {
   ApiTimeLogRow,
   ApiUpdatesResponse,
   ApiUser,
+  GetEndpointCatalogResponse,
+  UpdateEndpointAccessBody,
+  UpdateEndpointAccessResponse,
   CreateUserBody,
   CreateWeeklyUpdateUploadUrlsBody,
   CreateWeeklyUpdateUploadUrlsResponse,
@@ -23,8 +26,12 @@ import type {
   SubmitUpdateBody,
   SubmitUpdateResponse,
   UpdateUserBody,
-  UpsertJobBody,
-  QuestionBank,
+    UpsertJobBody,
+    QuestionBank,
+    StartLinkedInConnectBody,
+    StartLinkedInConnectResponse,
+    StartDiscordConnectBody,
+    StartDiscordConnectResponse,
 } from "./types";
 
 import type {
@@ -71,6 +78,20 @@ export class ApiClient {
 
   setToken(token: string | null) {
     this.token = token;
+  }
+
+  private resolveDefaultAgentEmployee(context?: string) {
+    const ctx = String(context || "internal").trim().toLowerCase();
+    if (ctx === "internal" || ctx === "flukegames" || ctx === "public") {
+      return {
+        agentEmployeeId: "project_manager_core",
+        agentRole: "project_manager",
+      };
+    }
+    return {
+      agentEmployeeId: "assistant_default",
+      agentRole: "assistant",
+    };
   }
 
   private headers(isJson = true): HeadersInit {
@@ -303,6 +324,50 @@ export class ApiClient {
     return payload?.ok ? payload : { ok: true };
   }
 
+  async startLinkedInConnect(
+    body?: StartLinkedInConnectBody
+  ): Promise<StartLinkedInConnectResponse> {
+    const r = await fetch(`${API_BASE}/integrations/linkedin/start`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `startLinkedInConnect failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      authorizeUrl: String(payload?.authorizeUrl || ""),
+      returnTo: typeof payload?.returnTo === "string" ? payload.returnTo : undefined,
+      scopes: Array.isArray(payload?.scopes) ? payload.scopes : undefined,
+    };
+  }
+
+  async startDiscordConnect(
+    body?: StartDiscordConnectBody
+  ): Promise<StartDiscordConnectResponse> {
+    const r = await fetch(`${API_BASE}/integrations/discord/start`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `startDiscordConnect failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      authorizeUrl: String(payload?.authorizeUrl || ""),
+      returnTo: typeof payload?.returnTo === "string" ? payload.returnTo : undefined,
+      scopes: Array.isArray(payload?.scopes) ? payload.scopes : undefined,
+    };
+  }
+
   async getProjects(): Promise<ApiProject[]> {
     const r = await fetch(`${API_BASE}/projects`, {
       method: "GET",
@@ -353,11 +418,17 @@ export class ApiClient {
     weekStart?: string;
     projectId?: string;
     userId?: string;
+    limit?: number;
+    cursor?: string;
   }): Promise<ApiUpdatesResponse> {
     const qs = new URLSearchParams();
     if (params?.weekStart) qs.set("weekStart", params.weekStart);
     if (params?.projectId) qs.set("projectId", params.projectId);
     if (params?.userId) qs.set("userId", params.userId);
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
+    }
+    if (params?.cursor) qs.set("cursor", params.cursor);
 
     const url = `${API_BASE}/updates${qs.toString() ? `?${qs.toString()}` : ""}`;
 
@@ -377,16 +448,25 @@ export class ApiClient {
       summaries: Array.isArray(payload?.summaries) ? payload.summaries : [],
       count: Number(payload?.count) || 0,
       summaryCount: Number(payload?.summaryCount) || 0,
+      limit: Number(payload?.limit) || undefined,
+      cursor: typeof payload?.cursor === "string" ? payload.cursor : undefined,
+      nextCursor: typeof payload?.nextCursor === "string" ? payload.nextCursor : null,
     };
   }
 
   async getMyUpdates(params?: {
     weekStart?: string;
     projectId?: string;
+    limit?: number;
+    cursor?: string;
   }): Promise<ApiMyUpdatesResponse> {
     const qs = new URLSearchParams();
     if (params?.weekStart) qs.set("weekStart", params.weekStart);
     if (params?.projectId) qs.set("projectId", params.projectId);
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
+    }
+    if (params?.cursor) qs.set("cursor", params.cursor);
 
     const url = `${API_BASE}/updates/me${qs.toString() ? `?${qs.toString()}` : ""}`;
 
@@ -404,6 +484,9 @@ export class ApiClient {
     return {
       summaries: Array.isArray(payload?.summaries) ? payload.summaries : [],
       summaryCount: Number(payload?.summaryCount) || 0,
+      limit: Number(payload?.limit) || undefined,
+      cursor: typeof payload?.cursor === "string" ? payload.cursor : undefined,
+      nextCursor: typeof payload?.nextCursor === "string" ? payload.nextCursor : null,
     };
   }
 
@@ -423,6 +506,33 @@ export class ApiClient {
     }
     return {
       files: Array.isArray(payload?.files) ? payload.files : [],
+    };
+  }
+
+  async getWeeklyUpdateAttachmentUrl(params: {
+    s3Key: string;
+    userId?: string;
+    weekStart?: string;
+  }): Promise<{ ok: boolean; url: string; expiresIn?: number }> {
+    const qs = new URLSearchParams();
+    qs.set("s3Key", params.s3Key);
+    if (params.userId) qs.set("userId", params.userId);
+    if (params.weekStart) qs.set("weekStart", params.weekStart);
+
+    const r = await fetch(`${API_BASE}/updates/attachment-url?${qs.toString()}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getWeeklyUpdateAttachmentUrl failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      url: String(payload?.url || ""),
+      expiresIn: Number(payload?.expiresIn) || undefined,
     };
   }
 
@@ -1115,6 +1225,7 @@ export class ApiClient {
   async generateAwardsNarrative(
     body: GenerateAwardsNarrativeBody
   ): Promise<GenerateAwardsNarrativeResponse> {
+    const defaultAgent = this.resolveDefaultAgentEmployee("internal");
     const finalBody = {
       question:
         body.question ||
@@ -1125,6 +1236,8 @@ export class ApiClient {
       provider: body.provider,
       model: body.model,
       context: "internal",
+      agentEmployeeId: defaultAgent.agentEmployeeId,
+      agentRole: defaultAgent.agentRole,
     };
 
     const r = await fetch(`${API_BASE}/ai/chat-sync/internal`, {
@@ -1149,11 +1262,25 @@ export class ApiClient {
     provider?: "auto" | "openai" | "ollama";
     model?: string;
     context?: string;
+    agentRole?: string;
+    agentEmployeeId?: string;
+    agentId?: string;
+    perform?: boolean;
   }): Promise<GenerateAwardsNarrativeResponse> {
-    const r = await fetch(`${API_BASE}/ai/chat-sync/${body.context || "internal"}`, {
+    const context = body.context || "internal";
+    const defaultAgent = this.resolveDefaultAgentEmployee(context);
+    const requestBody = {
+      ...body,
+      context,
+      agentEmployeeId:
+        body.agentEmployeeId || body.agentId || defaultAgent.agentEmployeeId,
+      agentRole: body.agentRole || defaultAgent.agentRole,
+    };
+
+    const r = await fetch(`${API_BASE}/ai/chat-sync/${context}`, {
       method: "POST",
       headers: this.headers(true),
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     });
     const payload = await this.readJson(r);
     if (!r.ok) {
@@ -1279,6 +1406,57 @@ export class ApiClient {
     getTeamOverview: (query?: AnalyticsQuery) =>
       this.getAnalyticsTeamOverview(query),
   };
+
+  async getEndpointCatalog(): Promise<GetEndpointCatalogResponse> {
+    const r = await fetch(`${API_BASE}/admin/endpoints`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getEndpointCatalog failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      count: Number(payload?.count) || (Array.isArray(payload?.endpoints) ? payload.endpoints.length : 0),
+      endpoints: Array.isArray(payload?.endpoints) ? payload.endpoints : [],
+    };
+  }
+
+  async updateEndpointAccess(
+    body: UpdateEndpointAccessBody
+  ): Promise<UpdateEndpointAccessResponse> {
+    const r = await fetch(`${API_BASE}/admin/endpoints/access`, {
+      method: "PUT",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `updateEndpointAccess failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as UpdateEndpointAccessResponse;
+  }
+
+  async syncEndpointCatalogNow(): Promise<{ ok: boolean; result?: any }> {
+    const r = await fetch(`${API_BASE}/admin/endpoints/sync-now`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `syncEndpointCatalogNow failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as { ok: boolean; result?: any };
+  }
 }
 
 export const api = new ApiClient();

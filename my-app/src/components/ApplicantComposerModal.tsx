@@ -186,6 +186,8 @@ export default function ApplicantComposerModal({
   prefillCity?: string;
 }) {
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const instRef = useRef<any>(null);
+  const onCloseRef = useRef(onClose);
 
   const [sending, setSending] = useState(false);
   const [toEmail, setToEmail] = useState("");
@@ -193,16 +195,24 @@ export default function ApplicantComposerModal({
   const [composer, setComposer] = useState<ComposerState>(() => defaultComposer("Introduction"));
   const [previewJson, setPreviewJson] = useState<string>("{}");
 
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   // init Materialize modal once
   useEffect(() => {
     if (!modalRef.current || typeof M === "undefined") return;
 
-    M.Modal.init(modalRef.current, {
+    instRef.current = M.Modal.init(modalRef.current, {
       dismissible: true,
       opacity: 0.45,
       inDuration: 140,
       outDuration: 120,
-      onCloseEnd: () => onClose(),
+      onCloseEnd: () => {
+        try {
+          onCloseRef.current?.();
+        } catch {}
+      },
       onOpenStart: () => {
         try {
           modalRef.current!.style.left = "0px";
@@ -217,14 +227,25 @@ export default function ApplicantComposerModal({
           } catch {}
         }, 0),
     });
-  }, [onClose]);
+
+    return () => {
+      try {
+        instRef.current?.destroy?.();
+      } catch {}
+      instRef.current = null;
+    };
+  }, []);
 
   // open/close imperatively
   useEffect(() => {
-    if (!modalRef.current || typeof M === "undefined") return;
-    const inst = M.Modal.getInstance(modalRef.current) || M.Modal.init(modalRef.current);
-    if (open) inst.open();
-    else inst.close();
+    const inst = instRef.current;
+    if (!inst) return;
+    if (open) {
+      inst.open();
+      return;
+    }
+    const isOpen = !!(inst && (inst.isOpen === true || inst._isOpen === true));
+    if (isOpen) inst.close();
   }, [open]);
 
   // when applicant changes, lock target

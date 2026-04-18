@@ -89,7 +89,7 @@ export default function EmployeeActions() {
   const actions: Action[] = [
     { to: "/updates/new", title: "Fill Timesheet", subtitle: "Log hours for this week", icon: "edit_note", tone: "primary" },
     { to: "/updates/board", title: "Retro Board", subtitle: "Wins, blockers, next steps", icon: "view_kanban", tone: "neutral" },
-    { to: "/updates/activity", title: "Activity Report", subtitle: "Progress across projects", icon: "insights", tone: "dark" },
+    { to: "/account", title: "Activity Report", subtitle: "Your updates and weekly activity", icon: "insights", tone: "dark" },
     { to: "/account", title: "My Account", subtitle: "Profile & security settings", icon: "manage_accounts", tone: "light" },
   ];
 

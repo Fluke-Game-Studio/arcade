@@ -6,6 +6,7 @@ import type {
   ApiAwardRuleTrophy,
 } from "../api";
 import type { ApiUser } from "../api";
+import { TROPHY_ARTWORK_OPTIONS } from "../generated/awardArtworkManifest";
 
 declare const M: any;
 
@@ -14,6 +15,7 @@ type AchievementRuleForm = {
   title: string;
   description: string;
   metric: string;
+  setKey: string;
   threshold: string;
 };
 
@@ -22,6 +24,8 @@ type TrophyRuleForm = {
   title: string;
   description: string;
   tier: string;
+  imageUrl: string;
+  achievementSetKey: string;
   achievementThreshold: string;
 };
 
@@ -78,6 +82,7 @@ function emptyAchievementRuleForm(): AchievementRuleForm {
     title: "",
     description: "",
     metric: "",
+    setKey: "",
     threshold: "",
   };
 }
@@ -88,6 +93,8 @@ function emptyTrophyRuleForm(): TrophyRuleForm {
     title: "",
     description: "",
     tier: "",
+    imageUrl: "",
+    achievementSetKey: "",
     achievementThreshold: "",
   };
 }
@@ -194,7 +201,8 @@ export default function SuperAwards() {
         safeStr((r as any).id).toLowerCase().includes(q) ||
         safeStr((r as any).title).toLowerCase().includes(q) ||
         safeStr((r as any).description).toLowerCase().includes(q) ||
-        safeStr((r as any).metric).toLowerCase().includes(q)
+        safeStr((r as any).metric).toLowerCase().includes(q) ||
+        safeStr((r as any).setKey).toLowerCase().includes(q)
       );
     });
   }, [achievementRules, rulesQuery]);
@@ -208,7 +216,8 @@ export default function SuperAwards() {
         safeStr((r as any).id).toLowerCase().includes(q) ||
         safeStr((r as any).title).toLowerCase().includes(q) ||
         safeStr((r as any).description).toLowerCase().includes(q) ||
-        safeStr((r as any).tier).toLowerCase().includes(q)
+        safeStr((r as any).tier).toLowerCase().includes(q) ||
+        safeStr((r as any).achievementSetKey).toLowerCase().includes(q)
       );
     });
   }, [trophyRules, rulesQuery]);
@@ -342,6 +351,7 @@ export default function SuperAwards() {
       title: safeStr((rule as any).title),
       description: safeStr((rule as any).description),
       metric: safeStr((rule as any).metric),
+      setKey: safeStr((rule as any).setKey),
       threshold: String((rule as any).threshold ?? ""),
     });
   }
@@ -353,6 +363,8 @@ export default function SuperAwards() {
       title: safeStr((rule as any).title),
       description: safeStr((rule as any).description),
       tier: safeStr((rule as any).tier).toLowerCase(),
+      imageUrl: safeStr((rule as any).imageUrl),
+      achievementSetKey: safeStr((rule as any).achievementSetKey),
       achievementThreshold: String((rule as any).achievementThreshold ?? ""),
     });
   }
@@ -387,6 +399,7 @@ export default function SuperAwards() {
         title: safeStr(achievementRuleForm.title),
         description: safeStr(achievementRuleForm.description),
         metric: safeStr(achievementRuleForm.metric),
+        setKey: safeStr(achievementRuleForm.setKey) || undefined,
         threshold: safeNum(achievementRuleForm.threshold),
       };
 
@@ -410,10 +423,11 @@ export default function SuperAwards() {
   async function handleSaveTrophyRule(e: React.FormEvent) {
     e.preventDefault();
 
+    const hasUnlockSet = !!safeStr(trophyRuleForm.achievementSetKey);
     if (
       !safeStr(trophyRuleForm.id) ||
       !safeStr(trophyRuleForm.title) ||
-      !safeStr(trophyRuleForm.achievementThreshold)
+      (!hasUnlockSet && !safeStr(trophyRuleForm.achievementThreshold))
     ) {
       M?.toast?.({ html: "Trophy rule fields are required", classes: "red" });
       return;
@@ -426,7 +440,9 @@ export default function SuperAwards() {
         title: safeStr(trophyRuleForm.title),
         description: safeStr(trophyRuleForm.description),
         tier: safeStr(trophyRuleForm.tier).toLowerCase() || undefined,
-        achievementThreshold: safeNum(trophyRuleForm.achievementThreshold),
+        imageUrl: safeStr(trophyRuleForm.imageUrl) || undefined,
+        achievementSetKey: safeStr(trophyRuleForm.achievementSetKey) || undefined,
+        achievementThreshold: hasUnlockSet ? 0 : safeNum(trophyRuleForm.achievementThreshold),
       };
 
       if (editingTrophyRuleId) {
@@ -961,6 +977,21 @@ export default function SuperAwards() {
 
                     <div className="input-field">
                       <input
+                        value={achievementRuleForm.setKey}
+                        onChange={(e) =>
+                          setAchievementRuleForm((prev) => ({ ...prev, setKey: e.target.value }))
+                        }
+                        placeholder="connectSocials"
+                      />
+                      <label className="active">Achievement Set Key</label>
+                      <span className="helper-text">
+                        Use the same key on related achievements. A trophy can unlock when all
+                        achievements in that set are complete.
+                      </span>
+                    </div>
+
+                    <div className="input-field">
+                      <input
                         type="number"
                         value={achievementRuleForm.threshold}
                         onChange={(e) =>
@@ -1063,6 +1094,68 @@ export default function SuperAwards() {
                     </div>
 
                     <div className="input-field">
+                      <select
+                        className="browser-default"
+                        value={
+                          TROPHY_ARTWORK_OPTIONS.some((opt) => opt.value === trophyRuleForm.imageUrl)
+                            ? trophyRuleForm.imageUrl
+                            : "__custom__"
+                        }
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          if (next === "__custom__") return;
+                          setTrophyRuleForm((prev) => ({ ...prev, imageUrl: next }));
+                        }}
+                      >
+                        <option value="__custom__">Custom public URL</option>
+                        {TROPHY_ARTWORK_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="active">Trophy Artwork Preset</label>
+                      <span className="helper-text">
+                        Pick an image from <code>/public/awards</code> or choose custom public URL.
+                      </span>
+                    </div>
+
+                    <div className="input-field">
+                      <input
+                        type="text"
+                        inputMode="url"
+                        value={trophyRuleForm.imageUrl}
+                        onChange={(e) =>
+                          setTrophyRuleForm((prev) => ({ ...prev, imageUrl: e.target.value }))
+                        }
+                        placeholder="/awards/social_connect.png or https://..."
+                      />
+                      <label className="active">Public Image URL</label>
+                      <span className="helper-text">
+                        Use a public URL for the trophy artwork. This can point to a file in
+                        <code>/public/awards</code> or any public image URL.
+                      </span>
+                    </div>
+
+                    <div className="input-field">
+                      <input
+                        value={trophyRuleForm.achievementSetKey}
+                        onChange={(e) =>
+                          setTrophyRuleForm((prev) => ({
+                            ...prev,
+                            achievementSetKey: e.target.value,
+                          }))
+                        }
+                        placeholder="connectSocials"
+                      />
+                      <label className="active">Unlock Set Key</label>
+                      <span className="helper-text">
+                        Leave blank for threshold-based trophies. Fill this with a set key to unlock
+                        automatically when every achievement in that set is complete.
+                      </span>
+                    </div>
+
+                    <div className="input-field">
                       <input
                         type="number"
                         value={trophyRuleForm.achievementThreshold}
@@ -1137,6 +1230,22 @@ export default function SuperAwards() {
                                   {safeStr((rule as any).description)}
                                 </div>
                               )}
+                          {!!safeStr((rule as any).imageUrl) && (
+                                <div style={{ marginTop: 12 }}>
+                                  <img
+                                    src={safeStr((rule as any).imageUrl)}
+                                    alt={safeStr((rule as any).title) || "Trophy artwork"}
+                                    style={{
+                                      width: 72,
+                                      height: 72,
+                                      objectFit: "contain",
+                                      borderRadius: 14,
+                                      border: "1px solid rgba(15,23,42,0.08)",
+                                      background: "rgba(255,255,255,0.7)",
+                                    }}
+                                  />
+                                </div>
+                              )}
                             </div>
 
                             <div className="ruleActions">
@@ -1161,6 +1270,11 @@ export default function SuperAwards() {
 
                           <div className="ruleMeta">
                             <span className="rulePill">Metric: {safeStr((rule as any).metric)}</span>
+                            {!!safeStr((rule as any).setKey) && (
+                              <span className="rulePill">
+                                Set: {formatTierLabel(safeStr((rule as any).setKey))}
+                              </span>
+                            )}
                             <span className="rulePill">
                               Threshold: {safeNum((rule as any).threshold)}
                             </span>
@@ -1221,6 +1335,11 @@ export default function SuperAwards() {
                             <span className="rulePill">
                               Tier: {formatTierLabel(safeStr((rule as any).tier))}
                             </span>
+                            {!!safeStr((rule as any).achievementSetKey) && (
+                              <span className="rulePill">
+                                Unlocks: {formatTierLabel(safeStr((rule as any).achievementSetKey))}
+                              </span>
+                            )}
                             <span className="rulePill">
                               Achievement Threshold: {safeNum((rule as any).achievementThreshold)}
                             </span>

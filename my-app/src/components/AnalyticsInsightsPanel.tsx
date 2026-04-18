@@ -793,28 +793,28 @@ export default function AnalyticsInsightsPanel() {
                 <div className="aipStats">
                   <SnapshotCard
                     label="Missing Updates"
-                    value={attention.missingUpdates.length}
+                    value={safeNum((compliance as any)?.missingUpdates) || attention.missingUpdates.length}
                     sublabel="Click to inspect employees"
                     tone="blue"
                     onClick={() => setModalKey("missingUpdates")}
                   />
                   <SnapshotCard
                     label="Missing Timesheets"
-                    value={attention.missingTimesheets.length}
+                    value={safeNum((compliance as any)?.missingTimesheets) || attention.missingTimesheets.length}
                     sublabel="Click to inspect employees"
                     tone="amber"
                     onClick={() => setModalKey("missingTimesheets")}
                   />
                   <SnapshotCard
                     label="Under Reported Hours"
-                    value={attention.underReportedHours.length}
+                    value={safeNum((compliance as any)?.underReportedHours) || attention.underReportedHours.length}
                     sublabel="Click to inspect employees"
                     tone="red"
                     onClick={() => setModalKey("underReportedHours")}
                   />
                   <SnapshotCard
                     label="No Activity"
-                    value={attention.noActivity.length}
+                    value={safeNum((compliance as any)?.noActivity) || attention.noActivity.length}
                     sublabel="Click to inspect employees"
                     tone="slate"
                     onClick={() => setModalKey("noActivity")}

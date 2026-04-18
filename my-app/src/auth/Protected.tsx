@@ -1,6 +1,6 @@
 // src/auth/Protected.tsx
 import React from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
 // We accept roles in lowercase: "super" | "admin" | "employee"
@@ -12,7 +12,18 @@ type Props = {
 };
 
 function ProtectedComp({ children, roles }: Props) {
-  const { user } = useAuth();
+  const { user, status } = useAuth();
+  const location = useLocation();
+
+  if (status === "checking") {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ next: `${location.pathname}${location.search}${location.hash}` }}
+      />
+    );
+  }
 
   if (!user) return <Navigate to="/login" replace />;
 

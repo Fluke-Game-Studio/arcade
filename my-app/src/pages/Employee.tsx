@@ -116,11 +116,21 @@ function TooltipIcon({
   const actualType = fallbackType || getRecognitionType(item);
   const icon = actualType === "trophy" ? "emoji_events" : "military_tech";
   const tone = actualType === "trophy" ? "amber" : "green";
+  const imageUrl = safeStr((item as any).imageUrl);
 
   return (
     <div className={`empAwardWrap ${tone}`}>
       <div className={`empAwardIcon ${tone}`}>
-        <i className="material-icons">{icon}</i>
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt=""
+            aria-hidden="true"
+            style={{ width: "84%", height: "84%", objectFit: "contain", display: "block" }}
+          />
+        ) : (
+          <i className="material-icons">{icon}</i>
+        )}
       </div>
 
       <div className="empAwardTooltip" role="tooltip">
