@@ -327,11 +327,15 @@ export default function AwardUnlockModal({
                     {safeNum(current.threshold) ? ` • Threshold ${safeNum(current.threshold)}` : ""}
                   </div>
                 )}
-                {!!safeStr(current.awardedAt) && (
+                {(() => {
+                  const awardedAt = safeStr(current.awardedAt);
+                  if (!awardedAt) return null;
+                  return (
                   <div style={{ color: "#64748b", fontSize: 13, fontWeight: 800 }}>
-                    Awarded: {new Date(current.awardedAt).toLocaleString()}
+                    Awarded: {new Date(awardedAt).toLocaleString()}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             </div>
           </div>

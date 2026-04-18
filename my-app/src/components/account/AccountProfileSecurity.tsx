@@ -44,6 +44,16 @@ function fmtMaybeDate(v: any) {
   return s;
 }
 
+void fmtMaybeDate;
+
+type EditableKey =
+  | "employee_profilepicture"
+  | "employee_picture"
+  | "employee_phonenumber"
+  | "employee_dob"
+  | "employee_address"
+  | "location";
+
 function strengthLabel(pw: string) {
   const s = pw || "";
   let score = 0;
@@ -62,15 +72,7 @@ function strengthLabel(pw: string) {
   return { pct, label };
 }
 
-type EditableKey =
-  | "employee_profilepicture"
-  | "employee_picture"
-  | "employee_phonenumber"
-  | "employee_dob"
-  | "employee_address"
-  | "location";
-
-function InfoTile({
+function _InfoTile({
   icon,
   label,
   value,
@@ -178,6 +180,9 @@ function EditableDropdown({
   );
 }
 
+void _InfoTile;
+void EditableDropdown;
+
 export default function AccountProfileSecurity({
   user,
   api,
@@ -188,7 +193,7 @@ export default function AccountProfileSecurity({
   initialTab?: "details" | "password";
 }) {
   const [me, setMe] = useState<ApiUser | null>(null);
-  const [loadingMe, setLoadingMe] = useState(true);
+  const [, setLoadingMe] = useState(true);
 
   const [pic, setPic] = useState("");
   const [employeePic, setEmployeePic] = useState("");
@@ -197,7 +202,7 @@ export default function AccountProfileSecurity({
   const [dob, setDob] = useState("");
   const [address, setAddress] = useState("");
 
-  const [editing, setEditing] = useState<Record<EditableKey, boolean>>({
+  const [, setEditing] = useState<Record<EditableKey, boolean>>({
     employee_profilepicture: false,
     employee_picture: false,
     employee_phonenumber: false,
@@ -276,14 +281,8 @@ export default function AccountProfileSecurity({
 
   const dept = safeStr((me as any)?.department) || "—";
   const employmentType = safeStr((me as any)?.employment_type) || "—";
-  const employeeId = safeStr((me as any)?.employee_id) || "—";
-  const started = fmtMaybeDate((me as any)?.employee_date_started);
-  const createdAt = fmtMaybeDate((me as any)?.createdAt);
-  const updatedAt = fmtMaybeDate((me as any)?.updatedAt);
   const linkedinConnected = Boolean((me as any)?.linkedin_connected);
-  const linkedinConnectedAt = safeStr((me as any)?.linkedin_connected_at);
   const discordConnected = Boolean((me as any)?.discord_connected);
-  const discordConnectedAt = safeStr((me as any)?.discord_connected_at);
 
   const avatarFallback = useMemo(() => initials(displayName), [displayName]);
 
@@ -415,6 +414,8 @@ export default function AccountProfileSecurity({
       setSavingProfile(false);
     }
   }
+
+  void saveOne;
 
   async function savePassword() {
     if (!pw1 || pw1.length < 8) {

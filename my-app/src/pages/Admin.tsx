@@ -915,7 +915,7 @@ export default function Admin({
 
           <div style={{ marginTop: 14, display: activeTab === "activity" ? "block" : "none" }}>
             <div className="card z-depth-1 adm-card">
-              <ActivityReport compact />
+              <ActivityReport embedded />
             </div>
           </div>
 
