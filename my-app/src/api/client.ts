@@ -75,6 +75,11 @@ import type {
 
 export class ApiClient {
   private token: string | null = null;
+  private platform: "portal" | "project" | "version_control" = "portal";
+
+  setPlatform(platform: "portal" | "project" | "version_control") {
+    this.platform = platform;
+  }
 
   setToken(token: string | null) {
     this.token = token;
@@ -98,6 +103,7 @@ export class ApiClient {
     const h: Record<string, string> = {
       Accept: "*/*",
       Connection: "keep-alive",
+      "X-Platform": this.platform,
     };
     if (isJson) h["Content-Type"] = "application/json";
     if (this.token) h["Authorization"] = `Bearer ${this.token}`;
@@ -178,8 +184,13 @@ export class ApiClient {
     return payload as T;
   }
 
-  async login(username: string, password: string): Promise<ApiLoginResponse> {
-    const body = JSON.stringify({ username: username.trim(), password });
+  async login(
+    username: string,
+    password: string,
+    platform: "portal" | "project" | "version_control" = "portal"
+  ): Promise<ApiLoginResponse> {
+    this.setPlatform(platform);
+    const body = JSON.stringify({ username: username.trim(), password, platform });
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: this.headers(true),
@@ -416,6 +427,7 @@ export class ApiClient {
 
   async getUpdates(params?: {
     weekStart?: string;
+    submittedWeekStart?: string;
     projectId?: string;
     userId?: string;
     limit?: number;
@@ -423,6 +435,7 @@ export class ApiClient {
   }): Promise<ApiUpdatesResponse> {
     const qs = new URLSearchParams();
     if (params?.weekStart) qs.set("weekStart", params.weekStart);
+    if (params?.submittedWeekStart) qs.set("submittedWeekStart", params.submittedWeekStart);
     if (params?.projectId) qs.set("projectId", params.projectId);
     if (params?.userId) qs.set("userId", params.userId);
     if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
@@ -448,6 +461,8 @@ export class ApiClient {
       summaries: Array.isArray(payload?.summaries) ? payload.summaries : [],
       count: Number(payload?.count) || 0,
       summaryCount: Number(payload?.summaryCount) || 0,
+      submitDates: Array.isArray(payload?.submitDates) ? payload.submitDates : undefined,
+      submitDateCount: typeof payload?.submitDateCount === "number" ? payload.submitDateCount : undefined,
       limit: Number(payload?.limit) || undefined,
       cursor: typeof payload?.cursor === "string" ? payload.cursor : undefined,
       nextCursor: typeof payload?.nextCursor === "string" ? payload.nextCursor : null,

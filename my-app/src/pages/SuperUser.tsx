@@ -27,7 +27,7 @@ export default function SuperUser() {
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
 
   const [projectSaving, setProjectSaving] = useState(false);
-  const isSuperUser = String(user?.role) === "super";
+  const isSuperUser = String((user as any)?.role || "").toLowerCase() === "super";
 
   const [projectForm, setProjectForm] = useState<ProjectForm>({
     name: "",
@@ -70,11 +70,10 @@ export default function SuperUser() {
 
   /* ========================= COLLAPSIBLES ========================= */
   useEffect(() => {
-    if (typeof M !== "undefined") {
-      try {
-        M.Collapsible.init(document.querySelectorAll(".collapsible"), { accordion: false });
-      } catch {}
-    }
+    if (typeof M === "undefined") return;
+    try {
+      M.Collapsible.init(document.querySelectorAll(".collapsible"), { accordion: false });
+    } catch {}
   }, []);
 
   /* ========================= FILTER USERS ========================= */
@@ -102,6 +101,23 @@ export default function SuperUser() {
       await api.updateUser({ username, employee_role: role });
       M.toast({ html: "Role updated", classes: "green" });
       loadUsers();
+    } catch (e: any) {
+      M.toast({ html: e?.message || "Failed", classes: "red" });
+    }
+  }
+
+  async function setUserAccessFlag(
+    username: string,
+    field: "portal_access" | "project_access" | "version_control_access",
+    value: boolean
+  ) {
+    if (!isSuperUser) return;
+    try {
+      await api.updateUser({ username, [field]: value } as any);
+      setRows((prev) =>
+        prev.map((u) => (u.username === username ? ({ ...u, [field]: value } as any) : u))
+      );
+      M.toast({ html: "Access updated", classes: "green" });
     } catch (e: any) {
       M.toast({ html: e?.message || "Failed", classes: "red" });
     }
@@ -194,9 +210,130 @@ export default function SuperUser() {
   /* ========================= RENDER ========================= */
   return (
     <main className="container" style={{ paddingTop: 24, maxWidth: 1100 }}>
-      <h4>Super Console</h4>
+      <style>{`
+        .suHero {
+          border-radius: 26px;
+          overflow: hidden;
+          border: 1px solid rgba(148,163,184,0.22);
+          background:
+            radial-gradient(900px 520px at 18% -30%, rgba(56,189,248,0.22), transparent 55%),
+            radial-gradient(800px 520px at 105% 10%, rgba(99,102,241,0.18), transparent 55%),
+            linear-gradient(180deg, #0b2544 0%, #071a33 100%);
+          box-shadow: 0 22px 70px rgba(0,0,0,0.26);
+          position: relative;
+          margin-bottom: 14px;
+          color: #fff;
+        }
+        .suHeroInner {
+          padding: 18px 18px 16px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
+        .suTitle { font-weight: 1000; font-size: 20px; line-height: 24px; }
+        .suSub { margin-top: 6px; color: rgba(226,232,240,0.82); font-size: 13px; max-width: 760px; }
+        .suPills { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .suPill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.12);
+          color: rgba(226,232,240,0.96);
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: .04em;
+          text-transform: uppercase;
+        }
+        .suStats { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+        .suStat {
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 16px;
+          padding: 12px 14px;
+          min-width: 132px;
+        }
+        .suStatLabel { font-size: 12px; opacity: .85; font-weight: 900; }
+        .suStatValue { font-size: 22px; font-weight: 1000; margin-top: 2px; }
 
-      <ul className="collapsible popout">
+        .suCollapsible {
+          border: 0;
+          box-shadow: none;
+          margin: 0;
+        }
+        .suCollapsible > li {
+          border-radius: 20px;
+          overflow: hidden;
+          border: 1px solid #e6edf2;
+          margin-bottom: 14px;
+        }
+        .suCollapsible .collapsible-header {
+          border: 0;
+          padding: 14px 16px;
+          font-weight: 1000;
+          color: #0f172a;
+          background: linear-gradient(135deg, #ffffff 0%, #fbfdff 60%, #f7fafc 100%);
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .suCollapsible .collapsible-body {
+          border: 0;
+          padding: 16px;
+          background: #fff;
+        }
+        .suCollapsible .card {
+          border-radius: 18px;
+          overflow: hidden;
+          border: 1px solid rgba(148,163,184,.20);
+          box-shadow: 0 18px 35px rgba(15,23,42,.06);
+          margin: 0;
+        }
+        .suCollapsible .card .card-content { padding: 16px; }
+        .suCollapsible .card .card-title {
+          font-weight: 1000;
+          color: #0f172a;
+        }
+        .suCollapsible table code { font-size: 12px; }
+      `}</style>
+
+      <div className="suHero">
+        <div className="suHeroInner">
+          <div style={{ minWidth: 260 }}>
+            <div className="suTitle">Super Console</div>
+            <div className="suSub">
+              Manage users, roles, and access controls. Only <b>super</b> can edit Portal/Project/VCS access.
+            </div>
+            <div className="suPills">
+              <span className="suPill">
+                <i className="material-icons" style={{ fontSize: 16 }}>admin_panel_settings</i>
+                {isSuperUser ? "Super" : "Read Only"}
+              </span>
+              <span className="suPill">
+                <i className="material-icons" style={{ fontSize: 16 }}>key</i>
+                Access Flags
+              </span>
+            </div>
+          </div>
+
+          <div className="suStats">
+            <div className="suStat">
+              <div className="suStatLabel">Users</div>
+              <div className="suStatValue">{rows.length}</div>
+            </div>
+            <div className="suStat">
+              <div className="suStatLabel">Projects</div>
+              <div className="suStatValue">{projects.length}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <ul className="collapsible popout suCollapsible">
 
         {/* ===================== USERS ===================== */}
         <li className="active">
@@ -221,7 +358,7 @@ export default function SuperUser() {
                 </div>
 
                 {loading ? (
-                  <p>Loading…</p>
+                  <p>Loading...</p>
                 ) : (
                   <table className="highlight responsive-table">
                     <thead>
@@ -230,6 +367,10 @@ export default function SuperUser() {
                         <th>Name</th>
                         <th>Email</th>
                         <th>Role</th>
+                        <th>Portal</th>
+                        <th>Project</th>
+                        <th>VCS</th>
+                        <th>Revoked</th>
                         <th>Change</th>
                       </tr>
                     </thead>
@@ -237,6 +378,10 @@ export default function SuperUser() {
                     <tbody>
                       {filtered.map((u) => {
                         const isSelf = u.username === user?.username;
+                        const portal = (u as any).portal_access !== false;
+                        const project = (u as any).project_access !== false;
+                        const vcs = (u as any).version_control_access === true;
+                        const revoked = (u as any).revoked === true;
 
                         return (
                           <tr key={u.username} className={isSelf ? "grey lighten-4" : ""}>
@@ -244,6 +389,41 @@ export default function SuperUser() {
                             <td>{u.employee_name}</td>
                             <td><code>{u.employee_email}</code></td>
                             <td><b>{(u.employee_role ?? "").toUpperCase()}</b></td>
+
+                            <td>
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={portal}
+                                  disabled={!isSuperUser}
+                                  onChange={(e) => setUserAccessFlag(u.username, "portal_access", e.target.checked)}
+                                />
+                                <span></span>
+                              </label>
+                            </td>
+                            <td>
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={project}
+                                  disabled={!isSuperUser}
+                                  onChange={(e) => setUserAccessFlag(u.username, "project_access", e.target.checked)}
+                                />
+                                <span></span>
+                              </label>
+                            </td>
+                            <td>
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={vcs}
+                                  disabled={!isSuperUser}
+                                  onChange={(e) => setUserAccessFlag(u.username, "version_control_access", e.target.checked)}
+                                />
+                                <span></span>
+                              </label>
+                            </td>
+                            <td>{revoked ? "Yes" : "No"}</td>
 
                             <td>
                               {["employee", "admin", "super"].map((r) => (
@@ -285,7 +465,7 @@ export default function SuperUser() {
             <div className="card">
               <div className="card-content">
                 <span className="card-title">
-                  Existing Projects {projectsLoading ? "(Loading…)" : `(${projects.length})`}
+                  Existing Projects {projectsLoading ? "(Loading...)" : `(${projects.length})`}
                 </span>
 
                 {!projectsLoading && (
@@ -460,7 +640,7 @@ export default function SuperUser() {
                   {/* SUBMIT */}
                   <button className="btn" type="submit" disabled={projectSaving}>
                     {projectSaving
-                      ? "Saving…"
+                      ? "Saving..."
                       : editingProjectId
                       ? "Update Project"
                       : "Save Project"}

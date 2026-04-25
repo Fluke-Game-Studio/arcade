@@ -4,6 +4,8 @@ export type ApiLoginResponse = {
   username: string;
   role: "super" | "admin" | "employee";
   name: string;
+  projectStatus?: "ProjectPartialClean" | "ProjectCompleteCleanup" | "none" | string;
+  allowed?: boolean;
 };
 
 export type ApiUser = {
@@ -36,6 +38,11 @@ export type ApiUser = {
   employee_last_update_week?: string;
   employee_last_update_hours?: string;
   employee_last_update_summary?: string;
+  revoked?: boolean;
+  portal_access?: boolean;
+  project_access?: boolean;
+  version_control_access?: boolean;
+  project_setup?: "" | "ProjectPartialCleanUp" | "ProjectCompleteCleanup" | string;
   [k: string]: any;
 };
 
@@ -67,6 +74,10 @@ export type CreateUserBody = {
   employee_role?: "super" | "admin" | "employee";
   project_id?: string;
   employee_manager?: string;
+  portal_access?: boolean;
+  project_access?: boolean;
+  version_control_access?: boolean;
+  project_setup?: "" | "ProjectPartialCleanUp" | "ProjectCompleteCleanup" | string;
 };
 
 export type UpdateUserBody = Partial<CreateUserBody> & {
