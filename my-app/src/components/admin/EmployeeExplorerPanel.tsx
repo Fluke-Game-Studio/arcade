@@ -15,6 +15,10 @@ type EditForm = {
   department: string;
   location: string;
   project_id: string;
+  project_setup: string;
+  portal_access: boolean;
+  project_access: boolean;
+  version_control_access: boolean;
   employee_id: string;
   password?: string;
   revoked: boolean;
@@ -31,6 +35,10 @@ const EMPTY_EDIT: EditForm = {
   department: "",
   location: "",
   project_id: "",
+  project_setup: "",
+  portal_access: true,
+  project_access: true,
+  version_control_access: false,
   employee_id: "",
   password: "",
   revoked: false,
@@ -54,6 +62,9 @@ function initials(nameOrUser: string) {
 
 function getUserKey(user: Partial<ApiUser>) {
   return (
+    norm((user as any)?.userId) ||
+    norm((user as any)?.id) ||
+    norm((user as any)?.employee_id) ||
     norm((user as any)?.username) ||
     norm((user as any)?.employee_username) ||
     norm((user as any)?.employee_email) ||
@@ -242,6 +253,45 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
       .sort((a, b) => getUserName(a).localeCompare(getUserName(b)));
   }, [users, search]);
 
+  const selectedUserRowForUpdates = useMemo(() => {
+    const key = norm(selectedKey);
+    if (!key) return null;
+
+    return (
+      filteredUsers.find((u) => getUserKey(u) === key) ||
+      users.find((u) => getUserKey(u) === key) ||
+      null
+    );
+  }, [filteredUsers, selectedKey, users]);
+
+  const selectedUserIdCandidates = useMemo(() => {
+    const candidates: string[] = [];
+    const userRow = selectedUserRowForUpdates;
+
+    if (userRow) {
+      candidates.push(
+        safeStr((userRow as any)?.userId),
+        safeStr((userRow as any)?.id),
+        safeStr((userRow as any)?.username),
+        safeStr((userRow as any)?.employee_id),
+        safeStr((userRow as any)?.employee_email),
+        safeStr((userRow as any)?.email)
+      );
+    }
+
+    candidates.push(safeStr(selectedKey));
+
+    const uniq: string[] = [];
+    const seen = new Set<string>();
+    for (const c of candidates.map(safeStr).filter(Boolean)) {
+      const k = norm(c);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      uniq.push(c);
+    }
+    return uniq;
+  }, [selectedKey, selectedUserRowForUpdates]);
+
   useEffect(() => {
     if (selectedKey) return;
     const first = filteredUsers[0];
@@ -251,8 +301,8 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
 
   useEffect(() => {
     let cancelled = false;
-    const userId = safeStr(selectedKey);
-    if (!userId) {
+    const candidates = selectedUserIdCandidates;
+    if (!candidates.length) {
       setSummaries([]);
       setSummariesError("");
       return;
@@ -262,27 +312,117 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
       try {
         setLoadingSummaries(true);
         setSummariesError("");
-        const rows: ApiUpdateSummary[] = [];
-        const seen = new Set<string>();
-        let cursor: string | undefined;
-        let pages = 0;
 
-        do {
-          const resp: ApiUpdatesResponse = await api.getUpdates({ userId, limit: 200, cursor });
-          (Array.isArray(resp?.summaries) ? resp.summaries : []).forEach((row) => {
-            const key = `${safeStr((row as any)?.userId)}::${safeStr((row as any)?.weekStart)}`;
-            if (!key || seen.has(key)) return;
-            seen.add(key);
-            rows.push(row);
-          });
-          cursor = resp?.nextCursor || undefined;
-          pages += 1;
-        } while (cursor && pages < 200);
+        const projectId =
+          safeStr((selectedUserRowForUpdates as any)?.project_id) ||
+          safeStr((currentUser as any)?.project_id) ||
+          "";
 
-        rows.sort((a, b) => safeStr((b as any)?.weekStart).localeCompare(safeStr((a as any)?.weekStart)));
+        const likelyHasUpdates = Boolean(
+          safeStr((selectedUserRowForUpdates as any)?.employee_last_update_week) ||
+            safeStr((selectedUserRowForUpdates as any)?.employee_last_update_hours) ||
+            safeStr((selectedUserRowForUpdates as any)?.employee_last_update_summary)
+        );
+
+        let finalRows: ApiUpdateSummary[] = [];
+
+        for (const userId of candidates) {
+          const rows: ApiUpdateSummary[] = [];
+          const seen = new Set<string>();
+          let cursor: string | undefined;
+          let pages = 0;
+
+          do {
+            const resp: ApiUpdatesResponse = await api.getUpdates({
+              userId,
+              projectId: projectId || undefined,
+              limit: 200,
+              cursor,
+            });
+            (Array.isArray(resp?.summaries) ? resp.summaries : []).forEach((row) => {
+              const key = `${safeStr((row as any)?.userId)}::${safeStr((row as any)?.weekStart)}`;
+              if (!key || seen.has(key)) return;
+              seen.add(key);
+              rows.push(row);
+            });
+            cursor = resp?.nextCursor || undefined;
+            pages += 1;
+          } while (cursor && pages < 200);
+
+          rows.sort((a, b) => safeStr((b as any)?.weekStart).localeCompare(safeStr((a as any)?.weekStart)));
+
+          if (cancelled) return;
+
+          if (rows.length > 0 || !likelyHasUpdates) {
+            finalRows = rows;
+            break;
+          }
+        }
+
+        if (finalRows.length === 0 && likelyHasUpdates && selectedUserRowForUpdates) {
+          const lastWeek = safeStr((selectedUserRowForUpdates as any)?.employee_last_update_week);
+          const employeeId = safeStr((selectedUserRowForUpdates as any)?.employee_id);
+          const employeeName = getUserName(selectedUserRowForUpdates);
+
+          if (lastWeek) {
+            try {
+              const resp: ApiUpdatesResponse = await api.getUpdates({
+                weekStart: lastWeek,
+                projectId: projectId || undefined,
+                limit: 200,
+              });
+
+              const match = (Array.isArray(resp?.summaries) ? resp.summaries : []).find((row) => {
+                const rowEmployeeId = safeStr((row as any)?.employee_id);
+                if (employeeId && rowEmployeeId && employeeId === rowEmployeeId) return true;
+
+                const rowName = safeStr((row as any)?.userName);
+                if (employeeName && rowName && norm(rowName) === norm(employeeName)) return true;
+
+                const rowUserId = safeStr((row as any)?.userId);
+                if (rowUserId && safeStr((selectedUserRowForUpdates as any)?.username) && norm(rowUserId) === norm(safeStr((selectedUserRowForUpdates as any)?.username))) {
+                  return true;
+                }
+
+                return false;
+              });
+
+              const discoveredUserId = safeStr((match as any)?.userId);
+              if (discoveredUserId && !candidates.some((c) => norm(c) === norm(discoveredUserId))) {
+                const rows: ApiUpdateSummary[] = [];
+                const seen = new Set<string>();
+                let cursor: string | undefined;
+                let pages = 0;
+
+                do {
+                  const resp2: ApiUpdatesResponse = await api.getUpdates({
+                    userId: discoveredUserId,
+                    projectId: projectId || undefined,
+                    limit: 200,
+                    cursor,
+                  });
+                  (Array.isArray(resp2?.summaries) ? resp2.summaries : []).forEach((row) => {
+                    const key = `${safeStr((row as any)?.userId)}::${safeStr((row as any)?.weekStart)}`;
+                    if (!key || seen.has(key)) return;
+                    seen.add(key);
+                    rows.push(row);
+                  });
+                  cursor = resp2?.nextCursor || undefined;
+                  pages += 1;
+                } while (cursor && pages < 200);
+
+                rows.sort((a, b) => safeStr((b as any)?.weekStart).localeCompare(safeStr((a as any)?.weekStart)));
+                if (!cancelled) finalRows = rows;
+              }
+            } catch {
+              // ignore discovery failures
+            }
+          }
+        }
+
         if (cancelled) return;
-        setSummaries(rows);
-        setSelectedWeek(safeStr((rows[0] as any)?.weekStart));
+        setSummaries(finalRows);
+        setSelectedWeek(safeStr((finalRows[0] as any)?.weekStart));
       } catch (e: any) {
         if (!cancelled) {
           setSummaries([]);
@@ -296,7 +436,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
     return () => {
       cancelled = true;
     };
-  }, [api, selectedKey]);
+  }, [api, selectedUserIdCandidates, selectedUserRowForUpdates]);
 
   useEffect(() => {
     setSelectedAttachment("");
@@ -335,6 +475,10 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
       department: safeStr((userRow as any)?.department),
       location: safeStr((userRow as any)?.location),
       project_id: safeStr((userRow as any)?.project_id),
+      project_setup: safeStr((userRow as any)?.project_setup),
+      portal_access: (userRow as any)?.portal_access !== false,
+      project_access: (userRow as any)?.project_access !== false,
+      version_control_access: (userRow as any)?.version_control_access === true,
       employee_id: safeStr((userRow as any)?.employee_id),
       password: "",
       revoked: !!(userRow as any)?.revoked,
@@ -366,7 +510,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         username: editingUsername,
         employee_name: safeStr(editForm.employee_name) || undefined,
         employee_email: safeStr(editForm.employee_email) || undefined,
-        employee_role: safeStr(editForm.employee_role) || undefined,
+        // employee_role is shown read-only in UI; do not patch it here
         employee_title: safeStr(editForm.employee_title) || undefined,
         employee_picture: safeStr(editForm.employee_picture) || undefined,
         employee_profilepicture: safeStr(editForm.employee_picture) || undefined,
@@ -374,9 +518,16 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         department: safeStr(editForm.department) || undefined,
         location: safeStr(editForm.location) || undefined,
         project_id: safeStr(editForm.project_id) || undefined,
+        // Allow clearing back to "none" (empty string) by sending it explicitly.
+        project_setup: String(editForm.project_setup ?? ""),
         employee_id: safeStr(editForm.employee_id) || undefined,
         revoked: !!editForm.revoked,
       };
+      if (isSuper) {
+        patch.portal_access = !!editForm.portal_access;
+        patch.project_access = !!editForm.project_access;
+        patch.version_control_access = !!editForm.version_control_access;
+      }
       if (safeStr(editForm.password)) patch.password = editForm.password;
       await api.updateUser(patch);
       M?.toast?.({ html: "Employee updated.", classes: "green" });
@@ -785,22 +936,62 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                   </div>
                 </div>
               ))}
-              {isSuper ? (
-                <div style={{ gridColumn: "span 4" }}>
-                  <div className="input-field">
-                    <select className="browser-default" value={editForm.employee_role} onChange={(e) => setEditForm((p) => ({ ...p, employee_role: e.target.value }))}>
-                      <option value="employee">employee</option>
-                      <option value="admin">admin</option>
-                      <option value="super">super</option>
-                    </select>
-                  </div>
+              <div style={{ gridColumn: "span 4" }}>
+                <div className="input-field">
+                  <input value={safeStr(editForm.employee_role)} disabled />
+                  <label className={safeStr(editForm.employee_role) ? "active" : ""}>Role</label>
                 </div>
-              ) : null}
+              </div>
               <div style={{ gridColumn: "span 12" }}>
                 <label>
                   <input type="checkbox" className="filled-in" checked={editForm.revoked} onChange={(e) => setEditForm((p) => ({ ...p, revoked: e.target.checked }))} />
                   <span>Revoked</span>
                 </label>
+              </div>
+              <div style={{ gridColumn: "span 12", display: "flex", flexWrap: "wrap", gap: 18, marginTop: 4 }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    className="filled-in"
+                    checked={editForm.portal_access}
+                    disabled={!isSuper}
+                    onChange={(e) => setEditForm((p) => ({ ...p, portal_access: e.target.checked }))}
+                  />
+                  <span>Portal Access</span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    className="filled-in"
+                    checked={editForm.project_access}
+                    disabled={!isSuper}
+                    onChange={(e) => setEditForm((p) => ({ ...p, project_access: e.target.checked }))}
+                  />
+                  <span>Project Access</span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    className="filled-in"
+                    checked={editForm.version_control_access}
+                    disabled={!isSuper}
+                    onChange={(e) => setEditForm((p) => ({ ...p, version_control_access: e.target.checked }))}
+                  />
+                  <span>VCS Access</span>
+                </label>
+              </div>
+              <div style={{ gridColumn: "span 6" }}>
+                <div className="input-field">
+                  <select
+                    className="browser-default"
+                    value={editForm.project_setup}
+                    onChange={(e) => setEditForm((p) => ({ ...p, project_setup: e.target.value }))}
+                  >
+                    <option value="">Project Setup: not set</option>
+                    <option value="ProjectPartialCleanUp">ProjectPartialCleanUp</option>
+                    <option value="ProjectCompleteCleanup">ProjectCompleteCleanup</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

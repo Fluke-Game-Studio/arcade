@@ -59,6 +59,19 @@ function toLocalISODate(date: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function submittedAtIso(summary: Partial<ApiUpdateSummary>) {
+  const raw = safeStr(
+    (summary as any)?.createdAtLast ||
+      (summary as any)?.createdAtFirst ||
+      (summary as any)?.createdAt ||
+      ""
+  );
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return "";
+  return toLocalISODate(d);
+}
+
 function formatWeekLabel(weekStart: string) {
   const start = parseLocalISO(weekStart);
   if (!start) return weekStart || "No week selected";
@@ -1080,15 +1093,17 @@ function SubmissionWeekCalendar({
 
 export default function ActivityReport({ embedded = false }: { embedded?: boolean } = {}) {
   const [summaries, setSummaries] = useState<ApiUpdateSummary[]>([]);
+  const [allWeekSummaries, setAllWeekSummaries] = useState<ApiUpdateSummary[]>([]);
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingAllWeek, setLoadingAllWeek] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [error, setError] = useState("");
   const [highlightedDates, setHighlightedDates] = useState<string[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<string>("");
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(() => (embedded ? 100 : 25));
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [pageIndex, setPageIndex] = useState(0);
@@ -1144,54 +1159,27 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
 
     (async () => {
       try {
-        const foundWeeks = new Set<string>();
-        const foundDates = new Set<string>();
-        let cursor: string | undefined;
-        let pages = 0;
-
-        do {
-          const resp: ApiUpdatesResponse = await api.getUpdates({
-            limit: 200,
-            cursor,
-          });
-
-          (Array.isArray(resp?.summaries) ? resp.summaries : []).forEach((row) => {
-            const week = safeStr((row as any)?.weekStart);
-            if (week) foundWeeks.add(week);
-          });
-
-          (Array.isArray(resp?.items) ? resp.items : []).forEach((row) => {
-            const week = safeStr((row as any)?.weekStart);
-            if (week) foundWeeks.add(week);
-            const createdAt = safeStr((row as any)?.createdAt);
-            if (createdAt) {
-              const createdDate = new Date(createdAt);
-              if (!Number.isNaN(createdDate.getTime())) {
-                foundDates.add(toLocalISODate(createdDate));
-              }
-            }
-          });
-
-          cursor = resp?.nextCursor || undefined;
-          pages += 1;
-        } while (cursor && pages < 100);
+        const resp: ApiUpdatesResponse = await api.getUpdates({ limit: 1 });
+        const submitDates = Array.isArray(resp?.submitDates) ? resp.submitDates : [];
 
         if (cancelled) return;
 
-        const sortedWeeks = Array.from(foundWeeks).sort((a, b) => b.localeCompare(a));
-        const sortedDates = Array.from(foundDates).sort((a, b) => b.localeCompare(a));
-        setHighlightedDates(sortedDates);
+        setHighlightedDates(submitDates);
 
-        const preferredWeek = sortedWeeks[0] || "";
+        const latestSubmitDate = safeStr(submitDates[0]);
+        const preferredWeekStart = latestSubmitDate
+          ? mondayISO(parseLocalISO(latestSubmitDate) || new Date(latestSubmitDate))
+          : "";
 
-        if (preferredWeek) {
-          setSelectedWeek(preferredWeek);
-          const preferredDate = parseLocalISO(preferredWeek);
-          if (preferredDate) {
-            setCalendarMonth(new Date(preferredDate.getFullYear(), preferredDate.getMonth(), 1));
-          }
-        } else {
+        if (!preferredWeekStart) {
           setSelectedWeek("");
+          return;
+        }
+
+        setSelectedWeek(preferredWeekStart);
+        const preferredDate = parseLocalISO(preferredWeekStart);
+        if (preferredDate) {
+          setCalendarMonth(new Date(preferredDate.getFullYear(), preferredDate.getMonth(), 1));
         }
       } catch (err: any) {
         if (cancelled) return;
@@ -1229,7 +1217,7 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
       setError("");
 
       const resp: ApiUpdatesResponse = await api.getUpdates({
-        weekStart: selectedWeek,
+        submittedWeekStart: selectedWeek,
         limit: pageSize,
         cursor: cursor || undefined,
       });
@@ -1255,6 +1243,68 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWeek, pageSize]);
 
+  const selectedWeekSubmitDays = useMemo(() => {
+    const start = parseLocalISO(selectedWeek);
+    if (!start) return 0;
+    const end = addDays(start, 7);
+
+    let count = 0;
+    for (const dateIso of highlightedDates.map(safeStr).filter(Boolean)) {
+      const d = parseLocalISO(dateIso);
+      if (!d) continue;
+      if (d.getTime() >= start.getTime() && d.getTime() < end.getTime()) count += 1;
+    }
+    return count;
+  }, [highlightedDates, selectedWeek]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!selectedWeek) {
+        setAllWeekSummaries([]);
+        setLoadingAllWeek(false);
+        return;
+      }
+
+      try {
+        setLoadingAllWeek(true);
+
+        const map = new Map<string, ApiUpdateSummary>();
+        let cursor: string | undefined;
+        let pages = 0;
+
+        do {
+          const resp: ApiUpdatesResponse = await api.getUpdates({
+            submittedWeekStart: selectedWeek,
+            limit: 200,
+            cursor,
+          });
+
+          (Array.isArray(resp?.summaries) ? resp.summaries : []).forEach((row) => {
+            const key = getSummaryKey(row);
+            if (!key) return;
+            map.set(key, row);
+          });
+
+          cursor = resp?.nextCursor || undefined;
+          pages += 1;
+        } while (cursor && pages < 50);
+
+        if (cancelled) return;
+        setAllWeekSummaries(Array.from(map.values()));
+      } catch {
+        if (!cancelled) setAllWeekSummaries([]);
+      } finally {
+        if (!cancelled) setLoadingAllWeek(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, selectedWeek]);
+
   const rows = useMemo(() => {
     return [...summaries].sort((a, b) => {
       return String((a as any).userName || (a as any).userId || "").localeCompare(
@@ -1262,6 +1312,14 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
       );
     });
   }, [summaries]);
+
+  const allRows = useMemo(() => {
+    return [...allWeekSummaries].sort((a, b) => {
+      return String((a as any).userName || (a as any).userId || "").localeCompare(
+        String((b as any).userName || (b as any).userId || "")
+      );
+    });
+  }, [allWeekSummaries]);
 
   const eligibleUsers = useMemo(() => {
     return (Array.isArray(users) ? users : []).filter((u) => {
@@ -1272,13 +1330,13 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
 
   const summaryMap = useMemo(() => {
     const map = new Map<string, ApiUpdateSummary>();
-    for (const row of rows) {
+    for (const row of allRows) {
       const key = getSummaryKey(row);
       if (!key) continue;
       map.set(key, row);
     }
     return map;
-  }, [rows]);
+  }, [allRows]);
 
   const userMap = useMemo(() => {
     const map = new Map<string, ApiUser>();
@@ -1337,13 +1395,13 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
   }, [missingState, selectedWeek]);
 
   const totals = useMemo(() => {
-    const employees = new Set(rows.map((r) => (r as any).userId || (r as any).userName || "Anon"));
-    const totalEntries = rows.reduce((acc, r) => acc + safeNum((r as any).totalEntries), 0);
-    const totalHours = rows.reduce((acc, r) => acc + safeNum((r as any).totalHours), 0);
-    const submittedUpdates = rows.filter((r) => safeNum((r as any).totalEntries) > 0).length;
-    const contributors = rows.filter((r) => safeNum((r as any).totalHours) > 0).length;
-    const noHours = rows.filter((r) => safeNum((r as any).totalHours) <= 0).length;
-    const underThree = rows.filter(
+    const employees = new Set(allRows.map((r) => (r as any).userId || (r as any).userName || "Anon"));
+    const totalEntries = allRows.reduce((acc, r) => acc + safeNum((r as any).totalEntries), 0);
+    const totalHours = allRows.reduce((acc, r) => acc + safeNum((r as any).totalHours), 0);
+    const submittedUpdates = allRows.filter((r) => safeNum((r as any).totalEntries) > 0).length;
+    const contributors = allRows.filter((r) => safeNum((r as any).totalHours) > 0).length;
+    const noHours = allRows.filter((r) => safeNum((r as any).totalHours) <= 0).length;
+    const underThree = allRows.filter(
       (r) => safeNum((r as any).totalHours) > 0 && safeNum((r as any).totalHours) < 3
     ).length;
 
@@ -1356,23 +1414,23 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
       noHours,
       underThree,
     };
-  }, [rows]);
+  }, [allRows]);
 
 
   const contributorSeries = useMemo(() => {
-    return rows
+    return allRows
       .map((r) => ({
         name: safeStr((r as any).userName || (r as any).userId) || "Anon",
         totalHours: safeNum((r as any).totalHours),
         updates: safeNum((r as any).totalEntries),
       }))
       .sort((a, b) => b.totalHours - a.totalHours || b.updates - a.updates);
-  }, [rows]);
+  }, [allRows]);
 
   const dailySeries = useMemo(() => {
     const map = new Map<string, { day: string; totalHours: number; contributors: Set<string> }>();
 
-    for (const r of rows) {
+    for (const r of allRows) {
       const userKey = safeStr((r as any).userId || (r as any).userName) || "Anon";
       const timesheet = Array.isArray((r as any).timesheet) ? (r as any).timesheet : [];
 
@@ -1402,7 +1460,7 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
         contributors: x.contributors.size,
       }))
       .sort((a, b) => a.day.localeCompare(b.day));
-  }, [rows]);
+  }, [allRows]);
 
   function openMissingModal() {
     if (!modalRef.current || typeof M === "undefined") return;
@@ -1884,8 +1942,10 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
                       fontSize: 12,
                       fontWeight: 900,
                     }}
+                    title={`${highlightedDates.length} submit day(s) found across all time`}
                   >
-                    {highlightedDates.length} submit day{highlightedDates.length === 1 ? "" : "s"} found
+                    {(selectedWeek ? selectedWeekSubmitDays : highlightedDates.length) || 0} submit day
+                    {(selectedWeek ? selectedWeekSubmitDays : highlightedDates.length) === 1 ? "" : "s"} found
                   </span>
                 </div>
               </div>
@@ -1948,9 +2008,13 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
                 selectedWeek={selectedWeek}
                 visibleMonth={calendarMonth}
                 onSelectDate={(dateIso) => {
-                  const picked = parseLocalISO(dateIso) || new Date(dateIso);
-                  setSelectedWeek(mondayISO(picked));
-                  setCalendarMonth(new Date(picked.getFullYear(), picked.getMonth(), 1));
+                  const iso = safeStr(dateIso);
+                  const picked = parseLocalISO(iso) || new Date(iso);
+                  const resolvedWeekStart = mondayISO(picked);
+
+                  setSelectedWeek(resolvedWeekStart);
+                  const base = parseLocalISO(resolvedWeekStart) || picked;
+                  setCalendarMonth(new Date(base.getFullYear(), base.getMonth(), 1));
                   setCalendarOpen(false);
                 }}
                 onRequestClose={() => setCalendarOpen(false)}
@@ -1969,7 +2033,7 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
             }}
           >
             <div className="grey-text" style={{ fontWeight: 800, fontSize: 12 }}>
-              Page {pageIndex + 1} • Showing {rows.length} summaries (paginated)
+              Page {pageIndex + 1} • Showing {rows.length}/{allRows.length} summaries{loadingAllWeek ? " (loading…)" : ""}
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <select
@@ -2195,7 +2259,7 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
                 >
                   <thead>
                     <tr style={{ background: "#f8fafc" }}>
-                      {["Week", "Employee", "Entries", "Accomplishments", "Blockers", "Next", "Attachments", "Hours"].map(
+                      {["Submitted", "Week", "Employee", "Entries", "Accomplishments", "Blockers", "Next", "Attachments", "Hours"].map(
                         (h) => (
                           <th
                             key={h}
@@ -2221,7 +2285,7 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
                   <tbody>
                     {rows.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ padding: 24, color: "#64748b" }}>
+                        <td colSpan={9} style={{ padding: 24, color: "#64748b" }}>
                           No data
                         </td>
                       </tr>
@@ -2233,6 +2297,19 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
 
                       return (
                         <tr key={rowKey} style={{ background: idx % 2 === 0 ? "#ffffff" : "#fcfdff" }}>
+                          <td
+                            style={{
+                              padding: "16px 14px",
+                              borderBottom: "1px solid rgba(148,163,184,.10)",
+                              whiteSpace: "nowrap",
+                              fontWeight: 800,
+                              color: "#0f172a",
+                            }}
+                            title={`Week: ${(r as any).weekStart}`}
+                          >
+                            {submittedAtIso(r) || "â€”"}
+                          </td>
+
                           <td
                             style={{
                               padding: "16px 14px",

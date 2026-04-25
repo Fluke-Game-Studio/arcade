@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function login(username: string, password: string) {
     try {
-      const res = await api.login(username, password);
+      const res = await api.login(username, password, "portal");
       const session: SessionUser = {
         token: res.token,
         username: res.username,
