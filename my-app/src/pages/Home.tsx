@@ -1,9 +1,10 @@
-// src/pages/Home.tsx
+﻿// src/pages/Home.tsx
 import { useEffect, useMemo, useState } from "react";
 import ProfileCard from "../components/ProfileCard";
 import RightRail from "../components/RightRail";
 import EventHero from "../components/EventHero";
 import EmployeeActions from "../components/EmployeeActions";
+import { useAuth } from "../auth/AuthContext";
 
 declare const M: any;
 
@@ -15,6 +16,14 @@ type DocLink = {
   badge?: string;
 };
 
+type DocCategory = {
+  id: string;
+  title: string;
+  sub: string;
+  icon: string;
+  items: DocLink[];
+};
+
 type UpdateItem = {
   title: string;
   detail: string;
@@ -23,7 +32,14 @@ type UpdateItem = {
 };
 
 export default function Home() {
+  const { user } = useAuth();
   const [docQuery, setDocQuery] = useState("");
+  const [activeDocCategory, setActiveDocCategory] = useState<string | null>(null);
+  const role = String(user?.role || "").toUpperCase();
+  const isAdminOrSuper = role === "ADMIN" || role === "SUPER";
+  const releaseVersion = "v2026.04.12";
+  const releaseStorageKey = `fg_home_whats_new_seen_${releaseVersion}`;
+  const [showReleaseCard, setShowReleaseCard] = useState(false);
 
   // Day/Night (persisted)
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -36,34 +52,115 @@ export default function Home() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  const docs: DocLink[] = [
-    { title: "Onboarding Guide", sub: "Accounts, tools, and first-week checklist", icon: "menu_book", href: "#", badge: "Start" },
-    { title: "Security Policies", sub: "MFA, credentials, data handling rules", icon: "lock", href: "#", badge: "Required" },
-    { title: "Engineering Playbook", sub: "Branch rules, PR standards, CI/CD", icon: "build", href: "#" },
-    { title: "Incident Runbook", sub: "SEV process, comms, templates", icon: "warning_amber", href: "#" },
-    { title: "Design System", sub: "Tokens, components, UI guidelines", icon: "palette", href: "#" },
-    { title: "Projects", sub: "View assigned work and project status", icon: "dashboard_customize", href: "#" },
-    { title: "Weekly Updates", sub: "Submit progress and view team cadence", icon: "event_note", href: "#" },
-    { title: "Retro & Timesheet", sub: "Weekly retro + timesheet submissions", icon: "assignment", href: "#" },
-    { title: "Email Templates", sub: "Standard comms formats used by the team", icon: "mail", href: "#" },
-    { title: "Access & Roles", sub: "Auth, roles, and account lifecycle", icon: "verified_user", href: "#" },
-    { title: "Data Retention", sub: "Backups, privacy, retention policy", icon: "inventory_2", href: "#" },
-    { title: "Applicants Admin", sub: "Hiring pipeline and email actions", icon: "group_add", href: "#", badge: "Admin" },
-  ];
+  useEffect(() => {
+    const seen = localStorage.getItem(releaseStorageKey);
+    if (seen === "1") return;
+    setShowReleaseCard(true);
+  }, [releaseStorageKey]);
 
-  const filteredDocs = useMemo(() => {
+  const docCategories: DocCategory[] = useMemo(() => {
+    const categories: DocCategory[] = [
+      {
+        id: "onboarding",
+        title: "Onboarding",
+        sub: "Start here for first-week setup and weekly cadence",
+        icon: "rocket_launch",
+        items: [
+          { title: "Onboarding Guide", sub: "Accounts, tools, and first-week checklist", icon: "menu_book", href: "#", badge: "Start" },
+          { title: "Weekly Updates", sub: "Submit progress and view team cadence", icon: "event_note", href: "/updates/new", badge: "Core" },
+          { title: "Retro & Timesheet", sub: "Weekly retro + timesheet submissions", icon: "assignment", href: "#", badge: "Core" },
+        ],
+      },
+      {
+        id: "engineering",
+        title: "Engineering",
+        sub: "Technical standards and project docs",
+        icon: "terminal",
+        items: [
+          { title: "Engineering Playbook", sub: "Branch rules, PR standards, CI/CD", icon: "build", href: "#" },
+          { title: "Design System", sub: "Tokens, components, UI guidelines", icon: "palette", href: "#" },
+          { title: "Projects", sub: "View assigned work and project status", icon: "dashboard_customize", href: "#" },
+          {
+            title: "API Endpoints Docs",
+            sub: "Read-only endpoint registry and request schemas",
+            icon: "api",
+            href: "/docs/endpoints",
+            badge: "Docs",
+          },
+        ],
+      },
+      {
+        id: "operations",
+        title: "Operations",
+        sub: "Security, policy, and lifecycle documents",
+        icon: "policy",
+        items: [
+          { title: "Security Policies", sub: "MFA, credentials, data handling rules", icon: "lock", href: "#", badge: "Required" },
+          { title: "Incident Runbook", sub: "SEV process, comms, templates", icon: "warning_amber", href: "#" },
+          { title: "Access & Roles", sub: "Auth, roles, and account lifecycle", icon: "verified_user", href: "#" },
+          { title: "Data Retention", sub: "Backups, privacy, retention policy", icon: "inventory_2", href: "#" },
+        ],
+      },
+    ];
+
+    if (isAdminOrSuper) {
+      categories.push({
+        id: "admin",
+        title: "Admin",
+        sub: "Admin-focused docs and controls",
+        icon: "admin_panel_settings",
+        items: [
+          { title: "Applicants Admin", sub: "Hiring pipeline and email actions", icon: "group_add", href: "#", badge: "Admin" },
+          { title: "Email Templates", sub: "Standard comms formats used by the team", icon: "mail", href: "#" },
+        ],
+      });
+    }
+
+    return categories;
+  }, [isAdminOrSuper]);
+
+  useEffect(() => {
+    if (!activeDocCategory) return;
+    if (!docCategories.some((c) => c.id === activeDocCategory)) {
+      setActiveDocCategory(null);
+    }
+  }, [activeDocCategory, docCategories]);
+
+  const filteredCategories = useMemo(() => {
     const q = docQuery.trim().toLowerCase();
-    if (!q) return docs;
-    return docs.filter(
+    if (!q) return docCategories;
+    return docCategories.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.sub.toLowerCase().includes(q) ||
+        c.items.some(
+          (d) =>
+            d.title.toLowerCase().includes(q) ||
+            d.sub.toLowerCase().includes(q) ||
+            (d.badge || "").toLowerCase().includes(q)
+        )
+    );
+  }, [docQuery, docCategories]);
+
+  const activeCategory = useMemo(
+    () => docCategories.find((c) => c.id === activeDocCategory) || null,
+    [activeDocCategory, docCategories]
+  );
+
+  const filteredActiveDocs = useMemo(() => {
+    if (!activeCategory) return [];
+    const q = docQuery.trim().toLowerCase();
+    if (!q) return activeCategory.items;
+    return activeCategory.items.filter(
       (d) =>
         d.title.toLowerCase().includes(q) ||
         d.sub.toLowerCase().includes(q) ||
         (d.badge || "").toLowerCase().includes(q)
     );
-  }, [docQuery, docs]);
+  }, [activeCategory, docQuery]);
 
   const updates: UpdateItem[] = [
-    { icon: "group_add", title: "Applicants pipeline upgraded", detail: "Stage-based flow (Intro → Tech → NDA → Offer → Welcome) with email history + previews.", when: "Feb 2026" },
+    { icon: "group_add", title: "Applicants pipeline upgraded", detail: "Stage-based flow (Intro â†’ Tech â†’ NDA â†’ Offer â†’ Welcome) with email history + previews.", when: "Feb 2026" },
     { icon: "mail", title: "Doc emails now include PDFs", detail: "NDA / Offer / Experience / Welcome emails support PDF attachments with shared vars + optional CC.", when: "Feb 2026" },
     { icon: "verified_user", title: "Auth & roles hardened", detail: "JWT login, role checks, safe self-updates, and admin create/update/revoke.", when: "Feb 2026" },
     { icon: "dns", title: "API modules cleaned up", detail: "Projects, updates, retro, timesheet, applicants are routed via a stable Lambda entrypoint.", when: "Feb 2026" },
@@ -71,19 +168,53 @@ export default function Home() {
     { icon: "admin_panel_settings", title: "Admin panel improved", detail: "Employee management (CRUD) + project/manager assignment + certificate composer consolidated.", when: "Feb 2026" },
   ];
 
+  const quarterEvents = useMemo(
+    () => [
+      {
+        id: "quarter-random-snapshot",
+        title: "Quarterly Company Update",
+        subtitle: "Random snapshot first, then featured trailers",
+        at: new Date(Date.now() + 21 * 86400_000),
+        poster: `https://picsum.photos/seed/quarter-${Date.now()}/1600/900`,
+        location: "Online",
+        host: "Leadership Team",
+        tags: ["Quarter Update", "Town Hall"],
+      },
+      {
+        id: "quarter-trailer-pavan",
+        title: "Featured Trailer",
+        subtitle: "Project Pavan gameplay showcase",
+        at: new Date(Date.now() + 22 * 86400_000),
+        poster: "https://img.youtube.com/vi/LwVUdcShfzI/maxresdefault.jpg",
+        youtubeEmbedUrl:
+          "https://www.youtube.com/embed/LwVUdcShfzI?autoplay=1&mute=1&controls=1&rel=0&playsinline=1",
+        location: "Studio Channel",
+        host: "Creative Team",
+        tags: ["Trailer", "Project Pavan"],
+        joinHref: "https://www.youtube.com/watch?v=LwVUdcShfzI",
+        shareHref: "https://www.youtube.com/watch?v=LwVUdcShfzI",
+      },
+      {
+        id: "quarter-trailer-cops",
+        title: "Featured Trailer",
+        subtitle: "Crazzy Cops V2 teaser",
+        at: new Date(Date.now() + 23 * 86400_000),
+        poster: "https://picsum.photos/seed/crazzy-cops-v2-trailer/1600/900",
+        youtubeEmbedUrl:
+          "https://www.youtube.com/embed/LwVUdcShfzI?start=42&autoplay=1&mute=1&controls=1&rel=0&playsinline=1",
+        location: "Studio Channel",
+        host: "Creative Team",
+        tags: ["Trailer", "Crazzy Cops V2"],
+      },
+    ],
+    []
+  );
+
   useEffect(() => {
     if (typeof M === "undefined") return;
 
     const t = window.setTimeout(() => {
       try {
-        M.Tabs.init(document.querySelectorAll(".tabs"));
-        M.Carousel.init(document.querySelectorAll(".carousel"), {
-          indicators: true,
-          numVisible: 5,
-          padding: 20,
-          shift: 10,
-        });
-        M.Collapsible.init(document.querySelectorAll(".collapsible"), { accordion: false });
         M.Tooltip.init(document.querySelectorAll(".tooltipped"), { margin: 6 });
       } catch {}
     }, 0);
@@ -160,7 +291,7 @@ export default function Home() {
             linear-gradient(180deg, var(--bg2) 0%, var(--bg) 70%, var(--bg) 100%);
         }
 
-        .portalWrap { padding: 18px 0 28px; }
+        .portalWrap { padding: 0 0 28px; }
         .portalGridGap { margin-top: 10px; }
         .stack, .stackTight { display: grid; gap: 12px; }
 
@@ -168,7 +299,7 @@ export default function Home() {
           .stickyCol { position: sticky; top: 12px; }
         }
 
-        /* ✅ FIX: Theme pill moved OUT of left column flow so it doesn't push the
+        /* âœ… FIX: Theme pill moved OUT of left column flow so it doesn't push the
            left stack down and break alignment with the center column. */
         .portalTopBar{
           display:flex;
@@ -342,18 +473,99 @@ export default function Home() {
         .kpiValue { font-weight: 950; font-size: 18px; color: var(--text); }
         .kpiLabel { font-size: 12px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
 
-        .carousel .carousel-item img {
-          border-radius: 14px !important;
-          border: 1px solid var(--border);
-          box-shadow: 0 18px 40px rgba(2,6,23,0.08);
+        .homeNavGrid {
+          display: grid;
+          gap: 10px;
         }
-
-        .tabs { background: transparent; }
-        .tabs .tab a { font-weight: 950; color: rgba(15,23,42,0.70); }
-        [data-theme="dark"] .tabs .tab a { color: rgba(148,163,184,0.88); }
-        .tabs .tab a.active { color: var(--blue) !important; }
-        .tabs .indicator { height: 3px; background: linear-gradient(135deg, var(--blue), var(--blue2)); }
-
+        .homeNavCard {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          padding: 12px;
+          background: var(--card);
+          text-decoration: none;
+          color: var(--text);
+          transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+        }
+        .homeNavCard:hover {
+          border-color: rgba(37,99,235,0.28);
+          box-shadow: 0 14px 30px rgba(37,99,235,0.10);
+          transform: translateY(-1px);
+        }
+        .homeNavIcon {
+          width: 38px;
+          height: 38px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: rgba(37,99,235,0.08);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+        }
+        .homeNavIcon i { color: var(--blue); font-size: 20px; }
+        .homeNavTitle { font-size: 14px; font-weight: 950; line-height: 1.2; color: var(--text); }
+        .homeNavSub { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+        .homeNavCard.disabled {
+          cursor: not-allowed;
+          opacity: 0.72;
+          pointer-events: none;
+        }
+        .releaseOverlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1200;
+          background: rgba(2,6,23,0.42);
+          display: grid;
+          place-items: center;
+          padding: 14px;
+        }
+        .releaseCard {
+          width: min(560px, 100%);
+          border-radius: 18px;
+          border: 1px solid var(--border);
+          background: var(--cardSolid);
+          box-shadow: 0 26px 70px rgba(2,6,23,0.34);
+          overflow: hidden;
+        }
+        .releaseHead {
+          padding: 16px 18px;
+          border-bottom: 1px solid var(--border);
+          background:
+            radial-gradient(700px 220px at 0% 0%, rgba(37,99,235,0.16), transparent 58%),
+            linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.76));
+        }
+        [data-theme="dark"] .releaseHead{
+          background:
+            radial-gradient(700px 220px at 0% 0%, rgba(96,165,250,0.22), transparent 58%),
+            linear-gradient(135deg, rgba(10,16,32,0.95), rgba(10,16,32,0.76));
+        }
+        .releaseBody { padding: 16px 18px 18px; }
+        .releaseBadge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border-radius: 999px;
+          border: 1px solid var(--chipBd);
+          background: var(--chipBg);
+          color: var(--blue);
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: .8px;
+          text-transform: uppercase;
+          padding: 5px 10px;
+        }
+        [data-theme="dark"] .releaseBadge { color: rgba(255,255,255,0.94); }
+        .releaseList {
+          margin: 10px 0 0 0;
+          padding: 0 0 0 18px;
+          color: var(--muted);
+          line-height: 1.6;
+          font-size: 13px;
+          font-weight: 700;
+        }
         .docList { list-style:none; margin:0; padding:0; }
         .docRow {
           display:flex; align-items:flex-start; gap:12px;
@@ -399,6 +611,53 @@ export default function Home() {
         }
         .docOpen i { font-size: 18px; opacity: 0.78; color: var(--text); }
         .docOpen:hover { border-color: rgba(37,99,235,0.28); box-shadow: 0 14px 30px rgba(37,99,235,0.10); }
+
+        .docCategoryGrid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 10px;
+        }
+        .docCategoryTile {
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          background: var(--card);
+          padding: 12px;
+          display: flex;
+          gap: 10px;
+          cursor: pointer;
+          transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+        }
+        .docCategoryTile:hover {
+          border-color: rgba(37,99,235,0.28);
+          box-shadow: 0 14px 30px rgba(37,99,235,0.10);
+          transform: translateY(-1px);
+        }
+        .docCategoryMeta { flex: 1; min-width: 0; }
+        .docCategoryTitle { font-weight: 950; color: var(--text); display:flex; align-items:center; gap:8px; flex-wrap: wrap; }
+        .docCategorySub { margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 1.4; }
+        .docCount {
+          font-size: 11px;
+          font-weight: 950;
+          color: var(--muted);
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          margin-top: 7px;
+        }
+        .docBackBtn {
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--cardSolid);
+          height: 32px;
+          padding: 0 12px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          font-weight: 900;
+          color: var(--text);
+          cursor: pointer;
+        }
+        .docBackBtn:hover { border-color: rgba(37,99,235,0.28); box-shadow: 0 10px 24px rgba(37,99,235,0.10); }
 
         .input-field input {
           border-bottom: 1px solid rgba(2,6,23,0.20) !important;
@@ -452,9 +711,53 @@ export default function Home() {
       `}</style>
 
       <div className="portalBg" />
+      {showReleaseCard && (
+        <div className="releaseOverlay" role="dialog" aria-modal="true" aria-label="What's new in this release">
+          <div className="releaseCard">
+            <div className="releaseHead">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div>
+                  <div className="releaseBadge">
+                    <i className="material-icons" style={{ fontSize: 14 }}>new_releases</i>
+                    {releaseVersion}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 1000, letterSpacing: "-.02em", color: "var(--text)" }}>
+                    What's New In This Release
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="releaseBody">
+              <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 800 }}>
+                Release highlights (core features only).
+              </div>
+              <ul className="releaseList">
+                <li>Auth boot: validate saved token before entering the app (no Home flash + no bad-token toast loop).</li>
+                <li>Login UX: branded loader under the Fluke logo, then auto-flip to the form only when the token is invalid.</li>
+                <li>AI Chat routing: requests carry context + agent identity (Project Manager for internal/public, default assistant for personal).</li>
+                <li>WebSocket reliability: `ai-result` frames include `clientId` so responses attach to the correct request.</li>
+                <li>Update summaries: admin queries resolve the correct employee and summarize real submissions instead of generic JSON-style replies.</li>
+                <li>Summary tone: deterministic summaries now return smooth “pattern/themes” answers by default (raw lists only when requested).</li>
+              </ul>
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="btn blue"
+                  onClick={() => {
+                    localStorage.setItem(releaseStorageKey, "1");
+                    setShowReleaseCard(false);
+                  }}
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="container portalWrap">
-        {/* ✅ Theme toggle is now global (doesn't affect column alignment) */}
+      <div className="portalWrap" style={{ width: "100%", maxWidth: "none" }}>
+        {/* âœ… Theme toggle is now global (doesn't affect column alignment) */}
         <div className="portalTopBar">
           <div className="themePill">
             <div className="themePillLeft">
@@ -466,7 +769,7 @@ export default function Home() {
               <div style={{ minWidth: 0 }}>
                 <div className="themeTitle">Theme</div>
                 <div className="themeSub">
-                  {theme === "dark" ? "Night mode" : "Day mode"} • click to toggle
+                  {theme === "dark" ? "Night mode" : "Day mode"} â€¢ click to toggle
                 </div>
               </div>
             </div>
@@ -498,244 +801,117 @@ export default function Home() {
           {/* CENTER */}
           <div className="col s12 m6">
             <div className="stackTight">
-              <EventHero />
+              <EventHero events={quarterEvents} autoRotateMs={8000} />
 
-              {/* Featured Trailer */}
+              {/* Docs Resources */}
               <div className="card pCard">
                 <div className="pHeader">
-                  <div className="pTitleRow">
-                    <div>
-                      <div className="pTitle">Featured Trailer</div>
-                      <div className="pSub">Latest showcase • internal share</div>
-                    </div>
-                    <span className="pTiny">Latest</span>
-                  </div>
-                </div>
-                <div className="card-content">
-                  <div className="mediaFrame">
-                    <iframe
-                      src="https://www.youtube.com/embed/LwVUdcShfzI"
-                      title="Featured"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* KPIs */}
-              <div className="kpiGrid">
-                {[
-                  { icon: "groups", label: "Team Members", value: "42" },
-                  { icon: "event_note", label: "Updates This Week", value: "18" },
-                  { icon: "verified_user", label: "Portal Status", value: "Healthy" },
-                ].map((k) => (
-                  <div key={k.label} className="kpiCard">
-                    <div className="kpiLeft">
-                      <div className="kpiIcon">
-                        <i className="material-icons">{k.icon}</i>
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="kpiValue">{k.value}</div>
-                        <div className="kpiLabel">{k.label}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Highlights carousel */}
-              <div className="card pCard">
-                <div className="pHeader">
-                  <div className="pTitleRow">
-                    <div>
-                      <div className="pTitle">Highlights</div>
-                      <div className="pSub">Milestones and demos</div>
-                    </div>
-                    <span className="pTiny">Swipe</span>
-                  </div>
-                </div>
-                <div className="card-content">
-                  <div className="carousel">
-                    {[
-                      { seed: "portal-auth", title: "Auth + Roles", sub: "JWT + role checks" },
-                      { seed: "portal-applicants", title: "Applicants", sub: "Stages + email history" },
-                      { seed: "portal-docs", title: "Doc Emails", sub: "PDF attachments" },
-                      { seed: "portal-projects", title: "Projects", sub: "Assign + track" },
-                      { seed: "portal-updates", title: "Weekly Updates", sub: "Visibility & cadence" },
-                      { seed: "portal-admin", title: "Admin UI", sub: "Employee management" },
-                    ].map((x, idx) => (
-                      <a className="carousel-item" key={idx} href="#!" onClick={(e) => e.preventDefault()}>
-                        <div style={{ position: "relative" }}>
-                          <img src={`https://picsum.photos/seed/${x.seed}/600/360`} alt={x.title} />
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: 10,
-                              bottom: 10,
-                              right: 10,
-                              padding: "9px 10px",
-                              borderRadius: 14,
-                              background: theme === "dark" ? "rgba(10,16,32,0.72)" : "rgba(255,255,255,0.78)",
-                              color: "var(--text)",
-                              border: "1px solid var(--border)",
-                              backdropFilter: "blur(12px)",
-                            }}
-                          >
-                            <div style={{ fontWeight: 950, fontSize: 13 }}>{x.title}</div>
-                            <div style={{ fontSize: 12, opacity: 0.92, color: "var(--muted)" }}>{x.sub}</div>
-                          </div>
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Tabs: Media + Docs */}
-              <div className="card pCard">
-                <div className="pHeader" style={{ paddingBottom: 0 }}>
                   <div className="pTitleRow" style={{ alignItems: "center" }}>
                     <div>
-                      <div className="pTitle">Resources</div>
-                      <div className="pSub">Docs and internal media</div>
+                      <div className="pTitle">Docs</div>
+                      <div className="pSub">
+                        {activeCategory ? `${activeCategory.title} docs` : "Browse docs by category"}
+                      </div>
                     </div>
                     <span className="pTiny">Browse</span>
                   </div>
-
-                  <div style={{ marginTop: 10 }}>
-                    <ul className="tabs tabs-fixed-width">
-                      <li className="tab col s3">
-                        <a className="active" href="#tab-media">Media</a>
-                      </li>
-                      <li className="tab col s3">
-                        <a href="#tab-docs">Docs</a>
-                      </li>
-                    </ul>
-                  </div>
                 </div>
 
-                <div id="tab-media" className="card-content">
-                  <div className="row" style={{ marginBottom: 0 }}>
-                    {[1, 2, 3, 4].map((i) => (
-                      <div className="col s12 m6" key={i}>
-                        <div className="card pCard pCardTight hoverable">
-                          <div className="card-image">
-                            <img src={`https://picsum.photos/seed/media${i}/600/340`} alt={`media-${i}`} />
-                            <span className="card-title" style={{ fontWeight: 950 }}>
-                              Portal Album {i}
-                            </span>
-                          </div>
-                          <div className="card-content">
-                            <p className="pTiny" style={{ margin: 0 }}>
-                              Showcases, team moments, and build milestones.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div id="tab-docs" className="card-content" style={{ paddingTop: 14 }}>
+                <div className="card-content" style={{ paddingTop: 8 }}>
                   <div className="input-field" style={{ marginTop: 0 }}>
                     <input
                       id="doc-search"
                       value={docQuery}
                       onChange={(e) => setDocQuery(e.target.value)}
-                      placeholder="Search docs by title or topic…"
+                      placeholder="Search docs by title or topic..."
                     />
                     <label htmlFor="doc-search" className="active">Search</label>
                   </div>
 
                   <div style={{ borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden", background: "var(--cardSolid)" }}>
-                    <ul className="docList">
-                      {filteredDocs.map((d) => (
-                        <li key={d.title} className="docRow">
-                          <div className="docIco">
-                            <i className="material-icons">{d.icon}</i>
+                    <div style={{ padding: 12 }}>
+                      {activeCategory ? (
+                        <>
+                          <div style={{ marginBottom: 10 }}>
+                            <button
+                              type="button"
+                              className="docBackBtn"
+                              onClick={() => setActiveDocCategory(null)}
+                            >
+                              <i className="material-icons" style={{ fontSize: 16 }}>arrow_back</i>
+                              Back to categories
+                            </button>
                           </div>
-                          <div className="docMain">
-                            <div className="docTitle">
-                              <span>{d.title}</span>
-                              {d.badge ? <span className="chip tiny" style={{ margin: 0 }}>{d.badge}</span> : null}
+
+                          <ul className="docList">
+                            {filteredActiveDocs.map((d) => (
+                              <li key={`${activeCategory.id}-${d.title}`} className="docRow">
+                                <div className="docIco">
+                                  <i className="material-icons">{d.icon}</i>
+                                </div>
+                                <div className="docMain">
+                                  <div className="docTitle">
+                                    <span>{d.title}</span>
+                                    {d.badge ? <span className="chip tiny" style={{ margin: 0 }}>{d.badge}</span> : null}
+                                  </div>
+                                  <div className="docSub" title={d.sub}>{d.sub}</div>
+                                </div>
+                                <a
+                                  href={d.href}
+                                  className="tooltipped docOpen"
+                                  data-tooltip="Open"
+                                  onClick={(e) => {
+                                    if (d.href === "#") {
+                                      e.preventDefault();
+                                      toastRouteNotWired();
+                                    }
+                                  }}
+                                  style={{ textDecoration: "none" }}
+                                >
+                                  <i className="material-icons">open_in_new</i>
+                                </a>
+                              </li>
+                            ))}
+
+                            {!filteredActiveDocs.length && (
+                              <li style={{ textAlign: "center", color: "var(--muted)", padding: "14px 0", fontWeight: 900 }}>
+                                No docs in this category match your search
+                              </li>
+                            )}
+                          </ul>
+                        </>
+                      ) : (
+                        <div className="docCategoryGrid">
+                          {filteredCategories.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              className="docCategoryTile"
+                              onClick={() => setActiveDocCategory(c.id)}
+                              style={{ textAlign: "left" }}
+                            >
+                              <div className="docIco">
+                                <i className="material-icons">{c.icon}</i>
+                              </div>
+                              <div className="docCategoryMeta">
+                                <div className="docCategoryTitle">
+                                  <span>{c.title}</span>
+                                </div>
+                                <div className="docCategorySub">{c.sub}</div>
+                                <div className="docCount">{c.items.length} docs</div>
+                              </div>
+                            </button>
+                          ))}
+
+                          {!filteredCategories.length && (
+                            <div style={{ textAlign: "center", color: "var(--muted)", padding: "14px 0", fontWeight: 900 }}>
+                              No categories match your search
                             </div>
-                            <div className="docSub" title={d.sub}>{d.sub}</div>
-                          </div>
-                          <a
-                            href={d.href}
-                            className="tooltipped docOpen"
-                            data-tooltip="Open"
-                            onClick={(e) => {
-                              if (d.href === "#") {
-                                e.preventDefault();
-                                toastRouteNotWired();
-                              }
-                            }}
-                            style={{ textDecoration: "none" }}
-                          >
-                            <i className="material-icons">open_in_new</i>
-                          </a>
-                        </li>
-                      ))}
-
-                      {!filteredDocs.length && (
-                        <li style={{ textAlign: "center", color: "var(--muted)", padding: "14px 0", fontWeight: 900 }}>
-                          No results
-                        </li>
+                          )}
+                        </div>
                       )}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* FAQs */}
-              <div className="card pCard">
-                <div className="pHeader">
-                  <div className="pTitleRow">
-                    <div>
-                      <div className="pTitle">FAQs</div>
-                      <div className="pSub">Quick answers for everyone</div>
                     </div>
-                    <span className="pTiny">Help</span>
                   </div>
-                </div>
-                <div className="card-content">
-                  <ul className="collapsible">
-                    <li>
-                      <div className="collapsible-header">
-                        <i className="material-icons">help_outline</i>
-                        How do I reset my password?
-                      </div>
-                      <div className="collapsible-body">
-                        <span>
-                          Use <b>Forgot Password</b> on the login page. If you’re blocked, ask your project lead to re-enable access.
-                        </span>
-                      </div>
-                    </li>
-                    <li>
-                      <div className="collapsible-header">
-                        <i className="material-icons">event_note</i>
-                        Where do I submit weekly updates?
-                      </div>
-                      <div className="collapsible-body">
-                        <span>
-                          Go to <b>Weekly Updates</b> and submit your progress. This helps project leads keep scope and blockers visible.
-                        </span>
-                      </div>
-                    </li>
-                    <li>
-                      <div className="collapsible-header">
-                        <i className="material-icons">policy</i>
-                        What are the data policies?
-                      </div>
-                      <div className="collapsible-body">
-                        <span>
-                          Follow <b>Security Policies</b> for MFA and data handling, and <b>Data Retention</b> for storage and cleanup rules.
-                        </span>
-                      </div>
-                    </li>
-                  </ul>
                 </div>
               </div>
 
@@ -744,7 +920,7 @@ export default function Home() {
                 <div className="pHeader">
                   <div className="pTitleRow">
                     <div>
-                      <div className="pTitle">Updates</div>
+                      <div className="pTitle">New Updates</div>
                       <div className="pSub">What changed recently</div>
                     </div>
                     <span className="pTiny">Changelog</span>
@@ -798,3 +974,4 @@ export default function Home() {
     </>
   );
 }
+

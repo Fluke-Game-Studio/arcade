@@ -10,6 +10,8 @@ export type ApiLoginResponse = {
   username: string;
   role: ApiRole;
   name: string;
+  projectStatus?: "ProjectPartialClean" | "ProjectCompleteCleanup" | "none" | string;
+  allowed?: boolean;
 };
 
 export type ApiUser = {
@@ -20,6 +22,16 @@ export type ApiUser = {
   employee_dob?: string;
   employee_profilepicture?: string;
   employee_picture?: string;
+  linkedin_connected?: boolean;
+  linkedin_connected_at?: string;
+  linkedin_member_id?: string;
+  linkedin_name?: string;
+  linkedin_email?: string;
+  discord_connected?: boolean;
+  discord_connected_at?: string;
+  discord_member_id?: string;
+  discord_name?: string;
+  discord_email?: string;
   employee_phonenumber?: string;
   employment_type?: string;
   department?: string;
@@ -30,6 +42,11 @@ export type ApiUser = {
   employee_last_update_week?: string;
   employee_last_update_hours?: string;
   employee_last_update_summary?: string;
+  revoked?: boolean;
+  portal_access?: boolean;
+  project_access?: boolean;
+  version_control_access?: boolean;
+  project_setup?: "" | "ProjectPartialCleanUp" | "ProjectCompleteCleanup" | string;
   [k: string]: any;
 };
 
@@ -40,6 +57,16 @@ export type CreateUserBody = {
   employee_dob?: string;
   employee_profilepicture?: string;
   employee_picture?: string;
+  linkedin_connected?: boolean;
+  linkedin_connected_at?: string;
+  linkedin_member_id?: string;
+  linkedin_name?: string;
+  linkedin_email?: string;
+  discord_connected?: boolean;
+  discord_connected_at?: string;
+  discord_member_id?: string;
+  discord_name?: string;
+  discord_email?: string;
   employee_phonenumber?: string;
   employee_email?: string;
   employee_title?: string;
@@ -49,6 +76,10 @@ export type CreateUserBody = {
   employee_role?: ApiRole;
   project_id?: string;
   employee_manager?: string;
+  portal_access?: boolean;
+  project_access?: boolean;
+  version_control_access?: boolean;
+  project_setup?: "" | "ProjectPartialCleanUp" | "ProjectCompleteCleanup" | string;
 };
 
 export type UpdateUserBody = Partial<CreateUserBody> & {
@@ -115,6 +146,10 @@ export type AIStartChatBody = {
   weekStart?: string;
   projectId?: string;
   context?: AIContextId;
+  agentEmployeeId?: string;
+  agentId?: string;
+  agentRole?: string;
+  perform?: boolean;
 };
 
 export type AIStartChatResponse = {
@@ -183,6 +218,25 @@ async function request<T>(
 }
 
 export function createAIAPI(baseUrl: string, token?: string) {
+  const withDefaultAgent = (contextId: AIContextId, body: AIStartChatBody): AIStartChatBody => {
+    const ctx = String(contextId || body.context || "internal").trim().toLowerCase();
+    if (body.agentEmployeeId || body.agentId || body.agentRole) return body;
+    if (ctx === "internal" || ctx === "flukegames" || ctx === "public") {
+      return {
+        ...body,
+        context: body.context || contextId,
+        agentEmployeeId: "project_manager_core",
+        agentRole: "project_manager",
+      };
+    }
+    return {
+      ...body,
+      context: body.context || contextId,
+      agentEmployeeId: "assistant_default",
+      agentRole: "assistant",
+    };
+  };
+
   return {
     async getAIDoc(id: string) {
       return request<GetAIDocResponse>(
@@ -204,13 +258,14 @@ export function createAIAPI(baseUrl: string, token?: string) {
     },
 
     async startChat(contextId: AIContextId, body: AIStartChatBody) {
-      console.log("AI_STARTCHAT_BODY_OBJECT", body);
-      console.log("AI_STARTCHAT_BODY_JSON", JSON.stringify(body));
+      const finalBody = withDefaultAgent(contextId, body);
+      console.log("AI_STARTCHAT_BODY_OBJECT", finalBody);
+      console.log("AI_STARTCHAT_BODY_JSON", JSON.stringify(finalBody));
       return request<AIStartChatResponse>(
         joinUrl(baseUrl, `/ai/chat/${encodeURIComponent(contextId)}`),
         {
           method: "POST",
-          body: JSON.stringify(body),
+          body: JSON.stringify(finalBody),
         },
         token
       );

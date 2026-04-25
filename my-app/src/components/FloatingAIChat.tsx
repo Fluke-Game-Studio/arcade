@@ -94,6 +94,27 @@ const PROVIDER_META: Record<
   },
 };
 
+const AGENT_BY_CONTEXT: Record<
+  ChatContextType,
+  { agentEmployeeId: string; agentRole: string; contextId: string }
+> = {
+  internal: {
+    agentEmployeeId: "project_manager_core",
+    agentRole: "project_manager",
+    contextId: "internal",
+  },
+  public: {
+    agentEmployeeId: "project_manager_core",
+    agentRole: "project_manager",
+    contextId: "flukegames",
+  },
+  personal: {
+    agentEmployeeId: "assistant_default",
+    agentRole: "assistant",
+    contextId: "vaibhav",
+  },
+};
+
 const CHAT_WITTY_MESSAGES = [
   "Parsing your message like it's a suspicious quest objective...",
   "Checking if this is canon lore...",
@@ -558,6 +579,10 @@ export default function FloatingAIChat() {
     () => CONTEXT_META[selectedContext].path,
     [selectedContext]
   );
+  const currentAgent = useMemo(
+    () => AGENT_BY_CONTEXT[selectedContext],
+    [selectedContext]
+  );
 
   const botStatus: BotStatus = botSpeaking
     ? "speaking"
@@ -785,11 +810,13 @@ export default function FloatingAIChat() {
         return;
       }
 
+      const frameClientId = safeStr(data?.clientId);
       const activeRequestId = activeRequestClientIdRef.current;
-      if (!activeRequestId) return;
+      const targetRequestId = frameClientId || activeRequestId;
+      if (!targetRequestId) return;
 
       if (data?.type === "ai-status") {
-        updateLatestMessageForRequestClientId(activeRequestId, (msg) => {
+        updateLatestMessageForRequestClientId(targetRequestId, (msg) => {
           if (msg.finalized || msg.stopped) return msg;
 
           return {
@@ -799,7 +826,7 @@ export default function FloatingAIChat() {
               { label: "Context", value: CONTEXT_META[selectedContext].label },
               { label: "Provider", value: PROVIDER_META[provider].label },
               { label: "Model", value: currentModel },
-              { label: "Request", value: activeRequestId },
+              { label: "Request", value: targetRequestId },
             ],
           };
         });
@@ -807,7 +834,7 @@ export default function FloatingAIChat() {
       }
 
       if (data?.type === "ai-result") {
-        updateLatestMessageForRequestClientId(activeRequestId, (msg) => {
+        updateLatestMessageForRequestClientId(targetRequestId, (msg) => {
           if (msg.stopped) return msg;
 
           return {
@@ -820,19 +847,28 @@ export default function FloatingAIChat() {
               { label: "Provider", value: safeStr(data?.provider || provider) },
               { label: "Type", value: safeStr(data?.contextType || selectedContext) },
               { label: "Label", value: safeStr(data?.contextLabel || selectedContext) },
-              { label: "Request", value: activeRequestId },
+              {
+                label: "Agent",
+                value:
+                  safeStr(data?.agentEmployee?.id) ||
+                  safeStr(data?.meta?.agentEmployeeId) ||
+                  currentAgent.agentEmployeeId,
+              },
+              { label: "Request", value: targetRequestId },
             ],
           };
         });
 
         setLoading(false);
-        activeRequestClientIdRef.current = null;
+        if (activeRequestClientIdRef.current === targetRequestId) {
+          activeRequestClientIdRef.current = null;
+        }
         triggerSpeaking();
         return;
       }
 
       if (data?.type === "ai-error") {
-        updateLatestMessageForRequestClientId(activeRequestId, (msg) => {
+        updateLatestMessageForRequestClientId(targetRequestId, (msg) => {
           if (msg.stopped) return msg;
 
           return {
@@ -842,14 +878,16 @@ export default function FloatingAIChat() {
             tags: [
               { label: "Status", value: "Error" },
               { label: "Context", value: CONTEXT_META[selectedContext].label },
-              { label: "Request", value: activeRequestId },
+              { label: "Request", value: targetRequestId },
             ],
           };
         });
 
         setErrorText(safeStr(data?.error || "Unknown websocket error"));
         setLoading(false);
-        activeRequestClientIdRef.current = null;
+        if (activeRequestClientIdRef.current === targetRequestId) {
+          activeRequestClientIdRef.current = null;
+        }
       }
     };
 
@@ -1077,8 +1115,11 @@ export default function FloatingAIChat() {
         {
           question: trimmed,
           clientId: requestClientId,
+          context: currentAgent.contextId,
           provider,
           model: currentModel,
+          agentEmployeeId: currentAgent.agentEmployeeId,
+          agentRole: currentAgent.agentRole,
           temperature,
           topP,
           maxTokens,
@@ -1170,6 +1211,34 @@ export default function FloatingAIChat() {
     : provider === "ollama" && currentWarmState === "error"
     ? runtimeWarmError[currentRuntime] || `Ollama warmup failed for ${currentModel}`
     : `${CONTEXT_META[selectedContext].label} • ${PROVIDER_META[provider].label} • ${currentModel}`;
+
+  const topMetaTags = useMemo(() => {
+    const preferredOrder = ["Status", "Context", "Provider", "Type", "Label", "Agent", "Request"];
+    const latestTaggedAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && Array.isArray(m.tags) && m.tags.length > 0);
+
+    const byLabel = new Map<string, string>();
+    if (latestTaggedAssistant?.tags?.length) {
+      for (const tag of latestTaggedAssistant.tags) {
+        const key = safeStr(tag?.label);
+        const val = safeStr(tag?.value);
+        if (!key || !val) continue;
+        byLabel.set(key, val);
+      }
+    }
+
+    if (!byLabel.has("Status")) byLabel.set("Status", loading ? "running" : errorText ? "error" : "ready");
+    if (!byLabel.has("Context")) byLabel.set("Context", CONTEXT_META[selectedContext].label);
+    if (!byLabel.has("Provider")) byLabel.set("Provider", PROVIDER_META[provider].label);
+    if (!byLabel.has("Type")) byLabel.set("Type", selectedContext);
+    if (!byLabel.has("Label")) byLabel.set("Label", CONTEXT_META[selectedContext].label);
+    if (!byLabel.has("Agent")) byLabel.set("Agent", currentAgent.agentEmployeeId);
+
+    return preferredOrder
+      .filter((label) => byLabel.has(label))
+      .map((label) => ({ label, value: safeStr(byLabel.get(label)) }));
+  }, [messages, loading, errorText, selectedContext, provider, currentAgent.agentEmployeeId]);
 
   const collapsedItems: Array<{ key: SidePanelKey; icon: string; label: string }> = isSuper
     ? [
@@ -2366,6 +2435,25 @@ export default function FloatingAIChat() {
                         </div>
                       </div>
                     </div>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {topMetaTags.map((tag, i) => (
+                        <Pill
+                          key={`top_meta_${tag.label}_${i}`}
+                          label={tag.label}
+                          value={tag.value}
+                          strong={tag.label === "Status"}
+                        />
+                      ))}
+                    </div>
                   </div>
 
                   <div
@@ -2493,40 +2581,6 @@ export default function FloatingAIChat() {
                                     {msg.content}
                                   </div>
 
-                                  {!!msg.tags?.length && (
-                                    <div
-                                      style={{
-                                        marginTop: 12,
-                                        display: "flex",
-                                        flexWrap: "wrap",
-                                        gap: 8,
-                                      }}
-                                    >
-                                      {msg.tags.map((tag, i) => (
-                                        <span
-                                          key={`${msg.id}_tag_${i}`}
-                                          style={{
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            gap: 6,
-                                            padding: "6px 10px",
-                                            borderRadius: 999,
-                                            background: "rgba(255,255,255,0.05)",
-                                            border: "1px solid rgba(255,255,255,0.08)",
-                                            fontSize: 11,
-                                            color: "rgba(236,248,255,0.82)",
-                                          }}
-                                        >
-                                          <span style={{ color: "rgba(196,244,255,0.82)" }}>
-                                            {tag.label}
-                                          </span>
-                                          <span style={{ color: "#ffffff", fontWeight: 700 }}>
-                                            {tag.value}
-                                          </span>
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             </div>

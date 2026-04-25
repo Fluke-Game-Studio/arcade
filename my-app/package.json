@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/generate-award-artwork-manifest.mjs && tsc -b && node scripts/vite-build.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
     "materialize-css": "^1.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

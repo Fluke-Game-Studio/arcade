@@ -10,6 +10,8 @@ type EditForm = {
   username: string;
   password?: string;
   employee_profilepicture?: string;
+  linkedin_url?: string;
+  discord_url?: string;
   employee_phonenumber?: string;
   location?: string;
 };
@@ -26,6 +28,8 @@ export default function Directory() {
     username: "",
     password: "",
     employee_profilepicture: "",
+    linkedin_url: "",
+    discord_url: "",
     employee_phonenumber: "",
     location: "",
   });
@@ -93,6 +97,8 @@ export default function Directory() {
       username: u.username,
       password: "",
       employee_profilepicture: u.employee_profilepicture || "",
+      linkedin_url: u.linkedin_url || "",
+      discord_url: u.discord_url || "",
       employee_phonenumber: u.employee_phonenumber || "",
       location: u.location || "",
     });
@@ -119,6 +125,8 @@ export default function Directory() {
         location: form.location || "",
         employee_phonenumber: form.employee_phonenumber || "",
         employee_profilepicture: form.employee_profilepicture || "",
+        linkedin_url: form.linkedin_url || "",
+        discord_url: form.discord_url || "",
       };
       if (form.password && form.password.trim()) {
         payload.password = form.password.trim();
@@ -281,6 +289,32 @@ export default function Directory() {
                 />
                 <label htmlFor="edit-pic" className={form.employee_profilepicture ? "active" : ""}>
                   Profile Picture URL
+                </label>
+              </div>
+            </div>
+
+            <div className="row">
+              <div className="input-field col s12 m6">
+                <input
+                  id="edit-linkedin-url"
+                  value={form.linkedin_url || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, linkedin_url: e.target.value }))}
+                  placeholder="https://www.linkedin.com/in/..."
+                />
+                <label htmlFor="edit-linkedin-url" className={form.linkedin_url ? "active" : ""}>
+                  LinkedIn URL
+                </label>
+              </div>
+
+              <div className="input-field col s12 m6">
+                <input
+                  id="edit-discord-url"
+                  value={form.discord_url || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, discord_url: e.target.value }))}
+                  placeholder="https://discord.com/users/..."
+                />
+                <label htmlFor="edit-discord-url" className={form.discord_url ? "active" : ""}>
+                  Discord URL
                 </label>
               </div>
             </div>

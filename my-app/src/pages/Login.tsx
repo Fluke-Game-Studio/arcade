@@ -1,15 +1,16 @@
 // src/pages/Login.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../auth/AuthContext";
 import M from "materialize-css";
 import * as THREE from "three";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, status, user, bootReason } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation() as any;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -29,11 +30,30 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState("");
+  const [manualFlip, setManualFlip] = useState(false);
 
   const canSubmit = useMemo(
     () => !!username.trim() && !!password && !loading,
     [username, password, loading]
   );
+
+  const nextPath = useMemo(() => {
+    const next = String(location?.state?.next || "/");
+    return next && next.startsWith("/") ? next : "/";
+  }, [location?.state?.next]);
+
+  useEffect(() => {
+    if (status === "authenticated" && user) {
+      navigate(nextPath, { replace: true });
+    }
+  }, [status, user, navigate, nextPath]);
+
+  // When we determine the previous token is invalid (or missing), reveal the login form.
+  useEffect(() => {
+    if (bootReason === "invalid_token" || bootReason === "no_token" || bootReason === "network") {
+      setManualFlip(true);
+    }
+  }, [bootReason]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -327,8 +347,7 @@ export default function Login() {
         transform-style: preserve-3d;
         transition: transform 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
       }
-      .flipStage:hover .flipInner,
-      .flipStage:focus-within .flipInner { transform: rotateY(180deg); }
+      .flipInner.forceFlip { transform: rotateY(180deg); }
 
       .flipFace {
         backface-visibility: hidden;
@@ -349,8 +368,9 @@ export default function Login() {
 
       .logoWrap {
         width: 100%;
-        background: rgba(10, 10, 25, 0.90);
-        backdrop-filter: blur(20px);
+        background: rgba(10, 10, 25, 0.76);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
         padding: 50px;
         border-radius: 25px;
         border: 2px solid rgba(100, 200, 255, 0.30);
@@ -384,10 +404,42 @@ export default function Login() {
         font-size: 12px;
       }
 
+      .logoLoader {
+        margin: 12px auto 0;
+        width: 100%;
+        max-width: 320px;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+
+      .logoLoader > div {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(
+          90deg,
+          rgba(77,208,225,0.12),
+          rgba(77,208,225,0.95),
+          rgba(255,193,7,0.70),
+          rgba(77,208,225,0.12)
+        );
+        background-size: 220% 100%;
+        filter: saturate(1.1);
+        animation: authPulse 1.15s linear infinite;
+      }
+
+      @keyframes authPulse {
+        0% { background-position: 0% 50%; opacity: 0.82; }
+        100% { background-position: 100% 50%; opacity: 1; }
+      }
+
       .cpCard {
         width: 100%;
-        background: rgba(10, 10, 25, 0.90);
-        backdrop-filter: blur(20px);
+        background: rgba(10, 10, 25, 0.76);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
         padding: 50px;
         border-radius: 25px;
         border: 2px solid rgba(100, 200, 255, 0.30);
@@ -530,6 +582,13 @@ export default function Login() {
   );
 
   const LOGO_SRC = "/logos/FlukeGames_TM.png";
+  const showLoader = status === "checking";
+  const shouldFlip = manualFlip && !showLoader;
+
+  if (status === "authenticated" && user) {
+    // Avoid any login-page flash while navigation settles.
+    return <Navigate to={nextPath} replace />;
+  }
 
   return (
     <>
@@ -541,11 +600,32 @@ export default function Login() {
 
         <div className="cpCenter">
           <div className="flipStage" aria-label="Login card">
-            <div className="flipInner">
+            <div className={`flipInner ${shouldFlip ? "forceFlip" : ""}`}>
               <div className="flipFace flipFront">
-                <div className="logoWrap">
+                <div
+                  className="logoWrap"
+                  onClick={() => {
+                    if (!showLoader) setManualFlip(true);
+                  }}
+                  style={{ cursor: showLoader ? "default" : "pointer" }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      if (!showLoader) setManualFlip(true);
+                    }
+                  }}
+                >
                   <img className="logoImg" src={LOGO_SRC} alt="Fluke Games Logo" />
-                  <div className="logoHint">Hover to access</div>
+                  <div className="logoHint">
+                    {showLoader ? "Checking session..." : "Click to sign in"}
+                  </div>
+                  {showLoader ? (
+                    <div className="logoLoader" aria-label="Checking session loader">
+                      <div />
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
