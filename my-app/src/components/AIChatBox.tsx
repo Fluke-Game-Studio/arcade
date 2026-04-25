@@ -146,8 +146,11 @@ export default function FloatingAIChat() {
     const payload = {
       question: trimmed,
       clientId,
+      context: "internal",
       provider,
       model: currentModel,
+      agentEmployeeId: "project_manager_core",
+      agentRole: "project_manager",
     };
 
     setLastPayload(JSON.stringify(payload, null, 2));

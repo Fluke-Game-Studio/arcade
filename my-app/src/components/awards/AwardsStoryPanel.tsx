@@ -197,6 +197,12 @@ function fmtWeekLabel(iso?: string) {
   });
 }
 
+function getRecipientName(item: StudioRecentItem) {
+  const personName = safeStr((item as any)?.person?.name);
+  if (personName) return personName;
+  return safeStr(item.username);
+}
+
 function normalizeRecent(summary: StudioSummary | null): StudioRecentItem[] {
   if (!summary) return [];
 
@@ -214,7 +220,7 @@ function normalizeRecent(summary: StudioSummary | null): StudioRecentItem[] {
       safeStr(item.id) ||
       [
         safeStr(item.type || item.eventType),
-        safeStr(item.username),
+        getRecipientName(item),
         safeStr(item.title),
         safeStr(item.awardedAt || item.at),
       ].join("|");
@@ -272,7 +278,7 @@ function getItemTitle(item: StudioRecentItem) {
 }
 
 function getItemMeta(item: StudioRecentItem) {
-  const parts = [safeStr(item.username), safeStr(item.description || item.tier)].filter(Boolean);
+  const parts = [getRecipientName(item), safeStr(item.description || item.tier)].filter(Boolean);
   return parts.join(" • ");
 }
 
@@ -534,9 +540,30 @@ function BadgeIcon({
 function RecognitionIcon({ item }: { item: StudioRecentItem }) {
   const badge = getBadgeKeyForItem(item);
   const tone = getItemTone(item);
+  const imageUrl = safeStr((item as any).imageUrl);
 
   if (badge) {
     return <BadgeIcon badge={badge} size={72} glow={getItemType(item) === "trophy"} />;
+  }
+
+  if (imageUrl) {
+    return (
+      <div
+        className={`arsFallbackIcon ${tone}`}
+        style={{ overflow: "hidden", padding: 8, background: "rgba(255,255,255,.95)" }}
+      >
+        <img
+          src={imageUrl}
+          alt=""
+          aria-hidden="true"
+          onError={(e) => {
+            const el = e.currentTarget;
+            el.style.display = "none";
+          }}
+          style={{ width: "88%", height: "88%", objectFit: "contain", display: "block" }}
+        />
+      </div>
+    );
   }
 
   const icon =
@@ -593,7 +620,7 @@ function AwardDetailsModal({
 
           <div className="arsModalInfo">
             <div className="arsModalInfoLabel">Recipient</div>
-            <div className="arsModalInfoValue">{safeStr(item.username) || "System / Tier Info"}</div>
+            <div className="arsModalInfoValue">{getRecipientName(item) || "System / Tier Info"}</div>
           </div>
 
           {!!safeStr(item.tier) && (
@@ -694,7 +721,7 @@ export default function AwardsSummaryPanel() {
 
   const derivedUsers = new Set(
     normalizeRecent(summary)
-      .map((x) => safeStr(x.username).toLowerCase())
+      .map((x) => safeStr(getRecipientName(x)).toLowerCase())
       .filter(Boolean)
   ).size;
 
@@ -774,7 +801,7 @@ export default function AwardsSummaryPanel() {
           z-index:1;
           padding:24px;
           display:grid;
-          grid-template-columns:minmax(0,1.2fr) minmax(320px,.9fr);
+          grid-template-columns:minmax(0,1.2fr) minmax(280px,.9fr);
           gap:18px;
           align-items:start;
         }
@@ -825,14 +852,18 @@ export default function AwardsSummaryPanel() {
           border-radius:999px;
           font-size:11px;
           font-weight:900;
-          white-space:nowrap;
+          white-space:normal;
           backdrop-filter:blur(12px);
+          -webkit-backdrop-filter:blur(12px);
           box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
         }
 
         .arsPill span{
+          white-space:normal;
+          display:-webkit-box;
+          -webkit-line-clamp:2;
+          -webkit-box-orient:vertical;
           overflow:hidden;
-          text-overflow:ellipsis;
         }
 
         .arsPill i{ font-size:15px; flex:0 0 auto; }
@@ -849,6 +880,7 @@ export default function AwardsSummaryPanel() {
           background:rgba(255,255,255,.08);
           box-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 16px 30px rgba(2,6,23,.15);
           backdrop-filter:blur(14px);
+          -webkit-backdrop-filter:blur(14px);
           padding:18px;
         }
 
@@ -915,7 +947,8 @@ export default function AwardsSummaryPanel() {
 
         .arsStatTop{
           display:flex;
-          align-items:center;
+          flex-direction:column;
+          align-items:flex-start;
           gap:10px;
           min-width:0;
         }
@@ -940,9 +973,10 @@ export default function AwardsSummaryPanel() {
           font-weight:900;
           letter-spacing:.08em;
           text-transform:uppercase;
-          overflow:hidden;
-          text-overflow:ellipsis;
-          white-space:nowrap;
+          white-space:normal;
+          line-height:1.2;
+          word-break:break-word;
+          overflow-wrap:anywhere;
         }
 
         .arsStatValue{
@@ -954,6 +988,17 @@ export default function AwardsSummaryPanel() {
           letter-spacing:-.03em;
           overflow:hidden;
           text-overflow:ellipsis;
+        }
+
+        @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+          .arsPill{
+            background:rgba(15,23,42,.55) !important;
+            border:1px solid rgba(255,255,255,.18) !important;
+          }
+          .arsSummaryCard{
+            background:rgba(15,23,42,.52) !important;
+            border:1px solid rgba(255,255,255,.16) !important;
+          }
         }
 
         .arsBody{
@@ -1440,6 +1485,10 @@ export default function AwardsSummaryPanel() {
             grid-template-columns:1fr;
           }
 
+          .arsStatValue{
+            font-size:28px;
+          }
+
           .arsLegendPopover{
             width:280px;
             right:-10px;
@@ -1600,7 +1649,7 @@ export default function AwardsSummaryPanel() {
 
                           <div className="arsRecentMiniTitle">{getItemTitle(item)}</div>
                           <div className="arsRecentMiniMeta">
-                            {safeStr(item.username) || "Unknown"}
+                            {getRecipientName(item) || "Unknown"}
                           </div>
                         </button>
                       ))}

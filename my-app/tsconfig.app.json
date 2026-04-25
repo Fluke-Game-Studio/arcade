@@ -23,5 +23,10 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/components/TalkingHead*.tsx",
+    "src/components/modules/**",
+    "src/pages/TalkingHeadPage.tsx"
+  ]
 }
