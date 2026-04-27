@@ -444,7 +444,6 @@ export default function TalkingHeadAIChat() {
   const { api } = useAuth();
 
   const token = String((api as any)?.token || "").trim();
-  const platform = String((api as any)?.getPlatform?.() || "portal").trim() || "portal";
   const clientIdRef = useRef<string>(getStableClientId());
   const clientId = clientIdRef.current;
 
@@ -655,7 +654,6 @@ export default function TalkingHeadAIChat() {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "X-Platform": platform,
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
@@ -767,7 +765,6 @@ export default function TalkingHeadAIChat() {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "X-Platform": platform,
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),

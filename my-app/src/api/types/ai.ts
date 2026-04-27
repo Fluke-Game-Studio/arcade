@@ -182,8 +182,7 @@ function joinUrl(base: string, path: string) {
 async function request<T>(
   url: string,
   init: RequestInit = {},
-  token?: string,
-  platform: "portal" | "project" | "version_control" = "portal"
+  token?: string
 ): Promise<T> {
   console.log("AI_REQUEST_URL", url);
   console.log("AI_REQUEST_INIT_BODY", init.body);
@@ -192,7 +191,6 @@ async function request<T>(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      "X-Platform": platform,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers || {}),
     },
@@ -219,11 +217,7 @@ async function request<T>(
   return parsed as T;
 }
 
-export function createAIAPI(
-  baseUrl: string,
-  token?: string,
-  platform: "portal" | "project" | "version_control" = "portal"
-) {
+export function createAIAPI(baseUrl: string, token?: string) {
   const withDefaultAgent = (contextId: AIContextId, body: AIStartChatBody): AIStartChatBody => {
     const ctx = String(contextId || body.context || "internal").trim().toLowerCase();
     if (body.agentEmployeeId || body.agentId || body.agentRole) return body;
@@ -248,8 +242,7 @@ export function createAIAPI(
       return request<GetAIDocResponse>(
         joinUrl(baseUrl, `/admin/ai-doc/${encodeURIComponent(id)}`),
         { method: "GET" },
-        token,
-        platform
+        token
       );
     },
 
@@ -260,8 +253,7 @@ export function createAIAPI(
           method: "PUT",
           body: JSON.stringify(body),
         },
-        token,
-        platform
+        token
       );
     },
 
@@ -275,8 +267,7 @@ export function createAIAPI(
           method: "POST",
           body: JSON.stringify(finalBody),
         },
-        token,
-        platform
+        token
       );
     },
 
@@ -287,8 +278,7 @@ export function createAIAPI(
           method: "POST",
           body: JSON.stringify(body),
         },
-        token,
-        platform
+        token
       );
     },
   };
