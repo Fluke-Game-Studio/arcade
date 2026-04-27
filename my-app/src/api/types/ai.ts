@@ -192,7 +192,7 @@ async function request<T>(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      "X-Platform": platform,
+      "x-platform": platform,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers || {}),
     },

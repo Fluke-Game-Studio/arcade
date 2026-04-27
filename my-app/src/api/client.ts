@@ -107,7 +107,7 @@ export class ApiClient {
     const h: Record<string, string> = {
       Accept: "*/*",
       Connection: "keep-alive",
-      "X-Platform": this.platform,
+      "x-platform": this.platform,
     };
     if (isJson) h["Content-Type"] = "application/json";
     if (this.token) h["Authorization"] = `Bearer ${this.token}`;

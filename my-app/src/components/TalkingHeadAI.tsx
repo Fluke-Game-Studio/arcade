@@ -1319,7 +1319,7 @@ export default function TalkingHeadAI() {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "X-Platform": platform,
+        "x-platform": platform,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({
@@ -1832,7 +1832,7 @@ export default function TalkingHeadAI() {
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",
-            "X-Platform": platform,
+            "x-platform": platform,
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(generatePayload),
@@ -1858,7 +1858,7 @@ export default function TalkingHeadAI() {
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
-          "X-Platform": platform,
+          "x-platform": platform,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(generatePayload),

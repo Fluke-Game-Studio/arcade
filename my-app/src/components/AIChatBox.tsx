@@ -197,7 +197,7 @@ export default function FloatingAIChat() {
           Accept: "application/json",
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "X-Platform": platform,
+          "x-platform": platform,
         },
         body: JSON.stringify(payload),
       });
