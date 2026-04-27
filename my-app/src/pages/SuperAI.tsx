@@ -116,19 +116,15 @@ function emptySnapshotTemplate(snapshotId = "") {
 export default function SuperAI() {
   const auth = useAuth() as unknown as {
     user?: { username?: string; role?: string };
-    api?: {
-      token?: string;
-      getPlatform?: () => "portal" | "project" | "version_control";
-    };
+    api?: { token?: string };
   };
 
   const user = auth.user;
   const api = auth.api;
-  const platform = api?.getPlatform?.() || "portal";
 
   const apiClient = useMemo(
-    () => createAIAPI(API_BASE, api?.token, platform),
-    [api?.token, platform]
+    () => createAIAPI(API_BASE, api?.token),
+    [api?.token]
   );
 
   const roleLower = String(user?.role || "").toLowerCase();
