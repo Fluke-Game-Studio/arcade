@@ -37,8 +37,9 @@ function safeStr(v: any) {
 }
 
 export default function ManagerAgentBuilderPage() {
-  const { user } = useAuth();
+  const { user, api } = useAuth() as any;
   const token = safeStr((user as any)?.token || "");
+  const platform = safeStr(api?.getPlatform?.() || "portal") || "portal";
 
   const [agentName, setAgentName] = useState("Hiring Manager");
   const [provider, setProvider] = useState<Provider>("auto");
@@ -262,6 +263,7 @@ function buildManagerQuestion(mode: Mode, raw: string) {
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
+          "x-platform": platform,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
