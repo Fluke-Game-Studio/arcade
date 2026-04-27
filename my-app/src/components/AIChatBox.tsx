@@ -85,6 +85,7 @@ export default function FloatingAIChat() {
   console.log("AUTH_USER", user);
 
   const token = String((api as any)?.token || "").trim();
+  const platform = String((api as any)?.getPlatform?.() || "portal").trim() || "portal";
   const clientIdRef = useRef<string>(getStableClientId());
   const clientId = clientIdRef.current;
 
@@ -196,6 +197,7 @@ export default function FloatingAIChat() {
           Accept: "application/json",
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "x-platform": platform,
         },
         body: JSON.stringify(payload),
       });
