@@ -81,6 +81,10 @@ export class ApiClient {
     this.platform = platform;
   }
 
+  getPlatform(): "portal" | "project" | "version_control" {
+    return this.platform;
+  }
+
   setToken(token: string | null) {
     this.token = token;
   }
