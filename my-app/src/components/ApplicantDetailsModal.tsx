@@ -229,6 +229,8 @@ type ApplicantDetailsView = {
 
   resumeLink: string;
   portfolioLink: string;
+  phone: string;
+  whatsappOptIn: string;
 
   answersReadable: Record<string, any> | null;
   answersRaw: Record<string, any> | null;
@@ -264,8 +266,8 @@ function normalizeDetails(d: ApiApplicantDetails): ApplicantDetailsView {
     (d as any).city ||
     "";
 
-  const resumeFromApplicant = safeStr(applicant?.resumeLink).trim();
-  const portfolioFromApplicant = safeStr(applicant?.portfolioLink).trim();
+  const resumeFromApplicant = safeStr((d as any).resumeLink || applicant?.resumeLink).trim();
+  const portfolioFromApplicant = safeStr((d as any).portfolioLink || applicant?.portfolioLink).trim();
 
   const resumeLink =
     resumeFromApplicant ||
@@ -301,6 +303,8 @@ function normalizeDetails(d: ApiApplicantDetails): ApplicantDetailsView {
 
     resumeLink,
     portfolioLink,
+    phone: safeStr((d as any).phone || applicant?.phone),
+    whatsappOptIn: safeStr((d as any).whatsappOptIn || applicant?.whatsappOptIn),
 
     answersReadable,
     answersRaw,
@@ -358,6 +362,8 @@ function renderMetaTable(details: ApplicantDetailsView) {
     userAgent: details.userAgent,
     googleEmail: details.googleEmail,
     googleName: details.googleName,
+    phone: details.phone,
+    whatsappOptIn: details.whatsappOptIn,
   };
 
   const entries = Object.entries(meta).filter(([_, v]) => safeStr(v).trim());
