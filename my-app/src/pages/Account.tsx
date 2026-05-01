@@ -100,6 +100,13 @@ export default function Account() {
       const data = event?.data || {};
       if (data?.type !== "discord-connected") return;
 
+      const joinUrl = String(data?.joinUrl || "").trim();
+      if (joinUrl) {
+        try {
+          window.open(joinUrl, "_blank", "noopener,noreferrer");
+        } catch {}
+      }
+
       api
         .awardAchievement({
           achievementId: "discord_connect",
@@ -120,7 +127,12 @@ export default function Account() {
           });
           void refreshSession();
           if (typeof M !== "undefined") {
-            M.toast({ html: "Discord achievement awarded.", classes: "green" });
+            M.toast({
+              html: joinUrl
+                ? `Discord connected. <a href="${joinUrl}" target="_blank" rel="noreferrer" class="white-text text-lighten-4">Open server</a>`
+                : "Discord achievement awarded.",
+              classes: "green",
+            });
           }
         })
         .catch((err: any) => {

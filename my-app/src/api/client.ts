@@ -103,12 +103,12 @@ export class ApiClient {
     };
   }
 
-  private headers(isJson = true): HeadersInit {
+  private headers(isJson = true, includePlatform = false): HeadersInit {
     const h: Record<string, string> = {
       Accept: "*/*",
       Connection: "keep-alive",
-      "x-platform": this.platform,
     };
+    if (includePlatform) h["x-platform"] = this.platform;
     if (isJson) h["Content-Type"] = "application/json";
     if (this.token) h["Authorization"] = `Bearer ${this.token}`;
     return h;
@@ -197,7 +197,7 @@ export class ApiClient {
     const body = JSON.stringify({ username: username.trim(), password, platform });
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
-      headers: this.headers(true),
+      headers: this.headers(true, true),
       body,
     });
     if (!res.ok) throw new Error(`Login failed: HTTP ${res.status}`);
@@ -379,6 +379,7 @@ export class ApiClient {
       ok: Boolean(payload?.ok ?? true),
       authorizeUrl: String(payload?.authorizeUrl || ""),
       returnTo: typeof payload?.returnTo === "string" ? payload.returnTo : undefined,
+      joinUrl: typeof payload?.joinUrl === "string" ? payload.joinUrl : undefined,
       scopes: Array.isArray(payload?.scopes) ? payload.scopes : undefined,
     };
   }

@@ -106,5 +106,6 @@ export type StartDiscordConnectResponse = {
   ok: boolean;
   authorizeUrl: string;
   returnTo?: string;
+  joinUrl?: string;
   scopes?: string[];
 };
