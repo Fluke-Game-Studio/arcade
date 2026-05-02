@@ -1,5 +1,5 @@
 // src/components/ApplicantDetailsModal.tsx
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { ApiApplicantDetails } from "../api";
 import type { ApplicantRowLite, Stage } from "./ApplicantComposerModal";
@@ -229,8 +229,6 @@ type ApplicantDetailsView = {
 
   resumeLink: string;
   portfolioLink: string;
-  phone: string;
-  whatsappOptIn: string;
 
   answersReadable: Record<string, any> | null;
   answersRaw: Record<string, any> | null;
@@ -266,8 +264,8 @@ function normalizeDetails(d: ApiApplicantDetails): ApplicantDetailsView {
     (d as any).city ||
     "";
 
-  const resumeFromApplicant = safeStr((d as any).resumeLink || applicant?.resumeLink).trim();
-  const portfolioFromApplicant = safeStr((d as any).portfolioLink || applicant?.portfolioLink).trim();
+  const resumeFromApplicant = safeStr(applicant?.resumeLink).trim();
+  const portfolioFromApplicant = safeStr(applicant?.portfolioLink).trim();
 
   const resumeLink =
     resumeFromApplicant ||
@@ -303,8 +301,6 @@ function normalizeDetails(d: ApiApplicantDetails): ApplicantDetailsView {
 
     resumeLink,
     portfolioLink,
-    phone: safeStr((d as any).phone || applicant?.phone),
-    whatsappOptIn: safeStr((d as any).whatsappOptIn || applicant?.whatsappOptIn),
 
     answersReadable,
     answersRaw,
@@ -362,8 +358,6 @@ function renderMetaTable(details: ApplicantDetailsView) {
     userAgent: details.userAgent,
     googleEmail: details.googleEmail,
     googleName: details.googleName,
-    phone: details.phone,
-    whatsappOptIn: details.whatsappOptIn,
   };
 
   const entries = Object.entries(meta).filter(([_, v]) => safeStr(v).trim());
@@ -380,6 +374,33 @@ function renderMetaTable(details: ApplicantDetailsView) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+function repairModalScrollLock() {
+  window.setTimeout(() => {
+    try {
+      const anyOpen = Array.from(document.querySelectorAll(".modal")).some((el) =>
+        el.classList.contains("open")
+      );
+      if (anyOpen) return;
+
+      document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
+      document.body.classList.remove("modal-open");
+      if (document.body.style.overflow === "hidden") document.body.style.overflow = "";
+      if (document.body.style.paddingRight) document.body.style.paddingRight = "";
+    } catch {}
+  }, 0);
+}
+
+function LazyRawJson({ value }: { value: any }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <details style={{ marginTop: 18 }} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary style={{ cursor: "pointer", fontWeight: 1000 }}>Raw JSON</summary>
+      {open ? <pre style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{JSON.stringify(value, null, 2)}</pre> : null}
+    </details>
   );
 }
 
@@ -408,7 +429,7 @@ export default function ApplicantDetailsModal({
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  const details = useMemo(() => (detailsRaw ? normalizeDetails(detailsRaw) : null), [detailsRaw]);
+  const details = useMemo(() => (open && detailsRaw ? normalizeDetails(detailsRaw) : null), [open, detailsRaw]);
 
   // init ONCE
   useEffect(() => {
@@ -424,6 +445,7 @@ export default function ApplicantDetailsModal({
         try {
           onCloseRef.current?.();
         } catch {}
+        repairModalScrollLock();
       },
       onOpenStart: () => {
         try {
@@ -445,6 +467,7 @@ export default function ApplicantDetailsModal({
         instRef.current?.destroy?.();
       } catch {}
       instRef.current = null;
+      repairModalScrollLock();
     };
   }, []);
 
@@ -468,6 +491,15 @@ export default function ApplicantDetailsModal({
       // fallback: don't force close
     }
   }, [open]);
+
+  function requestClose() {
+    try {
+      instRef.current?.close?.();
+      return;
+    } catch {}
+    onCloseRef.current?.();
+    repairModalScrollLock();
+  }
 
   const Css = (
     <style>{`
@@ -616,10 +648,7 @@ export default function ApplicantDetailsModal({
               <div className="fg-card-h"><div style={{ fontWeight: 1100 }}>System / Meta</div></div>
               <div className="fg-card-b">
                 {renderMetaTable(details)}
-                <details style={{ marginTop: 18 }}>
-                  <summary style={{ cursor: "pointer", fontWeight: 1000 }}>Raw JSON</summary>
-                  <pre style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{JSON.stringify(details.raw, null, 2)}</pre>
-                </details>
+                <LazyRawJson value={details.raw} />
               </div>
             </div>
           </>
@@ -627,7 +656,7 @@ export default function ApplicantDetailsModal({
       </div>
 
       <div className="modal-footer">
-        <a href="#!" className="btn-flat" onClick={() => onCloseRef.current?.()}>
+        <a href="#!" className="btn-flat" onClick={requestClose}>
           Close
         </a>
       </div>

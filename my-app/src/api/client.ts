@@ -2,6 +2,7 @@ import { API_BASE } from "./config";
 import type {
   ApiApplicantDetails,
   ApiApplicantListItem,
+  ApiApplicantPageResponse,
   ApiJob,
   ApiLoginResponse,
   ApiMyUpdatesResponse,
@@ -656,6 +657,46 @@ export class ApiClient {
       [];
 
     return list as ApiApplicantListItem[];
+  }
+
+  async getApplicantsPage(params?: {
+    limit?: number;
+    cursor?: string;
+  }): Promise<ApiApplicantPageResponse> {
+    const qs = new URLSearchParams();
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
+    }
+    if (params?.cursor) qs.set("cursor", params.cursor);
+
+    const url = `${API_BASE}/admin/applicants${qs.toString() ? `?${qs.toString()}` : ""}`;
+
+    const r = await fetch(url, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getApplicantsPage failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+
+    const items =
+      (Array.isArray(payload?.items) && payload.items) ||
+      (Array.isArray(payload?.Items) && payload.Items) ||
+      (Array.isArray(payload?.data) && payload.data) ||
+      (Array.isArray(payload?.records) && payload.records) ||
+      (Array.isArray(payload) && payload) ||
+      [];
+
+    return {
+      items: items as ApiApplicantListItem[],
+      count: Number(payload?.count) || items.length,
+      limit: Number(payload?.limit) || undefined,
+      cursor: typeof payload?.cursor === "string" ? payload.cursor : undefined,
+      nextCursor: typeof payload?.nextCursor === "string" ? payload.nextCursor : null,
+    };
   }
 
   async getApplicantById(applicantId: string): Promise<ApiApplicantDetails> {

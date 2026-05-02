@@ -167,6 +167,22 @@ function stageIsWired(stage: Stage) {
   return stage === "Welcome" || !!STAGE_TO_RICH_TYPE[stage] || !!STAGE_TO_DOC_TYPE[stage];
 }
 
+function repairModalScrollLock() {
+  window.setTimeout(() => {
+    try {
+      const anyOpen = Array.from(document.querySelectorAll(".modal")).some((el) =>
+        el.classList.contains("open")
+      );
+      if (anyOpen) return;
+
+      document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
+      document.body.classList.remove("modal-open");
+      if (document.body.style.overflow === "hidden") document.body.style.overflow = "";
+      if (document.body.style.paddingRight) document.body.style.paddingRight = "";
+    } catch {}
+  }, 0);
+}
+
 // ------------------------------------------------------------
 // Component
 // ------------------------------------------------------------
@@ -212,6 +228,7 @@ export default function ApplicantComposerModal({
         try {
           onCloseRef.current?.();
         } catch {}
+        repairModalScrollLock();
       },
       onOpenStart: () => {
         try {
@@ -233,6 +250,7 @@ export default function ApplicantComposerModal({
         instRef.current?.destroy?.();
       } catch {}
       instRef.current = null;
+      repairModalScrollLock();
     };
   }, []);
 
@@ -410,6 +428,15 @@ export default function ApplicantComposerModal({
     const next = { ...composer, ...patch };
     setComposer(next);
     buildPreview(next, toEmail, composerApplicantId || "");
+  }
+
+  function requestClose() {
+    try {
+      instRef.current?.close?.();
+      return;
+    } catch {}
+    onCloseRef.current?.();
+    repairModalScrollLock();
   }
 
   async function sendNow() {
@@ -876,7 +903,7 @@ export default function ApplicantComposerModal({
       </div>
 
       <div className="modal-footer">
-        <a className="btn-flat" href="#!" onClick={onClose}>
+        <a className="btn-flat" href="#!" onClick={requestClose}>
           Cancel
         </a>
 
