@@ -183,7 +183,7 @@ async function request<T>(
   url: string,
   init: RequestInit = {},
   token?: string,
-  platform: "portal" | "project" | "version_control" = "portal"
+  _platform: "portal" | "project" | "version_control" = "portal"
 ): Promise<T> {
   console.log("AI_REQUEST_URL", url);
   console.log("AI_REQUEST_INIT_BODY", init.body);
@@ -192,7 +192,6 @@ async function request<T>(
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      "x-platform": platform,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers || {}),
     },

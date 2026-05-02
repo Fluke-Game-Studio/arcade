@@ -568,10 +568,6 @@ export default function FloatingAIChat() {
   });
 
   const token = useMemo(() => safeStr((api as any)?.token), [api]);
-  const platform = useMemo(
-    () => safeStr((api as any)?.getPlatform?.() || "portal") || "portal",
-    [api]
-  );
   const currentModel = useMemo(() => PROVIDER_MODEL[provider], [provider]);
   const currentRuntime = useMemo(
     () => runtimeKey(provider, selectedContext),
@@ -720,7 +716,6 @@ export default function FloatingAIChat() {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "x-platform": platform,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),

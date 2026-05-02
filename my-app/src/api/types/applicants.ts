@@ -19,6 +19,14 @@ export type ApiApplicantListItem = {
 
 export type ApiApplicantDetails = ApiApplicantListItem;
 
+export type ApiApplicantPageResponse = {
+  items: ApiApplicantListItem[];
+  count?: number;
+  limit?: number;
+  cursor?: string;
+  nextCursor?: string | null;
+};
+
 export type ApplicantRichEmailType =
   | "INTRO"
   | "TECH"
