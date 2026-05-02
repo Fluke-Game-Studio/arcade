@@ -290,6 +290,12 @@ export default function AccountEditDetails({
       if (data?.type === "discord-connected") {
         setDiscordConnecting(false);
         refreshMeSafe();
+        const joinUrl = safeStr(data?.joinUrl);
+        if (joinUrl) {
+          try {
+            window.open(joinUrl, "_blank", "noopener,noreferrer");
+          } catch {}
+        }
         void api
           .awardAchievement({
             achievementId: "discord_connect",
@@ -311,7 +317,12 @@ export default function AccountEditDetails({
           })
           .catch(() => {});
         if (typeof M !== "undefined") {
-          M.toast({ html: "Discord avatar synced.", classes: "green" });
+          M.toast({
+            html: joinUrl
+              ? `Discord connected. <a href="${joinUrl}" target="_blank" rel="noreferrer" class="white-text text-lighten-4">Open server</a>`
+              : "Discord connected.",
+            classes: "green",
+          });
         }
       }
       if (data?.type === "discord-error") {

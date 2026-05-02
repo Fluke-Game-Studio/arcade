@@ -317,15 +317,15 @@ export default function Applicants() {
     return { total, active, rejected, converted };
   }, [rows]);
 
-  async function loadApplicantsPage(cursor?: string | null, resetPaging?: boolean) {
+  async function loadApplicantsPage(cursor?: string | null, resetPaging?: boolean, limitOverride?: number) {
     setLoading(true);
     try {
-      const page = await (api as any).getApplicantsPage?.({
-        limit: pageSize,
+      const page = await (api as any).getApplicantsPage({
+        limit: limitOverride || pageSize,
         cursor: cursor || undefined,
       });
 
-      const items = page?.items || (await api.getApplicants());
+      const items = page?.items || [];
       const next = page?.nextCursor ?? null;
 
       setRows((items || []).map(normalizeListItem).filter((x: any) => !!x.id));
@@ -360,6 +360,11 @@ export default function Applicants() {
     } finally {
       setDetailsLoading(false);
     }
+  }
+
+  function closeDetails() {
+    setDetailsOpen(false);
+    window.setTimeout(() => setDetailsRaw(null), 160);
   }
 
   function toggleSort(key: SortKey) {
@@ -447,7 +452,7 @@ export default function Applicants() {
                       className={`btn-small ${pageSize === n ? "" : "grey lighten-2"} fg-btn`}
                       onClick={() => {
                         setPageSize(n);
-                        setTimeout(() => loadApplicantsPage(null, true), 0);
+                        loadApplicantsPage(null, true, n);
                       }}
                     >
                       {n}
@@ -643,11 +648,12 @@ export default function Applicants() {
         open={detailsOpen}
         loading={detailsLoading}
         detailsRaw={detailsRaw}
-        onClose={() => setDetailsOpen(false)}
+        onClose={closeDetails}
         onOpenComposer={(lite, prefill) => {
           setComposerApplicant(lite);
           setComposerPrefill(prefill || {});
-          setComposerOpen(true);
+          setDetailsOpen(false);
+          window.setTimeout(() => setComposerOpen(true), 160);
         }}
       />
 

@@ -655,7 +655,6 @@ export default function TalkingHeadAIChat() {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "x-platform": platform,
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
@@ -767,7 +766,6 @@ export default function TalkingHeadAIChat() {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "x-platform": platform,
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
