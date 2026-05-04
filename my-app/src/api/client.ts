@@ -662,12 +662,28 @@ export class ApiClient {
   async getApplicantsPage(params?: {
     limit?: number;
     cursor?: string;
+    query?: string;
+    pipeline?: string;
+    role?: string;
+    gender?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sortKey?: string;
+    sortDir?: string;
   }): Promise<ApiApplicantPageResponse> {
     const qs = new URLSearchParams();
     if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
       qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
     }
     if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.query) qs.set("q", params.query);
+    if (params?.pipeline) qs.set("pipeline", params.pipeline);
+    if (params?.role) qs.set("role", params.role);
+    if (params?.gender) qs.set("gender", params.gender);
+    if (params?.dateFrom) qs.set("dateFrom", params.dateFrom);
+    if (params?.dateTo) qs.set("dateTo", params.dateTo);
+    if (params?.sortKey) qs.set("sortKey", params.sortKey);
+    if (params?.sortDir) qs.set("sortDir", params.sortDir);
 
     const url = `${API_BASE}/admin/applicants${qs.toString() ? `?${qs.toString()}` : ""}`;
 
@@ -696,6 +712,8 @@ export class ApiClient {
       limit: Number(payload?.limit) || undefined,
       cursor: typeof payload?.cursor === "string" ? payload.cursor : undefined,
       nextCursor: typeof payload?.nextCursor === "string" ? payload.nextCursor : null,
+      roleOptions: Array.isArray(payload?.roleOptions) ? payload.roleOptions.map(String) : undefined,
+      genderOptions: Array.isArray(payload?.genderOptions) ? payload.genderOptions.map(String) : undefined,
     };
   }
 
