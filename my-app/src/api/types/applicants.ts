@@ -25,6 +25,8 @@ export type ApiApplicantPageResponse = {
   limit?: number;
   cursor?: string;
   nextCursor?: string | null;
+  roleOptions?: string[];
+  genderOptions?: string[];
 };
 
 export type ApplicantRichEmailType =

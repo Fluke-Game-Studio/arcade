@@ -59,18 +59,23 @@ type BadgeStyle = { bg: string; border: string; fg: string };
 
 const STAGE_BADGE: Record<Stage, BadgeStyle> = {
   Reject: { bg: "#FDE8E8", border: "#F9B4B4", fg: "#8B1E1E" },
-  Introduction: { bg: "#f7d699", border: "#ffbc6f", fg: "#8a641e" },
+  Introduction: { bg: "#FCE7F3", border: "#F9A8D4", fg: "#9D174D" },
   "Technical Interview": { bg: "#E3EEFF", border: "#94BFFF", fg: "#163A8A" },
   Confirmation: { bg: "#F2E8FF", border: "#CFA7FF", fg: "#4B1E8B" },
-  NDA: { bg: "#E8E8FF", border: "#A7A6FF", fg: "#2B2B8A" },
-  Offer: { bg: "#E6FAFF", border: "#86DFF5", fg: "#0B4B5A" },
+  NDA: { bg: "#FEF3C7", border: "#FCD34D", fg: "#92400E" },
+  Offer: { bg: "#CFFAFE", border: "#67E8F9", fg: "#155E75" },
   Welcome: { bg: "#E9F9EF", border: "#9FE0B5", fg: "#14532D" },
 };
 
 function StatusPill({ status, stageGuess }: { status: string; stageGuess: Stage | "Unknown" }) {
   const s = safeStr(status) || "—";
   const stg: Stage = stageGuess === "Unknown" ? "Introduction" : (stageGuess as Stage);
-  const css = STAGE_BADGE[stg];
+  const statusKey = safeStr(status).toLowerCase();
+  const css = statusKey === "applied"
+    ? { bg: "#DCFCE7", border: "#86EFAC", fg: "#166534" }
+    : statusKey.includes("intro_sent")
+    ? { bg: "#FCE7F3", border: "#F9A8D4", fg: "#9D174D" }
+    : STAGE_BADGE[stg];
 
   return (
     <span
@@ -115,11 +120,39 @@ type ApplicantRow = {
   email: string;
   roleTitle: string;
   roleId: string;
+  gender: string;
   status: string;
   submittedAt: string;
   createdAt: string;
   raw: ApiApplicantListItem;
 };
+
+function pickPayloadValueByNeedle(payload: any, needles: string[]) {
+  const targets = needles.map((x) => x.toLowerCase());
+  const buckets = [
+    payload?.applicant,
+    payload?.answersReadable,
+    payload?.answers_readable,
+    payload?.answers_readable_map,
+    payload?.answers,
+    payload?.answersRaw,
+    payload?.answers_raw,
+    payload,
+  ];
+
+  for (const bucket of buckets) {
+    if (!bucket || typeof bucket !== "object") continue;
+    for (const [key, value] of Object.entries(bucket)) {
+      const k = String(key || "").toLowerCase();
+      if (targets.some((needle) => k.includes(needle))) {
+        const s = safeStr(value).trim();
+        if (s) return s;
+      }
+    }
+  }
+
+  return "";
+}
 
 function normalizeListItem(a: ApiApplicantListItem): ApplicantRow {
   const payload = (a as any).payload || {};
@@ -131,6 +164,7 @@ function normalizeListItem(a: ApiApplicantListItem): ApplicantRow {
     email: safeStr((a as any).email || payload?.applicant?.email),
     roleTitle: safeStr((a as any).roleTitle || payload?.role?.title || payload?.answers?.roleTitle),
     roleId,
+    gender: safeStr((a as any).gender || pickPayloadValueByNeedle(payload, ["gender", "pronoun"])),
     status: safeStr((a as any).status),
     submittedAt: safeStr((a as any).submittedAt),
     createdAt: safeStr((a as any).createdAt),
@@ -162,6 +196,7 @@ export default function Applicants() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<ApplicantRow[]>([]);
   const [query, setQuery] = useState("");
+  const [totalMatches, setTotalMatches] = useState<number | null>(null);
 
   const [pageSize, setPageSize] = useState<number>(25);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -170,7 +205,10 @@ export default function Applicants() {
 
   // filters
   const [pipeline, setPipeline] = useState<PipelineFilter>("Active");
-  const [filterStage, setFilterStage] = useState<Stage | "All">("All");
+  const [roleFilter, setRoleFilter] = useState<string>("All");
+  const [genderFilter, setGenderFilter] = useState<string>("All");
+  const [roleOptions, setRoleOptions] = useState<string[]>([]);
+  const [genderOptions, setGenderOptions] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
 
@@ -239,72 +277,57 @@ export default function Applicants() {
         white-space: nowrap;
       }
       .fg-th:hover { text-decoration: underline; }
+      .fg-filter-grid {
+        display: grid;
+        grid-template-columns: minmax(240px, 1.4fr) repeat(4, minmax(150px, 1fr));
+        gap: 14px;
+        align-items: end;
+      }
+      .fg-filter-dates {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(160px, 1fr)) auto;
+        gap: 14px;
+        align-items: end;
+        margin-top: 14px;
+      }
+      .fg-filter-field label,
+      .fg-filter-label {
+        display: block;
+        color: rgba(0,0,0,0.48);
+        font-size: 12px;
+        font-weight: 1000;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .fg-filter-field input,
+      .fg-filter-field select {
+        margin: 0 !important;
+      }
+      .fg-filter-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+      @media (max-width: 1000px) {
+        .fg-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 640px) {
+        .fg-filter-grid,
+        .fg-filter-dates { grid-template-columns: 1fr; }
+        .fg-filter-actions { justify-content: flex-start; }
+      }
     `}</style>
   );
 
-  function passesPipeline(r: ApplicantRow) {
-    const stageGuess = guessStageFromStatus(r.status);
-    if (pipeline === "All") return true;
-    if (pipeline === "Rejected") return stageGuess === "Reject";
-    if (pipeline === "Converted") return stageGuess === "Welcome";
-    return stageGuess !== "Reject" && stageGuess !== "Welcome";
+  const filtered = rows;
+
+  const sortPreset = `${sortKey}:${sortDir}`;
+
+  function applySortPreset(value: string) {
+    const [key, dir] = value.split(":") as [SortKey, SortDir];
+    setSortKey(key || "submitted");
+    setSortDir(dir || "desc");
   }
-
-  function passesStage(r: ApplicantRow) {
-    if (filterStage === "All") return true;
-    const stageGuess = guessStageFromStatus(r.status);
-    return stageGuess === filterStage;
-  }
-
-  function passesDateRange(r: ApplicantRow) {
-    if (!dateFrom && !dateTo) return true;
-    const d = parseDateSafe(r.submittedAt) || parseDateSafe(r.createdAt);
-    if (!d) return true;
-
-    if (dateFrom) {
-      const from = new Date(dateFrom + "T00:00:00");
-      if (!Number.isNaN(from.getTime()) && d < from) return false;
-    }
-    if (dateTo) {
-      const to = new Date(dateTo + "T23:59:59");
-      if (!Number.isNaN(to.getTime()) && d > to) return false;
-    }
-    return true;
-  }
-
-  function applySort(list: ApplicantRow[]) {
-    const dir = sortDir === "asc" ? 1 : -1;
-    const getSubmitted = (r: ApplicantRow) => {
-      const d = parseDateSafe(r.submittedAt) || parseDateSafe(r.createdAt);
-      return d ? d.getTime() : 0;
-    };
-    const cmp = (a: ApplicantRow, b: ApplicantRow) => {
-      if (sortKey === "submitted") return (getSubmitted(a) - getSubmitted(b)) * dir;
-      if (sortKey === "name") return safeStr(a.name).localeCompare(safeStr(b.name)) * dir;
-      if (sortKey === "role") return safeStr(a.roleTitle).localeCompare(safeStr(b.roleTitle)) * dir;
-      return safeStr(a.status).localeCompare(safeStr(b.status)) * dir;
-    };
-    return [...list].sort(cmp);
-  }
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const base = rows
-      .filter((r) => {
-        if (!q) return true;
-        return (
-          (r.name || "").toLowerCase().includes(q) ||
-          (r.email || "").toLowerCase().includes(q) ||
-          (r.roleTitle || "").toLowerCase().includes(q) ||
-          (r.status || "").toLowerCase().includes(q)
-        );
-      })
-      .filter(passesPipeline)
-      .filter(passesStage)
-      .filter(passesDateRange);
-
-    return applySort(base);
-  }, [rows, query, pipeline, filterStage, dateFrom, dateTo, sortKey, sortDir]);
 
   const kpis = useMemo(() => {
     const total = rows.length;
@@ -323,6 +346,14 @@ export default function Applicants() {
       const page = await (api as any).getApplicantsPage({
         limit: limitOverride || pageSize,
         cursor: cursor || undefined,
+        query: query.trim() || undefined,
+        pipeline,
+        role: roleFilter === "All" ? undefined : roleFilter,
+        gender: genderFilter === "All" ? undefined : genderFilter,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        sortKey,
+        sortDir,
       });
 
       const items = page?.items || [];
@@ -330,6 +361,9 @@ export default function Applicants() {
 
       setRows((items || []).map(normalizeListItem).filter((x: any) => !!x.id));
       setNextCursor(next);
+      setTotalMatches(Number.isFinite(Number(page?.count)) ? Number(page.count) : null);
+      setRoleOptions(Array.isArray(page?.roleOptions) ? page.roleOptions : []);
+      setGenderOptions(Array.isArray(page?.genderOptions) ? page.genderOptions : []);
 
       if (resetPaging) {
         setCursorStack([]);
@@ -343,9 +377,11 @@ export default function Applicants() {
   }
 
   useEffect(() => {
-    loadApplicantsPage(null, true);
+    const delay = query.trim() ? 300 : 0;
+    const id = window.setTimeout(() => loadApplicantsPage(null, true), delay);
+    return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [query, pipeline, roleFilter, genderFilter, dateFrom, dateTo, sortKey, sortDir, pageSize]);
 
   async function onView(r: ApplicantRow) {
     setDetailsRaw(null);
@@ -399,7 +435,9 @@ export default function Applicants() {
           <div className="col s12 m8">
             <h4 style={{ margin: 0, fontWeight: 1100, letterSpacing: 0.2 }}>Applicants</h4>
             <p className="grey-text" style={{ marginTop: 6, fontWeight: 800 }}>
-              {loading ? "Loading…" : `${kpis.total} on this page • ${filtered.length} shown • Page ${pageIndex + 1}`}
+              {loading
+                ? "Loading…"
+                : `${totalMatches ?? kpis.total} matching applicants • ${filtered.length} shown • Page ${pageIndex + 1}`}
             </p>
           </div>
 
@@ -452,7 +490,6 @@ export default function Applicants() {
                       className={`btn-small ${pageSize === n ? "" : "grey lighten-2"} fg-btn`}
                       onClick={() => {
                         setPageSize(n);
-                        loadApplicantsPage(null, true, n);
                       }}
                     >
                       {n}
@@ -475,62 +512,89 @@ export default function Applicants() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
               <div style={{ fontWeight: 1100, fontSize: 18 }}>Filters</div>
               <div className="grey-text" style={{ fontWeight: 900, fontSize: 12 }}>
-                Tip: Click table headers to sort (triangle).
+                {totalMatches ?? filtered.length} matching applicants
               </div>
             </div>
 
-            <div className="row" style={{ marginBottom: 0, marginTop: 6 }}>
-              <div className="input-field col s12 m5">
+            <div className="fg-filter-grid" style={{ marginTop: 12 }}>
+              <div className="fg-filter-field">
+                <label htmlFor="searchApplicants">Search</label>
                 <input
                   id="searchApplicants"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search by name, email, role, status…"
                 />
-                <label htmlFor="searchApplicants" className="active">Search</label>
               </div>
 
-              <div className="input-field col s12 m3">
-                <select className="browser-default" value={pipeline} onChange={(e) => setPipeline(e.target.value as any)}>
+              <div className="fg-filter-field">
+                <label htmlFor="sortApplicants">Sort</label>
+                <select id="sortApplicants" className="browser-default" value={sortPreset} onChange={(e) => applySortPreset(e.target.value)}>
+                  <option value="submitted:desc">Date applied, newest first</option>
+                  <option value="submitted:asc">Date applied, oldest first</option>
+                  <option value="name:asc">Name, A to Z</option>
+                  <option value="name:desc">Name, Z to A</option>
+                  <option value="role:asc">Role applied, A to Z</option>
+                  <option value="role:desc">Role applied, Z to A</option>
+                  <option value="status:asc">Status, A to Z</option>
+                  <option value="status:desc">Status, Z to A</option>
+                </select>
+              </div>
+
+              <div className="fg-filter-field">
+                <label htmlFor="roleApplicants">Role Applied</label>
+                <select id="roleApplicants" className="browser-default" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+                  <option value="All">All roles</option>
+                  {roleOptions.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="fg-filter-field">
+                <label htmlFor="genderApplicants">Gender</label>
+                <select id="genderApplicants" className="browser-default" value={genderFilter} onChange={(e) => setGenderFilter(e.target.value)}>
+                  <option value="All">All genders</option>
+                  {genderOptions.map((gender) => (
+                    <option key={gender} value={gender}>{gender}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="fg-filter-field">
+                <label htmlFor="statusApplicants">Status</label>
+                <select id="statusApplicants" className="browser-default" value={pipeline} onChange={(e) => setPipeline(e.target.value as any)}>
                   <option value="Active">Active pipeline</option>
                   <option value="All">All</option>
                   <option value="Rejected">Rejected</option>
                   <option value="Converted">Converted (Welcome)</option>
                 </select>
-                <label className="active" style={{ position: "relative", top: -24 }}>Pipeline</label>
-              </div>
-
-              <div className="input-field col s12 m4">
-                <select className="browser-default" value={filterStage} onChange={(e) => setFilterStage(e.target.value as any)}>
-                  <option value="All">All stages</option>
-                  {(["Introduction","Technical Interview","Confirmation","Reject","NDA","Offer","Welcome"] as Stage[]).map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                <label className="active" style={{ position: "relative", top: -24 }}>Stage</label>
               </div>
             </div>
 
-            <div className="row" style={{ marginBottom: 0 }}>
-              <div className="col s12 m3" style={{ marginTop: 6 }}>
-                <div className="grey-text" style={{ fontWeight: 1000, marginBottom: 6 }}>Submitted from</div>
+            <div className="fg-filter-dates">
+              <div className="fg-filter-field">
+                <label>Applied From</label>
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
               </div>
 
-              <div className="col s12 m3" style={{ marginTop: 6 }}>
-                <div className="grey-text" style={{ fontWeight: 1000, marginBottom: 6 }}>Submitted to</div>
+              <div className="fg-filter-field">
+                <label>Applied To</label>
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>
 
-              <div className="col s12 m6" style={{ marginTop: 10, display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <div className="fg-filter-actions">
                 <button
                   className="btn-flat"
                   onClick={() => {
                     setQuery("");
                     setPipeline("Active");
-                    setFilterStage("All");
+                    setRoleFilter("All");
+                    setGenderFilter("All");
                     setDateFrom("");
                     setDateTo("");
+                    setSortKey("submitted");
+                    setSortDir("desc");
                   }}
                 >
                   <i className="material-icons left">tune</i>
@@ -595,6 +659,7 @@ export default function Applicants() {
                   <th className="fg-th" onClick={() => toggleSort("name")}>Name {sortTriangle(sortKey === "name", sortDir)}</th>
                   <th>Email</th>
                   <th className="fg-th" onClick={() => toggleSort("role")}>Role {sortTriangle(sortKey === "role", sortDir)}</th>
+                  <th>Gender</th>
                   <th className="fg-th" onClick={() => toggleSort("status")}>Status {sortTriangle(sortKey === "status", sortDir)}</th>
                   <th className="fg-th" onClick={() => toggleSort("submitted")}>Submitted {sortTriangle(sortKey === "submitted", sortDir)}</th>
                   <th className="right-align">Actions</th>
@@ -604,7 +669,7 @@ export default function Applicants() {
               <tbody>
                 {loading && (
                   <tr>
-                    <td colSpan={6} className="center grey-text">Loading…</td>
+                    <td colSpan={7} className="center grey-text">Loading…</td>
                   </tr>
                 )}
 
@@ -619,6 +684,7 @@ export default function Applicants() {
                           <div style={{ fontWeight: 1000 }}>{r.roleTitle || "—"}</div>
                           {r.roleId ? <div className="grey-text" style={{ fontSize: 12 }}>{r.roleId}</div> : null}
                         </td>
+                        <td className="grey-text" style={{ fontWeight: 900 }}>{r.gender || "—"}</td>
                         <td><StatusPill status={r.status || "—"} stageGuess={stageGuess} /></td>
                         <td className="grey-text" style={{ whiteSpace: "nowrap", fontWeight: 900 }}>
                           {fmtDate(r.submittedAt || r.createdAt)}
@@ -634,7 +700,7 @@ export default function Applicants() {
 
                 {!loading && !filtered.length && (
                   <tr>
-                    <td colSpan={6} className="center grey-text">No applicants found.</td>
+                    <td colSpan={7} className="center grey-text">No applicants found.</td>
                   </tr>
                 )}
               </tbody>
