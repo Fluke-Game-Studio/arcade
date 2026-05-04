@@ -110,11 +110,11 @@ type BadgeStyle = { bg: string; border: string; fg: string };
 
 const STAGE_BADGE: Record<Stage, BadgeStyle> = {
   Reject: { bg: "#FDE8E8", border: "#F9B4B4", fg: "#8B1E1E" },
-  Introduction: { bg: "#f7d699", border: "#ffbc6f", fg: "#8a641e" },
+  Introduction: { bg: "#FCE7F3", border: "#F9A8D4", fg: "#9D174D" },
   "Technical Interview": { bg: "#E3EEFF", border: "#94BFFF", fg: "#163A8A" },
   Confirmation: { bg: "#F2E8FF", border: "#CFA7FF", fg: "#4B1E8B" },
-  NDA: { bg: "#E8E8FF", border: "#A7A6FF", fg: "#2B2B8A" },
-  Offer: { bg: "#E6FAFF", border: "#86DFF5", fg: "#0B4B5A" },
+  NDA: { bg: "#FEF3C7", border: "#FCD34D", fg: "#92400E" },
+  Offer: { bg: "#CFFAFE", border: "#67E8F9", fg: "#155E75" },
   Welcome: { bg: "#E9F9EF", border: "#9FE0B5", fg: "#14532D" },
 };
 
@@ -122,7 +122,12 @@ function StatusPill({ status }: { status: string }) {
   const s = safeStr(status) || "—";
   const stageGuess = guessStageFromStatus(s);
   const stg: Stage = stageGuess === "Unknown" ? "Introduction" : (stageGuess as Stage);
-  const css = STAGE_BADGE[stg];
+  const statusKey = safeStr(status).toLowerCase();
+  const css = statusKey === "applied"
+    ? { bg: "#DCFCE7", border: "#86EFAC", fg: "#166534" }
+    : statusKey.includes("intro_sent")
+    ? { bg: "#FCE7F3", border: "#F9A8D4", fg: "#9D174D" }
+    : STAGE_BADGE[stg];
 
   return (
     <span
@@ -205,6 +210,38 @@ function pickFirstLinkByNeedle(
   return scan(readable) || scan(raw) || "";
 }
 
+function pickFirstHttpUrl(...values: any[]) {
+  for (const value of values) {
+    const s = safeStr(value).trim();
+    if (/^https?:\/\//i.test(s)) return s;
+  }
+  return "";
+}
+
+function pickFirstImageUrlByNeedle(
+  readable: Record<string, any> | null,
+  raw: Record<string, any> | null,
+  needles: string[]
+) {
+  const ns = needles.map((x) => x.toLowerCase());
+  const imageWords = ["image", "picture", "photo", "avatar"];
+
+  const scan = (obj: Record<string, any> | null) => {
+    if (!obj) return "";
+    for (const [k, v] of Object.entries(obj)) {
+      const key = String(k || "").toLowerCase();
+      const value = safeStr(v).trim();
+      if (!/^https?:\/\//i.test(value)) continue;
+      if (!ns.some((needle) => key.includes(needle))) continue;
+      if (!imageWords.some((needle) => key.includes(needle))) continue;
+      return value;
+    }
+    return "";
+  };
+
+  return scan(readable) || scan(raw) || "";
+}
+
 type ApplicantDetailsView = {
   id: string;
   fullName: string;
@@ -226,6 +263,8 @@ type ApplicantDetailsView = {
   googleName: string;
   googleEmail: string;
   googleImageUrl: string;
+  linkedinLink: string;
+  linkedinImageUrl: string;
 
   resumeLink: string;
   portfolioLink: string;
@@ -277,6 +316,35 @@ function normalizeDetails(d: ApiApplicantDetails): ApplicantDetailsView {
     pickFirstLinkByNeedle(answersReadable, answersRaw, ["portfolio", "website"]) ||
     "";
 
+  const linkedinLink =
+    pickFirstHttpUrl(
+      applicant?.linkedinUrl,
+      applicant?.linkedin_url,
+      payload?.linkedinUrl,
+      payload?.linkedin_url,
+      (d as any).linkedinUrl,
+      (d as any).linkedin_url
+    ) ||
+    pickFirstLinkByNeedle(answersReadable, answersRaw, ["linkedin", "linked in"]) ||
+    "";
+
+  const linkedinImageUrl =
+    pickFirstHttpUrl(
+      payload?.linkedin?.imageUrl,
+      payload?.linkedin?.picture,
+      payload?.linkedin?.photoUrl,
+      payload?.linkedin?.photoURL,
+      payload?.linkedin?.avatar,
+      applicant?.linkedinImageUrl,
+      applicant?.linkedin_image_url,
+      applicant?.linkedinPicture,
+      applicant?.linkedin_picture,
+      (d as any).linkedinImageUrl,
+      (d as any).linkedin_image_url,
+      (d as any).linkedinPicture,
+      (d as any).linkedin_picture
+    ) || pickFirstImageUrlByNeedle(answersReadable, answersRaw, ["linkedin", "linked in"]);
+
   return {
     id: safeStr((d as any).applicant_id || (d as any).id || (d as any).applicantId),
     fullName: safeStr((d as any).fullName || applicant?.fullName),
@@ -297,7 +365,25 @@ function normalizeDetails(d: ApiApplicantDetails): ApplicantDetailsView {
 
     googleName: safeStr(google?.name),
     googleEmail: safeStr(google?.email),
-    googleImageUrl: safeStr(google?.imageUrl),
+    linkedinLink,
+    linkedinImageUrl,
+    googleImageUrl: linkedinImageUrl || pickFirstHttpUrl(
+      google?.imageUrl,
+      google?.picture,
+      google?.photoURL,
+      google?.photoUrl,
+      google?.avatar,
+      applicant?.imageUrl,
+      applicant?.picture,
+      applicant?.photoURL,
+      applicant?.photoUrl,
+      applicant?.avatar,
+      (d as any).googleImageUrl,
+      (d as any).imageUrl,
+      (d as any).picture,
+      (d as any).employee_profilepicture,
+      (d as any).employee_picture
+    ),
 
     resumeLink,
     portfolioLink,
@@ -430,6 +516,11 @@ export default function ApplicantDetailsModal({
   }, [onClose]);
 
   const details = useMemo(() => (open && detailsRaw ? normalizeDetails(detailsRaw) : null), [open, detailsRaw]);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [details?.id, details?.googleImageUrl]);
 
   // init ONCE
   useEffect(() => {
@@ -558,10 +649,12 @@ export default function ApplicantDetailsModal({
             <div className="fg-card" style={{ marginTop: 14 }}>
               <div className="fg-card-b">
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                  {details.googleImageUrl ? (
+                  {details.googleImageUrl && !avatarFailed ? (
                     <img
                       src={details.googleImageUrl}
                       alt="profile"
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarFailed(true)}
                       style={{ width: 52, height: 52, borderRadius: 999, border: "1px solid rgba(0,0,0,0.10)" }}
                     />
                   ) : (
@@ -617,6 +710,12 @@ export default function ApplicantDetailsModal({
                   ) : (
                     <span className="grey-text">No resume link</span>
                   )}
+
+                  {details.linkedinLink ? (
+                    <a className="btn-flat" href={details.linkedinLink} target="_blank" rel="noreferrer">
+                      <i className="material-icons left">work</i>LinkedIn
+                    </a>
+                  ) : null}
 
                   <span style={{ flex: "1 1 auto" }} />
 

@@ -288,11 +288,11 @@ export default function AccountProfileSecurity({
 
   const heroAvatarUrl = useMemo(() => {
     const dp = safeStr(pic);
-    if (dp && isHttpUrl(dp)) return dp;
+    if (dp && isHttpUrl(dp) && !picError) return dp;
     const t = safeStr(employeePic);
-    if (t && isHttpUrl(t)) return t;
+    if (t && isHttpUrl(t) && !employeePicError) return t;
     return "";
-  }, [pic, employeePic]);
+  }, [pic, employeePic, picError, employeePicError]);
 
   const pwStrength = useMemo(() => strengthLabel(pw1), [pw1]);
   const pwMatch = pw1 && pw2 ? pw1 === pw2 : true;
