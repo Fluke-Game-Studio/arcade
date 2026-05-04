@@ -430,11 +430,11 @@ export default function AccountEditDetails({
 
   const heroAvatarUrl = useMemo(() => {
     const dp = safeStr(pic);
-    if (dp && isHttpUrl(dp)) return dp;
+    if (dp && isHttpUrl(dp) && !picError) return dp;
     const t = safeStr(employeePic);
-    if (t && isHttpUrl(t)) return t;
+    if (t && isHttpUrl(t) && !employeePicError) return t;
     return "";
-  }, [pic, employeePic]);
+  }, [pic, employeePic, picError, employeePicError]);
 
   function setEdit(k: EditableKey, v: boolean) {
     setEditing((m) => ({ ...m, [k]: v }));
