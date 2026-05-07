@@ -75,7 +75,7 @@ export type SendApplicantWelcomeEmailBody = {
   setStatus?: string;
 };
 
-export type EmployeeDocEmailType = "EXPERIENCE";
+export type EmployeeDocEmailType = "EXPERIENCE" | "RECOMMENDATION";
 
 export type SendEmployeeDocEmailBody = {
   type: EmployeeDocEmailType;
@@ -84,5 +84,9 @@ export type SendEmployeeDocEmailBody = {
   setStatus?: string;
   dateStarted?: string;
   dateEnded?: string;
+  wordCount?: number;
+  coreSkills?: string;
+  peopleSkills?: string;
+  recommendationBody?: string;
   vars?: Record<string, any>;
 };
