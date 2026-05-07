@@ -255,12 +255,18 @@ export default function Admin({
 
   const [composerEmployee, setComposerEmployee] = useState<ApiUser | null>(null);
   const [composerRoleTitle, setComposerRoleTitle] = useState("");
+  const [composerDocType, setComposerDocType] = useState<"EXPERIENCE" | "RECOMMENDATION">("EXPERIENCE");
   const [composerSubjectOverride, setComposerSubjectOverride] = useState(
     "Experience Certificate | Fluke Games"
   );
   const [composerSetStatus, setComposerSetStatus] =
     useState("experience_sent");
   const [extraInfo, setExtraInfo] = useState("");
+  const [coreSkills, setCoreSkills] = useState("");
+  const [peopleSkills, setPeopleSkills] = useState("");
+  const [wordCount, setWordCount] = useState("220");
+  const [recommendationBody, setRecommendationBody] = useState("");
+  const [generatingRecommendation, setGeneratingRecommendation] = useState(false);
 
   const [dateStarted, setDateStarted] = useState("");
   const [dateEnded, setDateEnded] = useState("");
@@ -531,9 +537,14 @@ export default function Admin({
 
     setComposerEmployee(u);
     setComposerRoleTitle(safeStr(u.employee_title));
+    setComposerDocType("EXPERIENCE");
     setComposerSubjectOverride("Experience Certificate | Fluke Games");
     setComposerSetStatus("experience_sent");
     setExtraInfo("");
+    setCoreSkills("");
+    setPeopleSkills("");
+    setWordCount("220");
+    setRecommendationBody("");
 
     setDateStarted("");
     setDateEnded("");
@@ -556,12 +567,48 @@ export default function Admin({
     M.Modal.getInstance(composerModalRef.current)?.close();
   }
 
+  async function generateRecommendationNow() {
+    if (!composerEmployee?.username) {
+      M.toast({ html: "Missing employee username.", classes: "red" });
+      return;
+    }
+    setGeneratingRecommendation(true);
+    try {
+      const resp = await (api as any).previewEmployeeRecommendation(
+        composerEmployee.username,
+        {
+          roleTitle: composerRoleTitle || undefined,
+          coreSkills: coreSkills.trim() || undefined,
+          peopleSkills: peopleSkills.trim() || undefined,
+          wordCount: Number(wordCount || "220"),
+          vars: {
+            coreSkills: coreSkills.trim() || undefined,
+            peopleSkills: peopleSkills.trim() || undefined,
+            wordCount: String(Number(wordCount || "220")),
+          },
+        }
+      );
+      const text = safeStr(resp?.recommendationBody || "");
+      setRecommendationBody(text);
+      setTimeout(() => {
+        try {
+          M.updateTextFields();
+        } catch {}
+      }, 0);
+      M.toast({ html: "Recommendation draft generated.", classes: "green" });
+    } catch (e: any) {
+      M.toast({ html: e?.message || "Failed to generate recommendation", classes: "red" });
+    } finally {
+      setGeneratingRecommendation(false);
+    }
+  }
+
   async function sendNow() {
     if (!composerEmployee?.username) {
       M.toast({ html: "Missing employee username.", classes: "red" });
       return;
     }
-    if (!dateStarted || !dateEnded) {
+    if (composerDocType === "EXPERIENCE" && (!dateStarted || !dateEnded)) {
       M.toast({
         html: "Experience: dateStarted and dateEnded are required.",
         classes: "red",
@@ -575,18 +622,32 @@ export default function Admin({
         ...(extraInfo.trim()
           ? { extraInfo: extraInfo.trim(), EXTRA_INFO: extraInfo.trim() }
           : {}),
-        ...(currentDate ? { CURRENT_DATE: formatLongDate(currentDate) } : {}),
-        ...(dateStarted ? { START_DATE: formatLongDate(dateStarted) } : {}),
-        ...(dateEnded ? { END_DATE: formatLongDate(dateEnded) } : {}),
+        ...(currentDate ? { CURRENT_DATE: formatLongDate(currentDate), currentDate: formatLongDate(currentDate) } : {}),
+        ...(dateStarted ? { START_DATE: formatLongDate(dateStarted), dateStarted: formatLongDate(dateStarted) } : {}),
+        ...(dateEnded ? { END_DATE: formatLongDate(dateEnded), dateEnded: formatLongDate(dateEnded) } : {}),
+        ...(coreSkills.trim() ? { coreSkills: coreSkills.trim(), CORE_SKILLS: coreSkills.trim() } : {}),
+        ...(peopleSkills.trim() ? { peopleSkills: peopleSkills.trim(), PEOPLE_SKILLS: peopleSkills.trim() } : {}),
+        ...(wordCount.trim() ? { wordCount: String(Number(wordCount)), WORD_COUNT: String(Number(wordCount)) } : {}),
+        ...(recommendationBody.trim()
+          ? {
+              recommendationBody: recommendationBody.trim(),
+              RECOMMENDATION_BODY: recommendationBody.trim(),
+            }
+          : {}),
       };
 
       const body: SendEmployeeDocEmailBody = {
-        type: "EXPERIENCE",
+        type: composerDocType,
         roleTitle: composerRoleTitle || undefined,
         subjectOverride: composerSubjectOverride || undefined,
         setStatus: composerSetStatus || undefined,
-        dateStarted: dateStarted || undefined,
-        dateEnded: dateEnded || undefined,
+        dateStarted: composerDocType === "EXPERIENCE" ? (dateStarted || undefined) : undefined,
+        dateEnded: composerDocType === "EXPERIENCE" ? (dateEnded || undefined) : undefined,
+        wordCount: undefined,
+        coreSkills: composerDocType === "RECOMMENDATION" ? coreSkills.trim() || undefined : undefined,
+        peopleSkills: composerDocType === "RECOMMENDATION" ? peopleSkills.trim() || undefined : undefined,
+        recommendationBody:
+          composerDocType === "RECOMMENDATION" ? recommendationBody.trim() || undefined : undefined,
         vars: Object.keys(vars).length ? vars : undefined,
       };
 
@@ -1624,7 +1685,7 @@ export default function Admin({
         <div className="modal-content">
           <h5>Composer (Employee)</h5>
           <p className="grey-text" style={{ marginTop: 0 }}>
-            Sends <b>Experience Certificate</b> using:
+            Sends <b>Experience Certificate</b> or <b>Letter of Recommendation</b> using:
             <code style={{ marginLeft: 6 }}>
               POST /admin/employees/&lt;username&gt;/send-doc-email
             </code>
@@ -1634,6 +1695,30 @@ export default function Admin({
             <div className="input-field col s12 m6">
               <input value={safeStr(composerEmployee?.employee_email)} disabled />
               <label className="active">To</label>
+            </div>
+
+            <div className="input-field col s12 m6">
+              <select
+                className="browser-default"
+                value={composerDocType}
+                onChange={(e) => {
+                  const next = e.target.value as "EXPERIENCE" | "RECOMMENDATION";
+                  setComposerDocType(next);
+                  if (next === "EXPERIENCE") {
+                    setComposerSubjectOverride("Experience Certificate | Fluke Games");
+                    setComposerSetStatus("experience_sent");
+                  } else {
+                    setComposerSubjectOverride("Letter of Recommendation | Fluke Games");
+                    setComposerSetStatus("recommendation_sent");
+                  }
+                }}
+              >
+                <option value="EXPERIENCE">EXPERIENCE</option>
+                <option value="RECOMMENDATION">RECOMMENDATION</option>
+              </select>
+              <label className="active" style={{ position: "relative", top: -24 }}>
+                docType
+              </label>
             </div>
 
             <div className="input-field col s12 m6">
@@ -1707,6 +1792,66 @@ export default function Admin({
             </div>
           </div>
 
+          {composerDocType === "RECOMMENDATION" ? (
+            <>
+              <div className="row" style={{ marginTop: 8 }}>
+                <div className="input-field col s12 m6">
+                  <textarea
+                    className="materialize-textarea"
+                    value={coreSkills}
+                    onChange={(e) => setCoreSkills(e.target.value)}
+                    style={{ minHeight: 90 }}
+                    placeholder="e.g. Unreal Engine, C++, gameplay systems, debugging"
+                  />
+                  <label className="active">Core Skills</label>
+                </div>
+                <div className="input-field col s12 m6">
+                  <textarea
+                    className="materialize-textarea"
+                    value={peopleSkills}
+                    onChange={(e) => setPeopleSkills(e.target.value)}
+                    style={{ minHeight: 90 }}
+                    placeholder="e.g. communication, mentorship, ownership, teamwork"
+                  />
+                  <label className="active">People Skills</label>
+                </div>
+              </div>
+              <div className="input-field">
+                <input
+                  type="number"
+                  min={120}
+                  max={600}
+                  value={wordCount}
+                  onChange={(e) => setWordCount(e.target.value)}
+                />
+                <label className="active">Word Count (120-600)</label>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginBottom: 4 }}>
+                <button
+                  type="button"
+                  className={`btn ${generatingRecommendation ? "disabled" : ""}`}
+                  disabled={generatingRecommendation}
+                  onClick={generateRecommendationNow}
+                >
+                  <i className="material-icons left">{generatingRecommendation ? "hourglass_empty" : "auto_awesome"}</i>
+                  {generatingRecommendation ? "Generating..." : "Generate Recommendation"}
+                </button>
+              </div>
+
+              <div className="input-field" style={{ marginTop: 8 }}>
+                <textarea
+                  className="materialize-textarea"
+                  value={recommendationBody}
+                  onChange={(e) => setRecommendationBody(e.target.value)}
+                  style={{ minHeight: 220 }}
+                  placeholder="Generated recommendation will appear here. You can edit it before sending."
+                />
+                <label className="active">Recommendation Draft (Editable)</label>
+              </div>
+            </>
+          ) : null}
+
           <div className="input-field" style={{ marginTop: 10 }}>
             <textarea
               className="materialize-textarea"
@@ -1724,9 +1869,18 @@ export default function Admin({
             <pre style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>
 {JSON.stringify(
   {
-    START_DATE: dateStarted ? formatLongDate(dateStarted) : "",
-    END_DATE: dateEnded ? formatLongDate(dateEnded) : "",
+    type: composerDocType,
+    START_DATE: composerDocType === "EXPERIENCE" && dateStarted ? formatLongDate(dateStarted) : "",
+    END_DATE: composerDocType === "EXPERIENCE" && dateEnded ? formatLongDate(dateEnded) : "",
     CURRENT_DATE: currentDate ? formatLongDate(currentDate) : "",
+    ...(composerDocType === "RECOMMENDATION"
+      ? {
+          coreSkills: coreSkills.trim(),
+          peopleSkills: peopleSkills.trim(),
+          wordCount: Number(wordCount || "220"),
+          recommendationBody: recommendationBody.trim(),
+        }
+      : {}),
     ...(extraInfo.trim()
       ? { extraInfo: extraInfo.trim(), EXTRA_INFO: extraInfo.trim() }
       : {}),

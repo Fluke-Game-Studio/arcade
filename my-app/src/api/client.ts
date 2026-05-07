@@ -828,6 +828,29 @@ export class ApiClient {
     return payload;
   }
 
+  async previewEmployeeRecommendation(
+    username: string,
+    body: {
+      roleTitle?: string;
+      coreSkills?: string;
+      peopleSkills?: string;
+      wordCount?: number | string;
+      vars?: Record<string, any>;
+    }
+  ): Promise<any> {
+    const r = await fetch(
+      `${API_BASE}/admin/employees/${encodeURIComponent(username)}/preview-recommendation`,
+      {
+        method: "POST",
+        headers: this.headers(true),
+        body: JSON.stringify(body || {}),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(this.extractErrorMessage(payload, r.status));
+    return payload;
+  }
+
   async listJobsAdmin(): Promise<ApiJob[]> {
     const r = await fetch(`${API_BASE}/admin/jobs`, {
       method: "GET",
