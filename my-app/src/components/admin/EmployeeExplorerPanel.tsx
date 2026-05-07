@@ -208,6 +208,22 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
   const [editingUsername, setEditingUsername] = useState("");
   const [editForm, setEditForm] = useState<EditForm>({ ...EMPTY_EDIT });
   const editModalRef = useRef<HTMLDivElement | null>(null);
+  const composeModalRef = useRef<HTMLDivElement | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeSending, setComposeSending] = useState(false);
+  const [composeGenerating, setComposeGenerating] = useState(false);
+  const [composeDocType, setComposeDocType] = useState<"EXPERIENCE" | "RECOMMENDATION">("EXPERIENCE");
+  const [composeRoleTitle, setComposeRoleTitle] = useState("");
+  const [composeSubject, setComposeSubject] = useState("Experience Certificate | Fluke Games");
+  const [composeStatus, setComposeStatus] = useState("experience_sent");
+  const [composeDateStarted, setComposeDateStarted] = useState("");
+  const [composeDateEnded, setComposeDateEnded] = useState("");
+  const [composeCurrentDate, setComposeCurrentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [composeExtraInfo, setComposeExtraInfo] = useState("");
+  const [composeCoreSkills, setComposeCoreSkills] = useState("");
+  const [composePeopleSkills, setComposePeopleSkills] = useState("");
+  const [composeWordCount, setComposeWordCount] = useState("220");
+  const [composeRecommendationBody, setComposeRecommendationBody] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -232,6 +248,11 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
   useEffect(() => {
     if (!editModalRef.current || typeof M === "undefined") return;
     M.Modal.init(editModalRef.current, { dismissible: true, opacity: 0.45 });
+  }, []);
+
+  useEffect(() => {
+    if (!composeModalRef.current || typeof M === "undefined") return;
+    M.Modal.init(composeModalRef.current, { dismissible: true, opacity: 0.45 });
   }, []);
 
   const filteredUsers = useMemo(() => {
@@ -501,6 +522,109 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
     setEditOpen(false);
   }
 
+  function openEmployeeDocComposer(userRow: ApiUser) {
+    if (!isAdmin) return;
+    setComposeDocType("EXPERIENCE");
+    setComposeRoleTitle(safeStr((userRow as any)?.employee_title));
+    setComposeSubject("Experience Certificate | Fluke Games");
+    setComposeStatus("experience_sent");
+    setComposeDateStarted("");
+    setComposeDateEnded("");
+    setComposeCurrentDate(new Date().toISOString().slice(0, 10));
+    setComposeExtraInfo("");
+    setComposeCoreSkills("");
+    setComposePeopleSkills("");
+    setComposeWordCount("220");
+    setComposeRecommendationBody("");
+    setComposeOpen(true);
+    requestAnimationFrame(() => {
+      const inst = M?.Modal?.getInstance?.(composeModalRef.current) || M?.Modal?.init?.(composeModalRef.current);
+      inst?.open?.();
+      setTimeout(() => {
+        try {
+          M?.updateTextFields?.();
+        } catch {}
+      }, 0);
+    });
+  }
+
+  function closeEmployeeDocComposer() {
+    const inst = M?.Modal?.getInstance?.(composeModalRef.current) || M?.Modal?.init?.(composeModalRef.current);
+    inst?.close?.();
+    setComposeOpen(false);
+  }
+
+  async function generateRecommendationPreview() {
+    if (!selectedUser) return;
+    try {
+      setComposeGenerating(true);
+      const resp = await (api as any).previewEmployeeRecommendation(
+        safeStr((selectedUser as any)?.username),
+        {
+          roleTitle: composeRoleTitle || undefined,
+          coreSkills: composeCoreSkills.trim() || undefined,
+          peopleSkills: composePeopleSkills.trim() || undefined,
+          wordCount: Number(composeWordCount || "220"),
+          vars: {
+            coreSkills: composeCoreSkills.trim() || undefined,
+            peopleSkills: composePeopleSkills.trim() || undefined,
+            wordCount: String(Number(composeWordCount || "220")),
+          },
+        }
+      );
+      setComposeRecommendationBody(safeStr(resp?.recommendationBody || ""));
+      M?.toast?.({ html: "Recommendation draft generated.", classes: "green" });
+    } catch (e: any) {
+      M?.toast?.({ html: e?.message || "Failed to generate recommendation", classes: "red" });
+    } finally {
+      setComposeGenerating(false);
+    }
+  }
+
+  async function sendEmployeeDocNow() {
+    if (!selectedUser) return;
+    if (composeDocType === "EXPERIENCE" && (!composeDateStarted || !composeDateEnded)) {
+      M?.toast?.({ html: "Experience requires start and end dates.", classes: "red" });
+      return;
+    }
+    try {
+      setComposeSending(true);
+      const vars: Record<string, any> = {
+        ...(composeExtraInfo.trim()
+          ? { extraInfo: composeExtraInfo.trim(), EXTRA_INFO: composeExtraInfo.trim() }
+          : {}),
+        ...(composeCurrentDate ? { CURRENT_DATE: composeCurrentDate } : {}),
+        ...(composeDateStarted ? { START_DATE: composeDateStarted, dateStarted: composeDateStarted } : {}),
+        ...(composeDateEnded ? { END_DATE: composeDateEnded, dateEnded: composeDateEnded } : {}),
+        ...(composeCoreSkills.trim() ? { coreSkills: composeCoreSkills.trim(), CORE_SKILLS: composeCoreSkills.trim() } : {}),
+        ...(composePeopleSkills.trim() ? { peopleSkills: composePeopleSkills.trim(), PEOPLE_SKILLS: composePeopleSkills.trim() } : {}),
+        ...(composeWordCount.trim() ? { wordCount: String(Number(composeWordCount)), WORD_COUNT: String(Number(composeWordCount)) } : {}),
+        ...(composeRecommendationBody.trim()
+          ? { recommendationBody: composeRecommendationBody.trim(), RECOMMENDATION_BODY: composeRecommendationBody.trim() }
+          : {}),
+      };
+      await (api as any).sendEmployeeDocEmail(safeStr((selectedUser as any)?.username), {
+        type: composeDocType,
+        roleTitle: composeRoleTitle || undefined,
+        subjectOverride: composeSubject || undefined,
+        setStatus: composeStatus || undefined,
+        dateStarted: composeDocType === "EXPERIENCE" ? composeDateStarted || undefined : undefined,
+        dateEnded: composeDocType === "EXPERIENCE" ? composeDateEnded || undefined : undefined,
+        coreSkills: composeDocType === "RECOMMENDATION" ? composeCoreSkills.trim() || undefined : undefined,
+        peopleSkills: composeDocType === "RECOMMENDATION" ? composePeopleSkills.trim() || undefined : undefined,
+        recommendationBody:
+          composeDocType === "RECOMMENDATION" ? composeRecommendationBody.trim() || undefined : undefined,
+        vars,
+      });
+      M?.toast?.({ html: "Employee document sent.", classes: "green" });
+      closeEmployeeDocComposer();
+    } catch (e: any) {
+      M?.toast?.({ html: e?.message || "Failed to send document", classes: "red" });
+    } finally {
+      setComposeSending(false);
+    }
+  }
+
   async function saveEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!isAdmin || !editingUsername) return;
@@ -732,7 +856,18 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                   ) : null}
                 </div>
               </div>
-              <div style={{ marginLeft: "auto" }}>
+              <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                <button
+                  type="button"
+                  className="btn-small"
+                  disabled={!selectedUser || !isAdmin}
+                  onClick={() => selectedUser && openEmployeeDocComposer(selectedUser)}
+                  style={{ borderRadius: 10, textTransform: "none", fontWeight: 900, background: "#0ea5a4", color: "#ffffff", boxShadow: "none" }}
+                  title="Open employee letter composer"
+                >
+                  <i className="material-icons left">mail</i>
+                  Employee composer
+                </button>
                 <button
                   type="button"
                   className="btn-small"
@@ -889,6 +1024,139 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      <div ref={composeModalRef} className={`modal modal-fixed-footer ${composeOpen ? "open" : ""}`} style={{ maxHeight: "90%" }}>
+        <div className="modal-content">
+          <h5 style={{ fontWeight: 1000, marginBottom: 6 }}>Employee Letter Composer</h5>
+          <p className="grey-text" style={{ marginTop: 0, fontWeight: 700 }}>
+            Experience and Recommendation letters for the selected employee.
+          </p>
+          <div className="row" style={{ marginBottom: 0 }}>
+            <div className="input-field col s12 m6">
+              <input value={safeStr((selectedUser as any)?.employee_email)} disabled />
+              <label className="active">To</label>
+            </div>
+            <div className="input-field col s12 m6">
+              <input value={safeStr((selectedUser as any)?.username)} disabled />
+              <label className="active">Studio Email</label>
+            </div>
+          </div>
+
+          <div className="row" style={{ marginBottom: 0 }}>
+            <div className="input-field col s12 m4">
+              <select
+                className="browser-default"
+                value={composeDocType}
+                onChange={(e) => {
+                  const next = e.target.value as "EXPERIENCE" | "RECOMMENDATION";
+                  setComposeDocType(next);
+                  if (next === "EXPERIENCE") {
+                    setComposeSubject("Experience Certificate | Fluke Games");
+                    setComposeStatus("experience_sent");
+                  } else {
+                    setComposeSubject("Letter of Recommendation | Fluke Games");
+                    setComposeStatus("recommendation_sent");
+                  }
+                }}
+              >
+                <option value="EXPERIENCE">EXPERIENCE</option>
+                <option value="RECOMMENDATION">RECOMMENDATION</option>
+              </select>
+              <label className="active" style={{ position: "relative", top: -24 }}>docType</label>
+            </div>
+            <div className="input-field col s12 m4">
+              <input value={composeRoleTitle} onChange={(e) => setComposeRoleTitle(e.target.value)} />
+              <label className="active">roleTitle</label>
+            </div>
+            <div className="input-field col s12 m4">
+              <input value={composeStatus} onChange={(e) => setComposeStatus(e.target.value)} />
+              <label className="active">setStatus</label>
+            </div>
+          </div>
+
+          <div className="input-field">
+            <input value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} />
+            <label className="active">subjectOverride</label>
+          </div>
+
+          {composeDocType === "EXPERIENCE" ? (
+            <div className="row" style={{ marginTop: 8 }}>
+              <div className="col s12 m4">
+                <div className="grey-text" style={{ fontWeight: 700, marginBottom: 6 }}>dateStarted</div>
+                <input type="date" value={composeDateStarted} onChange={(e) => setComposeDateStarted(e.target.value)} />
+              </div>
+              <div className="col s12 m4">
+                <div className="grey-text" style={{ fontWeight: 700, marginBottom: 6 }}>dateEnded</div>
+                <input type="date" value={composeDateEnded} onChange={(e) => setComposeDateEnded(e.target.value)} />
+              </div>
+              <div className="col s12 m4">
+                <div className="grey-text" style={{ fontWeight: 700, marginBottom: 6 }}>CURRENT_DATE</div>
+                <input type="date" value={composeCurrentDate} onChange={(e) => setComposeCurrentDate(e.target.value)} />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="row" style={{ marginTop: 8 }}>
+                <div className="input-field col s12 m6">
+                  <textarea className="materialize-textarea" value={composeCoreSkills} onChange={(e) => setComposeCoreSkills(e.target.value)} style={{ minHeight: 90 }} />
+                  <label className="active">Core Skills</label>
+                </div>
+                <div className="input-field col s12 m6">
+                  <textarea className="materialize-textarea" value={composePeopleSkills} onChange={(e) => setComposePeopleSkills(e.target.value)} style={{ minHeight: 90 }} />
+                  <label className="active">People Skills</label>
+                </div>
+              </div>
+              <div className="input-field">
+                <input type="number" min={120} max={600} value={composeWordCount} onChange={(e) => setComposeWordCount(e.target.value)} />
+                <label className="active">Word Count (120-600)</label>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <button
+                  type="button"
+                  className={`btn ${composeGenerating ? "disabled" : ""}`}
+                  disabled={composeGenerating}
+                  onClick={generateRecommendationPreview}
+                >
+                  <i className="material-icons left">{composeGenerating ? "hourglass_empty" : "auto_awesome"}</i>
+                  {composeGenerating ? "Generating..." : "Generate Recommendation"}
+                </button>
+              </div>
+              <div className="input-field">
+                <textarea
+                  className="materialize-textarea"
+                  value={composeRecommendationBody}
+                  onChange={(e) => setComposeRecommendationBody(e.target.value)}
+                  style={{ minHeight: 220 }}
+                />
+                <label className="active">Recommendation Draft (Editable)</label>
+              </div>
+            </>
+          )}
+
+          <div className="input-field">
+            <textarea
+              className="materialize-textarea"
+              value={composeExtraInfo}
+              onChange={(e) => setComposeExtraInfo(e.target.value)}
+              style={{ minHeight: 90 }}
+            />
+            <label className="active">vars.extraInfo (optional)</label>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <a className="btn-flat" onClick={closeEmployeeDocComposer}>Cancel</a>
+          <button
+            type="button"
+            className={`btn ${composeSending ? "disabled" : ""}`}
+            disabled={composeSending}
+            onClick={sendEmployeeDocNow}
+            style={{ textTransform: "none", fontWeight: 900 }}
+          >
+            <i className="material-icons left">{composeSending ? "hourglass_empty" : "send"}</i>
+            {composeSending ? "Sending..." : "Send"}
+          </button>
         </div>
       </div>
 
