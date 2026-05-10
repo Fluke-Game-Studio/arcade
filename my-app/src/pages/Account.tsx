@@ -8,13 +8,22 @@ import AwardUnlockModal from "../components/account/AwardUnlockModal";
 
 declare const M: any;
 
-type AccountTabKey = "updates" | "details" | "password" | "gamification";
+type AccountTabKey = "updates" | "details" | "password" | "gamification" | "settings";
 
 export default function Account() {
   const { user, api, refreshSession } = useAuth();
   const [activeTab, setActiveTab] = useState<AccountTabKey>("updates");
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = (localStorage.getItem("fg_theme") || "").toLowerCase();
+    return saved === "dark" ? "dark" : "light";
+  });
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [unlockItems, setUnlockItems] = useState<any[]>([]);
+
+  useEffect(() => {
+    localStorage.setItem("fg_theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     if (typeof M !== "undefined") setTimeout(() => M.updateTextFields(), 0);
@@ -647,6 +656,7 @@ export default function Account() {
             <TabButton tab="details" icon="badge" label="Edit Details" />
             <TabButton tab="password" icon="lock" label="Edit Password" />
             <TabButton tab="gamification" icon="emoji_events" label="Achievements" />
+            <TabButton tab="settings" icon="settings" label="Settings" />
           </div>
         </div>
 
@@ -661,6 +671,67 @@ export default function Account() {
         )}
 
         {activeTab === "gamification" && <AccountGamification />}
+
+        {activeTab === "settings" && (
+          <section className="panelCard" style={{ background: "#fff" }}>
+            <div className="panelHead">
+              <div>
+                <div className="h">Settings</div>
+                <div className="p">App preferences</div>
+              </div>
+            </div>
+            <div style={{ padding: 16 }}>
+              <div
+                style={{
+                  border: "1px solid #e6edf2",
+                  borderRadius: 16,
+                  padding: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 12,
+                      border: "1px solid #dbe5ec",
+                      background: "rgba(37,99,235,0.10)",
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    <i className="material-icons" style={{ fontSize: 18, color: "#1d4ed8" }}>
+                      {theme === "dark" ? "dark_mode" : "light_mode"}
+                    </i>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 900, color: "#0f172a" }}>Theme</div>
+                    <div style={{ fontSize: 12, color: "#607d8b", fontWeight: 700 }}>
+                      {theme === "dark" ? "Night mode enabled" : "Day mode enabled"}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="accBtn subtle"
+                  onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+                  aria-label="Toggle day/night mode"
+                >
+                  <i className="material-icons" style={{ fontSize: 18 }}>
+                    {theme === "dark" ? "wb_sunny" : "nightlight_round"}
+                  </i>
+                  {theme === "dark" ? "Switch To Day" : "Switch To Night"}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
       <AwardUnlockModal open={unlockOpen} items={unlockItems} onClose={() => setUnlockOpen(false)} />
     </main>

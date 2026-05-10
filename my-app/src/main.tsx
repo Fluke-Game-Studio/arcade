@@ -1,6 +1,7 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import "./theme.css";
 
 import { AuthProvider } from "./auth/AuthContext";
 import Protected from "./auth/Protected";
@@ -58,6 +59,19 @@ function repairBodyScrollLockIfStale() {
 
 function ModalScrollRepair() {
   useEffect(() => {
+    const applyTheme = () => {
+      const saved = (localStorage.getItem("fg_theme") || "").toLowerCase();
+      const next = saved === "dark" ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", next);
+    };
+
+    applyTheme();
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "fg_theme") applyTheme();
+    };
+    window.addEventListener("storage", onStorage);
+
     const id = window.setInterval(() => {
       try {
         repairBodyScrollLockIfStale();
@@ -82,6 +96,7 @@ function ModalScrollRepair() {
     return () => {
       window.clearInterval(id);
       mo.disconnect();
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
