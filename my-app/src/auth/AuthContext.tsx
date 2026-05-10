@@ -148,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           username: String(me?.username || user.username),
           name: String(me?.employee_name || me?.name || user.name),
           role: mapRole(String(me?.employee_role || me?.role || "employee").toLowerCase() as any),
+          ...(me || {}),
         };
 
         setSession(refreshed, "authenticated");

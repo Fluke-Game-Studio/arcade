@@ -107,7 +107,6 @@ type ComposerState = {
   // DOC
   subjectOverride: string;
   address: string;
-  vars_city: string;
   vars_country: string;
 
   // OFFER
@@ -121,7 +120,6 @@ type ComposerState = {
 
   // WELCOME
   welcome_department: string;
-  welcome_address: string;
   welcome_city: string;
   welcome_dateStarted: string; // YYYY-MM-DD
   welcome_subjectOverride: string;
@@ -144,7 +142,6 @@ function defaultComposer(stage: Stage): ComposerState {
 
     subjectOverride: "",
     address: "",
-    vars_city: "",
     vars_country: "",
 
     dateStarted: "",
@@ -156,7 +153,6 @@ function defaultComposer(stage: Stage): ComposerState {
     vars_weeklyHours: "10-15",
 
     welcome_department: "Engineering",
-    welcome_address: "",
     welcome_city: "",
     welcome_dateStarted: "",
     welcome_subjectOverride: "Welcome to Fluke Games!",
@@ -181,6 +177,69 @@ function repairModalScrollLock() {
       if (document.body.style.paddingRight) document.body.style.paddingRight = "";
     } catch {}
   }, 0);
+}
+
+function pickApplicantAddressCity(details: any): { address: string; city: string } {
+  const payload = (details as any)?.payload || {};
+  const p = typeof payload === "string" ? (() => {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      return {};
+    }
+  })() : payload;
+
+  const pick = (...vals: any[]) => {
+    for (const v of vals) {
+      const s = String(v ?? "").trim();
+      if (s) return s;
+    }
+    return "";
+  };
+
+  const buckets = [
+    p?.applicant,
+    p?.general,
+    p?.answersReadable,
+    p?.answers_readable,
+    p?.answers_readable_map,
+    p?.answers,
+    p?.answersRaw,
+    p?.answers_raw,
+    p,
+  ];
+  const findByNeedles = (needles: string[]) => {
+    const ns = needles.map((x) => x.toLowerCase());
+    for (const bucket of buckets) {
+      if (!bucket || typeof bucket !== "object") continue;
+      for (const [k, v] of Object.entries(bucket)) {
+        const key = String(k || "").toLowerCase();
+        if (!ns.some((n) => key.includes(n))) continue;
+        const s = String(v ?? "").trim();
+        if (s) return s;
+      }
+    }
+    return "";
+  };
+  const address = pick(
+    (details as any)?.address,
+    p?.applicant?.address,
+    p?.general?.address,
+    p?.address,
+    p?.applicant?.street,
+    p?.street,
+    findByNeedles(["address", "street"])
+  );
+  const city = pick(
+    (details as any)?.city,
+    p?.applicant?.city,
+    p?.general?.city,
+    p?.city,
+    p?.applicant?.town,
+    p?.town,
+    findByNeedles(["city", "town"])
+  );
+  return { address, city };
 }
 
 // ------------------------------------------------------------
@@ -276,8 +335,7 @@ export default function ApplicantComposerModal({
 
     // best-effort prefills
     if (prefillAddress) base.address = prefillAddress;
-    if (prefillCity) base.vars_city = prefillCity;
-    if (prefillAddress) base.welcome_address = prefillAddress;
+    if (prefillCity && !base.address) base.address = prefillCity;
     if (prefillCity) base.welcome_city = prefillCity;
 
     setComposer(base);
@@ -286,6 +344,33 @@ export default function ApplicantComposerModal({
     buildPreview(base, applicant.email || "", applicant.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicant?.id]);
+
+  useEffect(() => {
+    if (!applicant?.id) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const d = await api.getApplicantById(applicant.id);
+        if (!mounted) return;
+        const resolved = pickApplicantAddressCity(d);
+        setComposer((prev) => {
+          const next = { ...prev };
+          if (!String(prev.address || "").trim()) {
+            const fullAddress = [resolved.address, resolved.city].filter(Boolean).join(", ");
+            next.address = fullAddress || resolved.address || resolved.city || "";
+          }
+          if (!String(prev.welcome_city || "").trim() && resolved.city) next.welcome_city = resolved.city;
+          buildPreview(next, applicant.email || toEmail || "", applicant.id);
+          return next;
+        });
+      } catch {
+        // keep current prefill
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [api, applicant?.id]);
 
   function buildPreview(c: ComposerState, email: string, applicantId: string) {
     const stage = c.stage;
@@ -296,11 +381,9 @@ export default function ApplicantComposerModal({
       const vars: Record<string, any> = {
         APPLICANT_ID: applicantId,
         department: c.welcome_department || "",
-        address: c.welcome_address || "",
         city: c.welcome_city || "",
         dateStarted: c.welcome_dateStarted || "",
         DEPARTMENT: c.welcome_department || "",
-        ADDRESS: c.welcome_address || "",
         CITY: c.welcome_city || "",
         START_DATE: c.welcome_dateStarted || "",
         ...(note
@@ -312,7 +395,6 @@ export default function ApplicantComposerModal({
         type: "WELCOME",
         roleTitle: c.roleTitle || "",
         department: c.welcome_department || "",
-        address: c.welcome_address || "",
         city: c.welcome_city || "",
         dateStarted: c.welcome_dateStarted || "",
         subjectOverride: c.welcome_subjectOverride || "",
@@ -380,11 +462,11 @@ export default function ApplicantComposerModal({
 
       if (docType === "NDA") {
         if (c.address?.trim()) vars.address = c.address.trim();
-        if (c.vars_city?.trim()) vars.city = c.vars_city.trim();
         if (c.vars_country?.trim()) vars.country = c.vars_country.trim();
       }
 
       if (docType === "OFFER") {
+        if (c.address?.trim()) vars.address = c.address.trim();
         if (c.vars_stipend?.trim()) vars.stipend = c.vars_stipend.trim();
         if (c.vars_workMode?.trim()) vars.workMode = c.vars_workMode.trim();
         if (c.vars_weeklyHours?.trim()) vars.weeklyHours = c.vars_weeklyHours.trim();
@@ -463,11 +545,9 @@ export default function ApplicantComposerModal({
         const vars: Record<string, any> = {
           APPLICANT_ID: applicantId,
           department: composer.welcome_department.trim(),
-          address: composer.welcome_address.trim(),
           city: composer.welcome_city.trim(),
           dateStarted: composer.welcome_dateStarted,
           DEPARTMENT: composer.welcome_department.trim(),
-          ADDRESS: composer.welcome_address.trim(),
           CITY: composer.welcome_city.trim(),
           START_DATE: composer.welcome_dateStarted,
           ...(note ? { extraInfo: note, EXTRA_INFO: note, DOC_NOTES: note, WELCOME_NOTES: note } : {}),
@@ -477,7 +557,6 @@ export default function ApplicantComposerModal({
           type: "WELCOME",
           roleTitle: composer.roleTitle.trim(),
           department: composer.welcome_department.trim(),
-          address: composer.welcome_address.trim(),
           city: composer.welcome_city.trim(),
           dateStarted: composer.welcome_dateStarted,
           subjectOverride: composer.welcome_subjectOverride.trim(),
@@ -540,11 +619,11 @@ export default function ApplicantComposerModal({
 
         if (docType === "NDA") {
           if (composer.address.trim()) vars.address = composer.address.trim();
-          if (composer.vars_city.trim()) vars.city = composer.vars_city.trim();
           if (composer.vars_country.trim()) vars.country = composer.vars_country.trim();
         }
 
         if (docType === "OFFER") {
+          if (composer.address.trim()) vars.address = composer.address.trim();
           if (composer.vars_stipend.trim()) vars.stipend = composer.vars_stipend.trim();
           if (composer.vars_workMode.trim()) vars.workMode = composer.vars_workMode.trim();
           if (composer.vars_weeklyHours.trim()) vars.weeklyHours = composer.vars_weeklyHours.trim();
@@ -690,11 +769,7 @@ export default function ApplicantComposerModal({
             </div>
 
             <div className="row" style={{ marginBottom: 0 }}>
-              <div className="input-field col s12 m6">
-                <input value={composer.vars_city} onChange={(e) => updateComposer({ vars_city: e.target.value })} />
-                <label className="active">vars.city</label>
-              </div>
-              <div className="input-field col s12 m6">
+              <div className="input-field col s12 m12">
                 <input value={composer.vars_country} onChange={(e) => updateComposer({ vars_country: e.target.value })} />
                 <label className="active">vars.country</label>
               </div>
@@ -704,6 +779,10 @@ export default function ApplicantComposerModal({
 
         {docType === "OFFER" && (
           <>
+            <div className="input-field" style={{ marginTop: 6 }}>
+              <input value={composer.address} onChange={(e) => updateComposer({ address: e.target.value })} />
+              <label className="active">address</label>
+            </div>
             <div className="row" style={{ marginBottom: 0 }}>
               <div className="col s12 m4" style={{ marginTop: 6 }}>
                 <div className="grey-text" style={{ fontWeight: 1000, marginBottom: 6 }}>
@@ -780,11 +859,7 @@ export default function ApplicantComposerModal({
             </div>
 
             <div className="row" style={{ marginBottom: 0 }}>
-              <div className="input-field col s12 m6">
-                <input value={composer.welcome_address} onChange={(e) => updateComposer({ welcome_address: e.target.value })} />
-                <label className="active">address</label>
-              </div>
-              <div className="input-field col s12 m6">
+              <div className="input-field col s12 m12">
                 <input value={composer.welcome_city} onChange={(e) => updateComposer({ welcome_city: e.target.value })} />
                 <label className="active">city</label>
               </div>

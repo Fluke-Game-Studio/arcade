@@ -76,7 +76,9 @@ function isHttpUrl(s: string) {
 
 function formatLongDate(yyyyMmDd: string) {
   if (!yyyyMmDd) return "";
-  const d = new Date(`${yyyyMmDd}T00:00:00`);
+  const m = String(yyyyMmDd).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return yyyyMmDd;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   if (Number.isNaN(d.getTime())) return yyyyMmDd;
   return d.toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -238,6 +240,7 @@ export default function Admin({
 
   const [rows, setRows] = useState<ApiUser[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [projectsLoadError, setProjectsLoadError] = useState<string>("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -281,10 +284,27 @@ export default function Admin({
       const data = await api.getUsers();
       setRows(data);
 
+      const fallbackProjects = Array.from(
+        new Set(
+          (Array.isArray(data) ? data : [])
+            .map((u: any) => safeStr(u?.project_id))
+            .filter(Boolean)
+        )
+      ).map((projectId) => ({ projectId, name: projectId }));
+
       try {
         const proj = await (api as any).getProjects?.();
-        if (Array.isArray(proj)) setProjects(proj);
-      } catch {}
+        if (Array.isArray(proj) && proj.length) {
+          setProjects(proj);
+          setProjectsLoadError("");
+        } else {
+          setProjects(fallbackProjects);
+          setProjectsLoadError("Project names are unavailable right now. Showing saved project IDs.");
+        }
+      } catch {
+        setProjects(fallbackProjects);
+        setProjectsLoadError("Could not load project catalog. Showing saved project IDs.");
+      }
 
       setErr(null);
     } catch (e: any) {
@@ -1637,10 +1657,17 @@ export default function Admin({
                       <option value="">Select Project</option>
                       {projects.map((p) => (
                         <option key={p.projectId} value={p.projectId}>
-                          {p.name}
+                          {safeStr((p as any).name) || safeStr((p as any).project_name)
+                            ? `${safeStr((p as any).name) || safeStr((p as any).project_name)} (${safeStr((p as any).projectId)})`
+                            : safeStr((p as any).projectId)}
                         </option>
                       ))}
                     </select>
+                    {projectsLoadError ? (
+                      <div style={{ marginTop: 6, fontSize: 11, color: "#b45309", fontWeight: 800 }}>
+                        {projectsLoadError}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
