@@ -31,6 +31,18 @@ type UpdateItem = {
   icon: string;
 };
 
+function parseYmdParts(raw: any): { y: number; m: number; d: number } | null {
+  const s = String(raw || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mm = Number(m[2]);
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mm) || !Number.isFinite(d)) return null;
+  if (mm < 1 || mm > 12 || d < 1 || d > 31) return null;
+  return { y, m: mm, d };
+}
+
 export default function Home() {
   const { user } = useAuth();
   const [docQuery, setDocQuery] = useState("");
@@ -40,23 +52,43 @@ export default function Home() {
   const releaseVersion = "v2026.04.12";
   const releaseStorageKey = `fg_home_whats_new_seen_${releaseVersion}`;
   const [showReleaseCard, setShowReleaseCard] = useState(false);
-
-  // Day/Night (persisted)
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const saved = (localStorage.getItem("fg_theme") || "").toLowerCase();
-    return saved === "dark" ? "dark" : "light";
-  });
-
-  useEffect(() => {
-    localStorage.setItem("fg_theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
+  const [showBirthdayModal, setShowBirthdayModal] = useState(false);
+  const birthdayGifs = useMemo(
+    () => [
+      "https://media.giphy.com/media/DCgM3qgbE6t4hIBb53/giphy.gif",
+      "https://media.giphy.com/media/ho3CRo4cGq0ee8QmJE/giphy.gif",
+      "https://media.giphy.com/media/llIaXiB50XJIekbAlv/giphy.gif",
+      "https://media.giphy.com/media/XzjvslOcWk19rBwevz/giphy.gif",
+      "https://media.giphy.com/media/8dLmtGoaDZJIMxwOGE/giphy.gif",
+      "https://media.giphy.com/media/6iYTWBi5fnS4tfvTbi/giphy.gif",
+    ],
+    []
+  );
+  const [birthdayGif, setBirthdayGif] = useState(birthdayGifs[0]);
+  const birthdayName = String((user as any)?.employee_name || (user as any)?.name || "Superstar").trim();
 
   useEffect(() => {
     const seen = localStorage.getItem(releaseStorageKey);
     if (seen === "1") return;
     setShowReleaseCard(true);
   }, [releaseStorageKey]);
+
+  useEffect(() => {
+    const dob = String((user as any)?.employee_dob || "").trim();
+    if (!dob) return;
+    const parts = parseYmdParts(dob);
+    if (!parts) return;
+    const now = new Date();
+    if (parts.m - 1 === now.getMonth() && parts.d === now.getDate()) {
+      setShowBirthdayModal(true);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!showBirthdayModal) return;
+    const idx = Math.floor(Math.random() * birthdayGifs.length);
+    setBirthdayGif(birthdayGifs[idx] || birthdayGifs[0]);
+  }, [showBirthdayModal, birthdayGifs]);
 
   const docCategories: DocCategory[] = useMemo(() => {
     const categories: DocCategory[] = [
@@ -297,101 +329,6 @@ export default function Home() {
 
         @media (min-width: 993px) {
           .stickyCol { position: sticky; top: 12px; }
-        }
-
-        /* âœ… FIX: Theme pill moved OUT of left column flow so it doesn't push the
-           left stack down and break alignment with the center column. */
-        .portalTopBar{
-          display:flex;
-          justify-content:flex-end;
-          align-items:center;
-          gap: 12px;
-          margin-bottom: 12px;
-        }
-        @media (max-width: 600px){
-          .portalTopBar{ justify-content: stretch; }
-        }
-
-        .themePill {
-          display:flex;
-          align-items:center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 10px 12px;
-          border-radius: 999px;
-          border: 1px solid var(--border);
-          background: rgba(255,255,255,0.70);
-          backdrop-filter: blur(10px);
-          box-shadow: 0 10px 26px rgba(2,6,23,0.06);
-          width: 100%;
-          max-width: 420px;
-        }
-        [data-theme="dark"] .themePill{
-          background: rgba(10,16,32,0.60);
-          box-shadow: 0 20px 55px rgba(0,0,0,0.40);
-        }
-
-        .themePillLeft{
-          display:flex;
-          align-items:center;
-          gap: 10px;
-          min-width: 0;
-          flex: 1 1 auto;
-        }
-        .themeDot{
-          width: 34px; height: 34px;
-          border-radius: 12px;
-          border: 1px solid var(--border);
-          background: linear-gradient(135deg, var(--blue), var(--blue2));
-          box-shadow: 0 12px 30px rgba(37,99,235,0.20);
-          display:flex; align-items:center; justify-content:center;
-          color: white;
-          flex: 0 0 auto;
-        }
-        .themeTitle{
-          font-weight: 950;
-          font-size: 12px;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-          color: var(--text);
-          opacity: 0.92;
-          line-height: 1.1;
-        }
-        .themeSub{
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 800;
-          margin-top: 2px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .themeBtn{
-          border: 1px solid var(--border);
-          background: var(--cardSolid);
-          color: var(--text);
-          border-radius: 999px;
-          padding: 9px 12px;
-          font-weight: 950;
-          cursor: pointer;
-          display:inline-flex;
-          align-items:center;
-          gap: 8px;
-          transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
-          flex: 0 0 auto;
-          min-width: 112px; /* keeps the pill stable between Day/Night */
-          justify-content: center;
-          white-space: nowrap;
-        }
-        .themeBtn:hover{
-          transform: translateY(-1px);
-          border-color: rgba(37,99,235,0.28);
-          box-shadow: 0 18px 40px rgba(37,99,235,0.10);
-        }
-        .themeBtn:focus{
-          outline: none;
-          box-shadow: var(--ring);
         }
 
         /* Cards */
@@ -756,39 +693,65 @@ export default function Home() {
         </div>
       )}
 
-      <div className="portalWrap" style={{ width: "100%", maxWidth: "none" }}>
-        {/* âœ… Theme toggle is now global (doesn't affect column alignment) */}
-        <div className="portalTopBar">
-          <div className="themePill">
-            <div className="themePillLeft">
-              <div className="themeDot" aria-hidden="true">
-                <i className="material-icons" style={{ fontSize: 18 }}>
-                  {theme === "dark" ? "dark_mode" : "light_mode"}
-                </i>
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div className="themeTitle">Theme</div>
-                <div className="themeSub">
-                  {theme === "dark" ? "Night mode" : "Day mode"} â€¢ click to toggle
+      {showBirthdayModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(2,6,23,.6)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div style={{ width: "min(620px, 95vw)", borderRadius: 18, overflow: "hidden", background: "#fff", border: "1px solid rgba(2,6,23,.12)", boxShadow: "0 30px 80px rgba(2,6,23,.35)" }}>
+            <div style={{ padding: 14 }}>
+              <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                <img src={birthdayGif} alt="Birthday Celebration" style={{ width: "100%", display: "block" }} />
+                <button
+                  type="button"
+                  className="btn-flat"
+                  onClick={() => setShowBirthdayModal(false)}
+                  aria-label="Close birthday modal"
+                  title="Close"
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    zIndex: 2,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 999,
+                    background: "rgba(2,6,23,.55)",
+                    color: "#fff",
+                  }}
+                >
+                  <i className="material-icons" style={{ fontSize: 20 }}>close</i>
+                </button>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    padding: "16px 14px 14px",
+                    background: "linear-gradient(0deg, rgba(2,6,23,.84) 0%, rgba(2,6,23,.58) 55%, rgba(2,6,23,0) 100%)",
+                    color: "#fff",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <img src="/logos/FlukeGames_TM.png" alt="Fluke Games" style={{ height: 58, width: "auto", objectFit: "contain", filter: "drop-shadow(0 2px 6px rgba(0,0,0,.35))" }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 1000, fontSize: 34, letterSpacing: ".01em", lineHeight: 1.02, textShadow: "0 3px 14px rgba(0,0,0,.45)" }}>
+                        Happy Birthday
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 30, fontWeight: 1000, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: "0 2px 10px rgba(0,0,0,.4)" }}>
+                        {birthdayName}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-
-            <button
-              type="button"
-              className="themeBtn"
-              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-              aria-label="Toggle day/night mode"
-              title="Toggle day/night mode"
-            >
-              <i className="material-icons" style={{ fontSize: 18 }}>
-                {theme === "dark" ? "wb_sunny" : "nightlight_round"}
-              </i>
-              {theme === "dark" ? "Day" : "Night"}
-            </button>
           </div>
         </div>
+      )}
 
+      <div className="portalWrap" style={{ width: "100%", maxWidth: "none" }}>
         <div className="row portalGridGap">
           {/* LEFT */}
           <div className="col s12 m3">

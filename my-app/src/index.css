@@ -12,6 +12,91 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+html[data-theme="light"] body {
+  background-color: #f7f9fc !important;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] body {
+  background-color: #070b15 !important;
+  color: rgba(255, 255, 255, 0.92);
+}
+html[data-theme="dark"] #root {
+  background: #070b15;
+}
+html[data-theme="dark"] .container,
+html[data-theme="dark"] main,
+html[data-theme="dark"] section {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .modal,
+html[data-theme="dark"] .collapsible,
+html[data-theme="dark"] .collection,
+html[data-theme="dark"] .dropdown-content,
+html[data-theme="dark"] .sidenav,
+html[data-theme="dark"] .tabs,
+html[data-theme="dark"] .z-depth-1,
+html[data-theme="dark"] .z-depth-2,
+html[data-theme="dark"] .z-depth-3 {
+  background-color: #0f172a !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+html[data-theme="dark"] .card .card-content,
+html[data-theme="dark"] .card .card-title,
+html[data-theme="dark"] .collection .collection-item,
+html[data-theme="dark"] .modal .modal-content,
+html[data-theme="dark"] .collapsible-header,
+html[data-theme="dark"] .collapsible-body {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+html[data-theme="dark"] .btn-flat,
+html[data-theme="dark"] .btn-small,
+html[data-theme="dark"] .btn {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+html[data-theme="dark"] .input-field input,
+html[data-theme="dark"] .input-field textarea,
+html[data-theme="dark"] input:not([type]),
+html[data-theme="dark"] input[type="text"]:not(.browser-default),
+html[data-theme="dark"] input[type="password"]:not(.browser-default),
+html[data-theme="dark"] input[type="email"]:not(.browser-default),
+html[data-theme="dark"] input[type="url"]:not(.browser-default),
+html[data-theme="dark"] input[type="date"]:not(.browser-default),
+html[data-theme="dark"] input[type="number"]:not(.browser-default),
+html[data-theme="dark"] textarea.materialize-textarea {
+  color: rgba(255, 255, 255, 0.95) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.5) !important;
+}
+
+html[data-theme="dark"] .input-field label,
+html[data-theme="dark"] .helper-text,
+html[data-theme="dark"] .select-wrapper input.select-dropdown {
+  color: rgba(203, 213, 225, 0.88) !important;
+}
+
+html[data-theme="dark"] table,
+html[data-theme="dark"] thead,
+html[data-theme="dark"] tbody,
+html[data-theme="dark"] tr,
+html[data-theme="dark"] th,
+html[data-theme="dark"] td {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+html[data-theme="dark"] .chip {
+  background: rgba(148, 163, 184, 0.16) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+}
 
 a {
   font-weight: 500;

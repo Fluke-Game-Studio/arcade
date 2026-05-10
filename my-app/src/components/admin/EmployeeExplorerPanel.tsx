@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type ApiUpdateSummary, type ApiUpdatesResponse, type ApiUser } from "../../api";
+import { type ApiProject, type ApiUpdateSummary, type ApiUpdatesResponse, type ApiUser } from "../../api";
 import { useAuth } from "../../auth/AuthContext";
 
 declare const M: any;
@@ -83,7 +83,7 @@ function getUserName(user: Partial<ApiUser>) {
 }
 
 function getUserAvatar(user: Partial<ApiUser>) {
-  return safeStr((user as any)?.employee_picture) || safeStr((user as any)?.employee_profilepicture);
+  return safeStr((user as any)?.employee_profilepicture) || safeStr((user as any)?.employee_picture);
 }
 
 function isLinkedInConnected(user: Partial<ApiUser>) {
@@ -99,6 +99,48 @@ function isDiscordConnected(user: Partial<ApiUser>) {
     (user as any)?.discord_connected ||
       safeStr((user as any)?.discord_connected_at) ||
       safeStr((user as any)?.discord_member_id)
+  );
+}
+
+function SocialLogoIcon({
+  network,
+  connected,
+  size = 24,
+}: {
+  network: "linkedin" | "discord";
+  connected: boolean;
+  size?: number;
+}) {
+  const bg = network === "linkedin" ? "#0a66c2" : "#5865f2";
+  const label = network === "linkedin" ? "LinkedIn" : "Discord";
+  return (
+    <span
+      title={`${label} ${connected ? "connected" : "not connected"}`}
+      aria-label={`${label} ${connected ? "connected" : "not connected"}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        borderRadius: 999,
+        background: bg,
+        color: "#fff",
+        border: connected ? "2px solid #16a34a" : "2px solid #cbd5e1",
+        opacity: connected ? 1 : 0.56,
+      }}
+    >
+      {network === "linkedin" ? (
+        <span style={{ fontWeight: 1000, fontSize: Math.max(11, Math.floor(size * 0.45)), lineHeight: 1 }}>in</span>
+      ) : (
+        <svg viewBox="0 0 24 24" width={Math.max(12, Math.floor(size * 0.56))} height={Math.max(12, Math.floor(size * 0.56))} aria-hidden="true" focusable="false">
+          <path
+            fill="currentColor"
+            d="M20.317 4.369a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037 13.714 13.714 0 0 0-.608 1.249 18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.249.077.077 0 0 0-.08-.037 19.736 19.736 0 0 0-4.885 1.515.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.994 3.03.077.077 0 0 0 .084-.028 14.16 14.16 0 0 0 1.226-1.994.076.076 0 0 0-.041-.104 13.12 13.12 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.011c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.1.246.198.373.292a.077.077 0 0 1-.006.128 12.297 12.297 0 0 1-1.873.892.077.077 0 0 0-.04.104 15.43 15.43 0 0 0 1.225 1.994.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.055c.5-5.177-.838-9.674-3.548-13.66a.061.061 0 0 0-.031-.03ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.166 1.095 2.156 2.418 0 1.334-.955 2.419-2.156 2.419Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.166 1.095 2.156 2.418 0 1.334-.946 2.419-2.156 2.419Z"
+          />
+        </svg>
+      )}
+    </span>
   );
 }
 
@@ -193,6 +235,8 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
   const isSuper = getRole(currentUser) === "super";
   const isAdmin = isSuper || getRole(currentUser) === "admin";
   const [users, setUsers] = useState<ApiUser[]>([]);
+  const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [projectsError, setProjectsError] = useState("");
   const [search, setSearch] = useState("");
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersError, setUsersError] = useState("");
@@ -238,6 +282,25 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         if (mounted) setUsersError(e?.message || "Failed to load employees.");
       } finally {
         if (mounted) setLoadingUsers(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [api]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setProjectsError("");
+        const list = await api.getProjects();
+        if (!mounted) return;
+        setProjects(Array.isArray(list) ? list : []);
+      } catch (e: any) {
+        if (!mounted) return;
+        setProjects([]);
+        setProjectsError(e?.message || "Could not load projects.");
       }
     })();
     return () => {
@@ -637,7 +700,6 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         // employee_role is shown read-only in UI; do not patch it here
         employee_title: safeStr(editForm.employee_title) || undefined,
         employee_picture: safeStr(editForm.employee_picture) || undefined,
-        employee_profilepicture: safeStr(editForm.employee_picture) || undefined,
         employee_phonenumber: safeStr(editForm.employee_phonenumber) || undefined,
         department: safeStr(editForm.department) || undefined,
         location: safeStr(editForm.location) || undefined,
@@ -742,44 +804,6 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                       <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {safeStr((u as any)?.employee_title) || safeStr((u as any)?.department) || getRole(u) || "employee"}
                       </div>
-                      {isLinkedInConnected(u) ? (
-                        <div style={{ marginTop: 4 }}>
-                          <span style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "4px 9px",
-                            borderRadius: 999,
-                            background: "rgba(34,197,94,0.12)",
-                            color: "#166534",
-                            border: "1px solid rgba(34,197,94,0.20)",
-                            fontSize: 11,
-                            fontWeight: 900,
-                          }}>
-                            <i className="material-icons" style={{ fontSize: 14 }}>check_circle</i>
-                            LinkedIn Connected
-                          </span>
-                        </div>
-                      ) : null}
-                      {isDiscordConnected(u) ? (
-                        <div style={{ marginTop: 4 }}>
-                          <span style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "4px 9px",
-                            borderRadius: 999,
-                            background: "rgba(88,101,242,0.12)",
-                            color: "#312e81",
-                            border: "1px solid rgba(88,101,242,0.20)",
-                            fontSize: 11,
-                            fontWeight: 900,
-                          }}>
-                            <i className="material-icons" style={{ fontSize: 14 }}>check_circle</i>
-                            Discord Connected
-                          </span>
-                        </div>
-                      ) : null}
                     </div>
                     <button
                       type="button"
@@ -813,45 +837,9 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                   <div style={{ fontWeight: 1000, color: "#0f172a" }}>{selectedUser ? getUserName(selectedUser) : "Select an employee"}</div>
                   <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>{selectedUser ? safeStr((selectedUser as any)?.employee_title) : "Weekly summaries appear here."}</div>
                   {selectedUser ? (
-                    <div style={{ marginTop: 6 }}>
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "4px 9px",
-                        borderRadius: 999,
-                        background: isLinkedInConnected(selectedUser) ? "rgba(34,197,94,0.12)" : "rgba(148,163,184,0.12)",
-                        color: isLinkedInConnected(selectedUser) ? "#166534" : "#475569",
-                        border: isLinkedInConnected(selectedUser) ? "1px solid rgba(34,197,94,0.20)" : "1px solid rgba(148,163,184,0.18)",
-                        fontSize: 11,
-                        fontWeight: 900,
-                      }}>
-                        <i className="material-icons" style={{ fontSize: 14 }}>
-                          {isLinkedInConnected(selectedUser) ? "check_circle" : "link"}
-                        </i>
-                        {isLinkedInConnected(selectedUser) ? "LinkedIn Connected" : "LinkedIn Not Connected"}
-                      </span>
-                    </div>
-                  ) : null}
-                  {selectedUser ? (
-                    <div style={{ marginTop: 6 }}>
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "4px 9px",
-                        borderRadius: 999,
-                        background: isDiscordConnected(selectedUser) ? "rgba(88,101,242,0.12)" : "rgba(148,163,184,0.12)",
-                        color: isDiscordConnected(selectedUser) ? "#312e81" : "#475569",
-                        border: isDiscordConnected(selectedUser) ? "1px solid rgba(88,101,242,0.20)" : "1px solid rgba(148,163,184,0.18)",
-                        fontSize: 11,
-                        fontWeight: 900,
-                      }}>
-                        <i className="material-icons" style={{ fontSize: 14 }}>
-                          {isDiscordConnected(selectedUser) ? "check_circle" : "sports_esports"}
-                        </i>
-                        {isDiscordConnected(selectedUser) ? "Discord Connected" : "Discord Not Connected"}
-                      </span>
+                    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 7 }}>
+                      <SocialLogoIcon network="linkedin" connected={isLinkedInConnected(selectedUser)} size={26} />
+                      <SocialLogoIcon network="discord" connected={isDiscordConnected(selectedUser)} size={26} />
                     </div>
                   ) : null}
                 </div>
@@ -1186,22 +1174,50 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                 }>
               ).map(({ label, key, span, disabled }) => (
                 <div key={String(key)} style={{ gridColumn: `span ${span}` }}>
-                  <div className="input-field">
-                    <input
-                      id={`edit_${key}`}
-                      value={editForm[key] || ""}
-                      onChange={(e) =>
-                        setEditForm((p) => ({
-                          ...p,
-                          [key]: e.target.value,
-                        }))
-                      }
-                      disabled={!!disabled}
-                    />
-                    <label className={editForm[key] ? "active" : ""} htmlFor={`edit_${key}`}>
-                      {label}
-                    </label>
-                  </div>
+                  {key === "project_id" ? (
+                    <div className="input-field">
+                      <select
+                        id="edit_project_id"
+                        className="browser-default"
+                        value={safeStr(editForm.project_id)}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            project_id: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Select Project</option>
+                        {projects.map((p) => (
+                          <option key={p.projectId} value={p.projectId}>
+                            {`${safeStr(p.name)} (${safeStr(p.projectId)})`}
+                          </option>
+                        ))}
+                      </select>
+                      {projectsError ? (
+                        <div style={{ marginTop: 6, fontSize: 11, color: "#b45309", fontWeight: 800 }}>
+                          {projectsError}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="input-field">
+                      <input
+                        id={`edit_${key}`}
+                        value={editForm[key] || ""}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            [key]: e.target.value,
+                          }))
+                        }
+                        disabled={!!disabled}
+                      />
+                      <label className={editForm[key] ? "active" : ""} htmlFor={`edit_${key}`}>
+                        {label}
+                      </label>
+                    </div>
+                  )}
                 </div>
               ))}
               <div style={{ gridColumn: "span 4" }}>
