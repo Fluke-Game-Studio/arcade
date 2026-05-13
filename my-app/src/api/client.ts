@@ -33,6 +33,13 @@ import type {
     StartLinkedInConnectResponse,
     StartDiscordConnectBody,
     StartDiscordConnectResponse,
+    ApiCustomer,
+    ApiProduct,
+    CreateCustomerBody,
+    UpdateCustomerBody,
+    CreateCustomerUserBody,
+    UpsertEntitlementBody,
+    CustomerFlowRow,
 } from "./types";
 
 import type {
@@ -429,6 +436,171 @@ export class ApiClient {
       );
     }
     return payload?.ok ? payload : { ok: true };
+  }
+
+  async getCustomers(): Promise<ApiCustomer[]> {
+    const r = await fetch(`${API_BASE}/admin/customers`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getCustomers failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    if (Array.isArray(payload?.items)) return payload.items as ApiCustomer[];
+    if (Array.isArray(payload)) return payload as ApiCustomer[];
+    return [];
+  }
+
+  async createCustomer(body: CreateCustomerBody): Promise<{ ok: true; customer_id: string }> {
+    const r = await fetch(`${API_BASE}/admin/customers`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `createCustomer failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as { ok: true; customer_id: string };
+  }
+
+  async updateCustomer(customerId: string, body: UpdateCustomerBody): Promise<{ ok: true }> {
+    const r = await fetch(`${API_BASE}/admin/customers/${encodeURIComponent(customerId)}`, {
+      method: "PATCH",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `updateCustomer failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload?.ok ? payload : { ok: true };
+  }
+
+  async getCustomerFlow(customerId: string): Promise<CustomerFlowRow[]> {
+    const r = await fetch(`${API_BASE}/admin/customers/${encodeURIComponent(customerId)}/flow`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getCustomerFlow failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return Array.isArray(payload?.items) ? (payload.items as CustomerFlowRow[]) : [];
+  }
+
+  async createCustomerUser(customerId: string, body: CreateCustomerUserBody): Promise<{ ok: true; user_id: string }> {
+    const r = await fetch(`${API_BASE}/admin/customers/${encodeURIComponent(customerId)}/users`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `createCustomerUser failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as { ok: true; user_id: string };
+  }
+
+  async createCustomerFromEmployee(body: {
+    username: string;
+    customer_type?: "internal" | "test" | "final" | string;
+    status?: "active" | "suspended" | "restricted" | string;
+    password?: string;
+    role?: "owner" | "admin" | "member" | string;
+    user_status?: "active" | "disabled" | string;
+  }): Promise<{ ok: true; customer_id: string; user_id: string }> {
+    const r = await fetch(`${API_BASE}/admin/customers/from-employee`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `createCustomerFromEmployee failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as { ok: true; customer_id: string; user_id: string };
+  }
+
+  async upsertCustomerEntitlement(customerId: string, body: UpsertEntitlementBody): Promise<{ ok: true }> {
+    const r = await fetch(`${API_BASE}/admin/customers/${encodeURIComponent(customerId)}/entitlements`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `upsertCustomerEntitlement failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload?.ok ? payload : { ok: true };
+  }
+
+  async getProductsAdmin(): Promise<ApiProduct[]> {
+    const r = await fetch(`${API_BASE}/admin/products`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getProductsAdmin failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    if (Array.isArray(payload?.items)) return payload.items as ApiProduct[];
+    if (Array.isArray(payload)) return payload as ApiProduct[];
+    return [];
+  }
+
+  async getEmployeeCustomerDownloads(): Promise<{ customer: any; entitlements: any[]; items: any[] }> {
+    const r = await fetch(`${API_BASE}/customer/employee/downloads`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getEmployeeCustomerDownloads failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as { customer: any; entitlements: any[]; items: any[] };
+  }
+
+  async syncProductFromProject(body: {
+    project_id: string;
+    product_id?: string;
+    name: string;
+    release_status: "internal" | "candidate" | "released" | string;
+    channel?: "alpha" | "beta" | "stable" | string;
+    platform?: string;
+    status?: "active" | "archived" | string;
+  }): Promise<{ ok: true; product_id: string }> {
+    const r = await fetch(`${API_BASE}/admin/products/sync-from-project`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `syncProductFromProject failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as { ok: true; product_id: string };
   }
 
   async getUpdates(params?: {

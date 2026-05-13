@@ -8,7 +8,7 @@ import AwardUnlockModal from "../components/account/AwardUnlockModal";
 
 declare const M: any;
 
-type AccountTabKey = "updates" | "details" | "password" | "gamification" | "settings";
+type AccountTabKey = "updates" | "details" | "password" | "gamification" | "downloads" | "settings";
 
 export default function Account() {
   const { user, api, refreshSession } = useAuth();
@@ -19,6 +19,25 @@ export default function Account() {
   });
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [unlockItems, setUnlockItems] = useState<any[]>([]);
+  const [dlLoading, setDlLoading] = useState(false);
+  const [dlError, setDlError] = useState("");
+  const [dlData, setDlData] = useState<{ customer?: any; items?: any[] } | null>(null);
+  const [scopeByProduct, setScopeByProduct] = useState<Record<string, string>>({});
+
+  function humanizeDownloadsError(message: string) {
+    const raw = String(message || "").toLowerCase();
+    if (
+      raw.includes("customer-account-not-found") ||
+      raw.includes("customer-not-found") ||
+      raw.includes("employee-email-missing")
+    ) {
+      return "If you are a test user or need access to builds, please ask your manager or lead to grant access. (politely)";
+    }
+    if (raw.includes("customer-type-not-allowed")) {
+      return "Downloads are currently available only for internal/test customer access. Please contact your manager or lead. (politely)";
+    }
+    return message || "Unable to load customer downloads right now.";
+  }
 
   useEffect(() => {
     localStorage.setItem("fg_theme", theme);
@@ -28,6 +47,29 @@ export default function Account() {
   useEffect(() => {
     if (typeof M !== "undefined") setTimeout(() => M.updateTextFields(), 0);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "downloads") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setDlLoading(true);
+        const data = await (api as any).getEmployeeCustomerDownloads();
+        if (cancelled) return;
+        setDlData(data || null);
+        setDlError("");
+      } catch (e: any) {
+        if (cancelled) return;
+        setDlData(null);
+        setDlError(humanizeDownloadsError(String(e?.message || "Failed to load customer downloads")));
+      } finally {
+        if (!cancelled) setDlLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, api]);
 
   function showUnlocks(resp: any, achievement: any) {
     const achievementItem =
@@ -656,6 +698,7 @@ export default function Account() {
             <TabButton tab="details" icon="badge" label="Edit Details" />
             <TabButton tab="password" icon="lock" label="Edit Password" />
             <TabButton tab="gamification" icon="emoji_events" label="Achievements" />
+            <TabButton tab="downloads" icon="download" label="Customer Downloads" />
             <TabButton tab="settings" icon="settings" label="Settings" />
           </div>
         </div>
@@ -671,6 +714,96 @@ export default function Account() {
         )}
 
         {activeTab === "gamification" && <AccountGamification />}
+
+        {activeTab === "downloads" && (
+          <section className="panelCard" style={{ background: "#fff" }}>
+            <div className="panelHead">
+              <div>
+                <div className="h">Customer Downloads</div>
+                <div className="p">Internal/Test customer account linked to your employee email</div>
+              </div>
+            </div>
+            <div style={{ padding: 16 }}>
+              {dlLoading ? <div style={{ color: "#64748b" }}>Loading...</div> : null}
+              {dlError ? (
+                <div
+                  style={{
+                    color: dlError.toLowerCase().includes("(politely)") ? "#15803d" : "#b91c1c",
+                    fontWeight: 700,
+                  }}
+                >
+                  {dlError}
+                </div>
+              ) : null}
+              {!dlLoading && !dlError && !dlData?.customer ? (
+                <div className="emptyState">No linked internal/test customer account found.</div>
+              ) : null}
+              {!dlLoading && !dlError && dlData?.customer ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12 }}>
+                    <div style={{ fontWeight: 900 }}>{String((dlData as any)?.customer?.name || "Customer")}</div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>
+                      {(dlData as any)?.customer?.customer_id} | {(dlData as any)?.customer?.customer_type} | {(dlData as any)?.customer?.status}
+                    </div>
+                  </div>
+                  {!Array.isArray((dlData as any)?.items) || !(dlData as any)?.items?.length ? (
+                    <div
+                      style={{
+                        border: "1px dashed #cbd5e1",
+                        borderRadius: 12,
+                        padding: 12,
+                        color: "#475569",
+                        fontWeight: 700,
+                        background: "#f8fafc",
+                      }}
+                    >
+                      No project build access is assigned yet for this customer. Please ask your manager/lead to assign product entitlements.
+                    </div>
+                  ) : null}
+                  {((dlData as any)?.items || []).map((it: any) => {
+                    const scopes = Array.isArray(it?.scopes) && it.scopes.length ? it.scopes : ["internal"];
+                    const selectedScope = scopeByProduct[it.product_id] || scopes[0];
+                    const releases = Array.isArray(it?.releasesByScope?.[selectedScope]) ? it.releasesByScope[selectedScope] : [];
+                    return (
+                      <div key={String(it.product_id)} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12 }}>
+                        <div style={{ fontWeight: 900 }}>{String(it.name || it.product_id)}</div>
+                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                          Project: {String(it.project_id || "-")} | Product: {String(it.product_id || "-")}
+                        </div>
+                        <div style={{ marginTop: 8 }}>
+                          <label style={{ fontSize: 12, color: "#64748b", marginRight: 8 }}>Environment</label>
+                          <select
+                            value={selectedScope}
+                            onChange={(e) => setScopeByProduct((p) => ({ ...p, [it.product_id]: e.target.value }))}
+                            style={{ height: 32, minWidth: 160, border: "1px solid #d1d5db", borderRadius: 8 }}
+                          >
+                            {scopes.map((s: string) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+                          {releases.map((r: any, idx: number) => (
+                            <div key={`${it.product_id}-${selectedScope}-${idx}`} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, minHeight: 92, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                              <div>
+                                <div style={{ fontWeight: 800 }}>{String(r.version || "v0.0.0")}</div>
+                                <div style={{ fontSize: 12, color: "#64748b" }}>{String(r.release_status || "-")} | {String(r.platform || "all")}</div>
+                              </div>
+                              <button type="button" className="accBtn subtle" title="Download">
+                                <i className="material-icons" style={{ fontSize: 18 }}>download</i>
+                              </button>
+                            </div>
+                          ))}
+                          {!releases.length ? <div className="emptyState">No releases in this scope.</div> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        )}
 
         {activeTab === "settings" && (
           <section className="panelCard" style={{ background: "#fff" }}>

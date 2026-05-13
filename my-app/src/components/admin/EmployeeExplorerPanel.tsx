@@ -20,6 +20,7 @@ type EditForm = {
   project_access: boolean;
   version_control_access: boolean;
   employee_id: string;
+  employee_manager: string;
   password?: string;
   revoked: boolean;
 };
@@ -40,6 +41,7 @@ const EMPTY_EDIT: EditForm = {
   project_access: true,
   version_control_access: false,
   employee_id: "",
+  employee_manager: "",
   password: "",
   revoked: false,
 };
@@ -247,13 +249,13 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
   const [selectedWeek, setSelectedWeek] = useState("");
   const [selectedAttachment, setSelectedAttachment] = useState("");
   const [signedAttachmentUrls, setSignedAttachmentUrls] = useState<Record<string, string>>({});
-  const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [createAsCustomer, setCreateAsCustomer] = useState(false);
+  const [editPasswordOpen, setEditPasswordOpen] = useState(false);
   const [editingUsername, setEditingUsername] = useState("");
   const [editForm, setEditForm] = useState<EditForm>({ ...EMPTY_EDIT });
   const editModalRef = useRef<HTMLDivElement | null>(null);
   const composeModalRef = useRef<HTMLDivElement | null>(null);
-  const [composeOpen, setComposeOpen] = useState(false);
   const [composeSending, setComposeSending] = useState(false);
   const [composeGenerating, setComposeGenerating] = useState(false);
   const [composeDocType, setComposeDocType] = useState<"EXPERIENCE" | "RECOMMENDATION">("EXPERIENCE");
@@ -564,10 +566,12 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
       project_access: (userRow as any)?.project_access !== false,
       version_control_access: (userRow as any)?.version_control_access === true,
       employee_id: safeStr((userRow as any)?.employee_id),
+      employee_manager: safeStr((userRow as any)?.employee_manager),
       password: "",
       revoked: !!(userRow as any)?.revoked,
     });
-    setEditOpen(true);
+    setCreateAsCustomer(false);
+    setEditPasswordOpen(false);
     requestAnimationFrame(() => {
       const inst = M?.Modal?.getInstance?.(editModalRef.current) || M?.Modal?.init?.(editModalRef.current);
       inst?.open?.();
@@ -582,7 +586,8 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
   function closeEdit() {
     const inst = M?.Modal?.getInstance?.(editModalRef.current) || M?.Modal?.init?.(editModalRef.current);
     inst?.close?.();
-    setEditOpen(false);
+    setCreateAsCustomer(false);
+    setEditPasswordOpen(false);
   }
 
   function openEmployeeDocComposer(userRow: ApiUser) {
@@ -599,7 +604,6 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
     setComposePeopleSkills("");
     setComposeWordCount("220");
     setComposeRecommendationBody("");
-    setComposeOpen(true);
     requestAnimationFrame(() => {
       const inst = M?.Modal?.getInstance?.(composeModalRef.current) || M?.Modal?.init?.(composeModalRef.current);
       inst?.open?.();
@@ -614,7 +618,6 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
   function closeEmployeeDocComposer() {
     const inst = M?.Modal?.getInstance?.(composeModalRef.current) || M?.Modal?.init?.(composeModalRef.current);
     inst?.close?.();
-    setComposeOpen(false);
   }
 
   async function generateRecommendationPreview() {
@@ -707,6 +710,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         // Allow clearing back to "none" (empty string) by sending it explicitly.
         project_setup: String(editForm.project_setup ?? ""),
         employee_id: safeStr(editForm.employee_id) || undefined,
+        employee_manager: safeStr(editForm.employee_manager) || undefined,
         revoked: !!editForm.revoked,
       };
       if (isSuper) {
@@ -714,8 +718,16 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         patch.project_access = !!editForm.project_access;
         patch.version_control_access = !!editForm.version_control_access;
       }
-      if (safeStr(editForm.password)) patch.password = editForm.password;
+      if (editPasswordOpen && safeStr(editForm.password)) patch.password = editForm.password;
       await api.updateUser(patch);
+
+      if (createAsCustomer) {
+        await (api as any).createCustomerFromEmployee({
+          username: safeStr(editForm.username),
+          ...(editPasswordOpen && safeStr(editForm.password) ? { password: safeStr(editForm.password) } : {}),
+        });
+      }
+
       M?.toast?.({ html: "Employee updated.", classes: "green" });
       setEditSaving(false);
       closeEdit();
@@ -1015,7 +1027,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         </div>
       </div>
 
-      <div ref={composeModalRef} className={`modal modal-fixed-footer ${composeOpen ? "open" : ""}`} style={{ maxHeight: "90%" }}>
+      <div ref={composeModalRef} className="modal modal-fixed-footer" style={{ maxHeight: "90%" }}>
         <div className="modal-content">
           <h5 style={{ fontWeight: 1000, marginBottom: 6 }}>Employee Letter Composer</h5>
           <p className="grey-text" style={{ marginTop: 0, fontWeight: 700 }}>
@@ -1148,7 +1160,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         </div>
       </div>
 
-      <div ref={editModalRef} className={`modal modal-fixed-footer ${editOpen ? "open" : ""}`} style={{ maxHeight: "90%" }}>
+      <div ref={editModalRef} className="modal modal-fixed-footer" style={{ maxHeight: "90%" }}>
         <form onSubmit={saveEdit}>
           <div className="modal-content">
             <h5 style={{ fontWeight: 1000, marginBottom: 6 }}>Edit Employee</h5>
@@ -1164,6 +1176,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                   { label: "Phone", key: "employee_phonenumber", span: 4, disabled: false },
                   { label: "Department", key: "department", span: 4, disabled: false },
                   { label: "Location", key: "location", span: 4, disabled: false },
+                  { label: "Manager", key: "employee_manager", span: 4, disabled: false },
                   { label: "Project ID", key: "project_id", span: 6, disabled: false },
                   { label: "Employee ID", key: "employee_id", span: 6, disabled: !isSuper },
                 ] satisfies Array<{
@@ -1199,6 +1212,30 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                           {projectsError}
                         </div>
                       ) : null}
+                    </div>
+                  ) : key === "employee_manager" ? (
+                    <div className="input-field">
+                      <select
+                        id="edit_employee_manager"
+                        className="browser-default"
+                        value={safeStr(editForm.employee_manager)}
+                        onChange={(e) =>
+                          setEditForm((p) => ({
+                            ...p,
+                            employee_manager: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">No manager</option>
+                        {users
+                          .filter((u) => safeStr((u as any).username) !== safeStr(editForm.username))
+                          .sort((a, b) => getUserName(a).localeCompare(getUserName(b)))
+                          .map((u) => (
+                            <option key={safeStr((u as any).username)} value={safeStr((u as any).username)}>
+                              {`${safeStr((u as any).employee_name || (u as any).username)} (${safeStr((u as any).username)})`}
+                            </option>
+                          ))}
+                      </select>
                     </div>
                   ) : (
                     <div className="input-field">
@@ -1276,6 +1313,51 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                     <option value="ProjectCompleteCleanup">ProjectCompleteCleanup</option>
                   </select>
                 </div>
+              </div>
+              <div style={{ gridColumn: "span 6" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditPasswordOpen((v) => !v);
+                      if (editPasswordOpen) {
+                        setEditForm((p) => ({ ...p, password: "" }));
+                      }
+                    }}
+                    style={{ alignSelf: "flex-start", border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 10px", background: "#fff", cursor: "pointer", fontWeight: 700 }}
+                  >
+                    {editPasswordOpen ? "Cancel Password Edit" : "Edit Password"}
+                  </button>
+                  {editPasswordOpen ? (
+                    <div className="input-field" style={{ marginTop: 0 }}>
+                      <input
+                        id="edit_password"
+                        type="password"
+                        value={safeStr(editForm.password)}
+                        onChange={(e) => setEditForm((p) => ({ ...p, password: e.target.value }))}
+                      />
+                      <label className={safeStr(editForm.password) ? "active" : ""} htmlFor="edit_password">
+                        New Password
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div style={{ gridColumn: "span 12", marginTop: 6 }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    className="filled-in"
+                    checked={createAsCustomer}
+                    onChange={(e) => setCreateAsCustomer(e.target.checked)}
+                  />
+                  <span>Create this profile as Customer (internal user)</span>
+                </label>
+                {createAsCustomer ? (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "#475569", fontWeight: 700 }}>
+                    Customer creation and login mapping are handled fully by backend.
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

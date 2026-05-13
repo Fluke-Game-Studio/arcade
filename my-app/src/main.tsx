@@ -21,6 +21,7 @@ import ApiEndpointsReadOnly from "./pages/ApiEndpointsReadOnly";
 import WeeklyUpdate from "./pages/WeeklyUpdate";
 import RetroBoard from "./pages/RetroBoard";
 import Applicants from "./pages/Applicants";
+import CustomersAdmin from "./pages/CustomersAdmin";
 import { UpdatesProvider } from "./pages/UpdatesContext";
 import CharacterTutorialPage from "./pages/CharacterTutorialPage";
 import ManagerAgentBuilderPage from "./pages/ManagerAgentBuilderPage";
@@ -131,6 +132,14 @@ const router = createBrowserRouter([
         element: (
           <Protected roles={["admin", "super"]}>
             <JobsAdmin />
+          </Protected>
+        ),
+      },
+      {
+        path: "/admin/customers",
+        element: (
+          <Protected roles={["admin", "super"]}>
+            <CustomersAdmin />
           </Protected>
         ),
       },
