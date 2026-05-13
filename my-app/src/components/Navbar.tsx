@@ -92,6 +92,7 @@ export default function Navbar() {
       show: isAdminish,
       items: [
         { to: "/admin", label: "Admin Dashboard" },
+        { to: "/admin/customers", label: "Customers" },
         { to: "/applicants", label: "Applicants" },
         { to: "/admin/jobs", label: "Jobs Admin" },
       ],
@@ -406,23 +407,25 @@ export default function Navbar() {
     if (!items.length) return null;
 
     return (
-      <li style={{ padding: "8px 0 4px" }}>
-        <div
-          style={{
-            padding: "10px 16px 5px",
-            fontSize: 11,
-            fontWeight: 900,
-            letterSpacing: 1.3,
-            textTransform: "uppercase",
-            color: "rgba(125,211,252,0.86)",
-          }}
-        >
-          {title}
-        </div>
+      <>
+        <li style={{ padding: "8px 0 4px" }}>
+          <div
+            style={{
+              padding: "10px 16px 5px",
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: 1.3,
+              textTransform: "uppercase",
+              color: "rgba(125,211,252,0.86)",
+            }}
+          >
+            {title}
+          </div>
+        </li>
         {items.map((l) => (
-          <MobileLink key={l.to} to={l.to} label={l.label} />
+          <MobileLink key={`${title}:${l.to}`} to={l.to} label={l.label} />
         ))}
-      </li>
+      </>
     );
   };
 

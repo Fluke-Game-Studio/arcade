@@ -8,6 +8,9 @@ export type ApiProject = {
   project_budget_total?: number | string;
   project_budget_consumed?: number | string;
   status?: string;
+  release_status?: "dev" | "internal" | "candidate" | "released" | string;
+  channel?: "alpha" | "beta" | "stable" | string;
+  platform?: string;
   createdAt?: string;
   updatedAt?: string;
   last_activity_at?: string;
@@ -23,4 +26,7 @@ export type SaveProjectBody = {
   project_budget_total?: string | number;
   project_budget_consumed?: string | number;
   status?: string;
+  release_status?: "dev" | "internal" | "candidate" | "released" | string;
+  channel?: "alpha" | "beta" | "stable" | string;
+  platform?: string;
 };

@@ -6,3 +6,4 @@ export * from "./jobs";
 export * from "./applicants";
 export * from "./gamification";
 export * from "./endpoints";
+export * from "./customers";

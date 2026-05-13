@@ -24,12 +24,22 @@ function roleLower(u?: ApiUser | null) {
   return safeStr((u as any)?.employee_role).toLowerCase() || "employee";
 }
 
+function readBool(v: any, fallback = false) {
+  if (typeof v === "boolean") return v;
+  const s = safeStr(v).toLowerCase();
+  if (!s) return fallback;
+  if (s === "true" || s === "1" || s === "yes") return true;
+  if (s === "false" || s === "0" || s === "no") return false;
+  return fallback;
+}
+
 export default function Employees() {
   const { api } = useAuth();
 
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [brokenAvatarKeys, setBrokenAvatarKeys] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let mount = true;
@@ -413,6 +423,20 @@ export default function Employees() {
                 const email = safeStr(u.employee_email) || "";
                 const empId = safeStr((u as any).employee_id) || "";
                 const role = roleLower(u);
+                const userKey = safeStr((u as any).username) || safeStr((u as any).employee_email) || name;
+                const avatarUrl = safeStr((u as any).employee_profilepicture) || safeStr((u as any).employee_picture);
+                const avatarBroken = !!brokenAvatarKeys[userKey];
+                const revoked = readBool((u as any).revoked, false);
+                const portalAccess = readBool((u as any).portal_access, true);
+                const projectAccess = readBool((u as any).project_access, true);
+                const vcsAccess = readBool((u as any).version_control_access, false);
+                const hasAnyMissingAccess = !portalAccess || !projectAccess || !vcsAccess;
+                const dotColor = revoked ? "#ef4444" : hasAnyMissingAccess ? "#f59e0b" : "#22c55e";
+                const dotTitle = revoked
+                  ? "Revoked"
+                  : hasAnyMissingAccess
+                  ? "Access missing (Portal/Project/VCS)"
+                  : "Active";
 
                 const badgeRoleClass =
                   role === "super"
@@ -424,12 +448,18 @@ export default function Employees() {
                 return (
                   <li className="collection-item emp-item" key={u.username}>
                     <div className="emp-avatarBox" title={name}>
-                      {safeStr(u.employee_profilepicture) ? (
-                        <img src={u.employee_profilepicture as any} alt="" />
+                      {avatarUrl && !avatarBroken ? (
+                        <img
+                          src={avatarUrl as any}
+                          alt=""
+                          onError={() =>
+                            setBrokenAvatarKeys((prev) => ({ ...prev, [userKey]: true }))
+                          }
+                        />
                       ) : (
                         <span className="emp-avatarInitials">{initials(name)}</span>
                       )}
-                      <span className="emp-dot" title="Active" />
+                      <span className="emp-dot" title={dotTitle} style={{ background: dotColor }} />
                     </div>
 
                     <div className="emp-meta">
