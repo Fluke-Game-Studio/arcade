@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
-export type Role = "EMPLOYEE" | "ADMIN" | "SUPER";
+export type Role =
+  | "EMPLOYEE"
+  | "ADMIN"
+  | "SUPER"
+  | "ADMIN_READONLY"
+  | "SUPER_READONLY";
 
 export type SessionUser = {
   token: string;
@@ -41,9 +46,13 @@ type AuthCtx = {
 const LS_AUTH = "auth_user";
 const AuthContext = createContext<AuthCtx | null>(null);
 
-function mapRole(r: "super" | "admin" | "employee"): Role {
+function mapRole(
+  r: "super" | "admin" | "employee" | "admin-readonly" | "super-readonly"
+): Role {
   if (r === "super") return "SUPER";
   if (r === "admin") return "ADMIN";
+  if (r === "super-readonly") return "SUPER_READONLY";
+  if (r === "admin-readonly") return "ADMIN_READONLY";
   return "EMPLOYEE";
 }
 

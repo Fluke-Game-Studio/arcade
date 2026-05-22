@@ -3,8 +3,13 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
-// We accept roles in lowercase: "super" | "admin" | "employee"
-type LowerRole = "super" | "admin" | "employee";
+// We accept roles in lowercase.
+type LowerRole =
+  | "super"
+  | "admin"
+  | "employee"
+  | "admin-readonly"
+  | "super-readonly";
 
 type Props = {
   children: React.ReactNode;
@@ -28,7 +33,9 @@ function ProtectedComp({ children, roles }: Props) {
   if (!user) return <Navigate to="/login" replace />;
 
   // Normalize whatever we get (e.g. "EMPLOYEE" → "employee")
-  const currentRole = String(user.role).toLowerCase() as LowerRole;
+  const currentRole = String(user.role)
+    .toLowerCase()
+    .replace(/_/g, "-") as LowerRole;
 
   if (roles && !roles.includes(currentRole)) {
     return <Navigate to="/" replace />;
