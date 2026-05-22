@@ -5,8 +5,35 @@ import BotAvatar, { type BotStatus } from "../components/BotAvatar2DBit";
 
 type Provider = "auto" | "openai" | "ollama";
 type Mode = "plan" | "execute";
+type BuilderTab = "execute" | "agents" | "assignments" | "policies";
 type WsState = "disconnected" | "connecting" | "connected";
 type TurnStatus = "queued" | "running" | "done" | "error" | "submitted";
+type ApprovalDecision = "allow" | "cancel";
+
+type TurnDiagnostics = {
+  provider?: string;
+  model?: string;
+  contextType?: string;
+  contextLabel?: string;
+  memoryProvider?: string;
+  memoryTurnCount?: number;
+  routing?: Record<string, any>;
+  agentEmployee?: Record<string, any> | null;
+  actionMcp?: Record<string, any> | null;
+  workflow?: {
+    engine?: string;
+    graphTrace?: Array<Record<string, any>>;
+  } | null;
+  approval?: {
+    required?: boolean;
+    action?: string;
+    agentId?: string;
+    proposedInput?: Record<string, any>;
+  } | null;
+  guardrails?: {
+    deniedReason?: string;
+  } | null;
+};
 
 type AgentTurn = {
   id: string;
@@ -16,9 +43,37 @@ type AgentTurn = {
   reply: string;
   at: number;
   status: TurnStatus;
+  diagnostics?: TurnDiagnostics;
+};
+type AgentConfig = {
+  agentId: string;
+  name: string;
+  description?: string;
+  allowedActions: string[];
+  approvalPolicy?: { mode?: string };
+};
+type MpcPolicy = {
+  action: string;
+  policyName: string;
+  description?: string;
+  allowedRoles: string[];
+  requireApproval: boolean;
+};
+type AgentAssignment = {
+  username: string;
+  defaultAgentId?: string;
+  allowedAgents?: string[];
+};
+type EmployeeLite = {
+  username: string;
+  employee_name?: string;
 };
 
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
+const AVAILABLE_MCP_ACTIONS = ["upsert_job", "send_email", "submit_weekly_update"] as const;
+const AVAILABLE_ROLES = ["employee", "admin", "super", "admin-readonly", "super-readonly"] as const;
+const ADMIN_CACHE_TTL_MS = 5 * 60 * 1000;
+const ADMIN_CACHE_KEY = "mgr_builder_admin_cache_v2";
 
 function uid() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -36,21 +91,59 @@ function safeStr(v: any) {
   return String(v);
 }
 
+function toggleInList(list: string[], value: string) {
+  const has = list.includes(value);
+  if (has) return list.filter((x) => x !== value);
+  return [...list, value];
+}
+
 export default function ManagerAgentBuilderPage() {
   const { user } = useAuth() as any;
   const token = safeStr((user as any)?.token || "");
 
-  const [agentName, setAgentName] = useState("Hiring Manager");
   const [provider, setProvider] = useState<Provider>("auto");
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [instruction, setInstruction] = useState(
     "Create a new job for Digital Marketing Manager in Toronto, full-time, and make it public."
+  );
+  const [useMcpOverrides, setUseMcpOverrides] = useState(false);
+  const [mcpInputText, setMcpInputText] = useState(
+    '{\n  "title": "Digital Marketing Manager",\n  "team": "Marketing",\n  "location": "Toronto",\n  "employmentType": "full-time",\n  "description": "Own growth campaigns and funnel analytics.",\n  "isPublic": true\n}'
   );
   const [loadingMode, setLoadingMode] = useState<Mode | null>(null);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<AgentTurn[]>([]);
   const [botStatus, setBotStatus] = useState<BotStatus>("neutral");
   const [wsState, setWsState] = useState<WsState>("disconnected");
+  const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [tab, setTab] = useState<BuilderTab>("execute");
+  const [agentCatalog, setAgentCatalog] = useState<AgentConfig[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [agentForm, setAgentForm] = useState<AgentConfig>({
+    agentId: "",
+    name: "",
+    description: "",
+    allowedActions: [],
+    approvalPolicy: { mode: "always" },
+  });
+  const [mcpPolicies, setMcpPolicies] = useState<MpcPolicy[]>([]);
+  const [assignUsername, setAssignUsername] = useState("");
+  const [assignDefaultAgent, setAssignDefaultAgent] = useState("");
+  const [assignAllowedAgentsText, setAssignAllowedAgentsText] = useState("");
+  const [policyForm, setPolicyForm] = useState<MpcPolicy>({
+    action: "send_email",
+    policyName: "send_email_policy",
+    description: "",
+    allowedRoles: ["admin", "super"],
+    requireApproval: true,
+  });
+  const [assignments, setAssignments] = useState<AgentAssignment[]>([]);
+  const [employees, setEmployees] = useState<EmployeeLite[]>([]);
+  const [pendingApproval, setPendingApproval] = useState<{
+    action: string;
+    agentId: string;
+    proposedInput: Record<string, any>;
+  } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const activeRequestClientIdRef = useRef<string | null>(null);
@@ -64,6 +157,11 @@ export default function ManagerAgentBuilderPage() {
   const isBusy = !!loadingMode;
 
   const lastTurn = useMemo(() => (history.length ? history[0] : null), [history]);
+
+  function notify(type: "ok" | "err", text: string) {
+    setToast({ type, text });
+    window.setTimeout(() => setToast(null), 2200);
+  }
 
   function clearSpeakingTimer() {
     if (speakTimer.current) {
@@ -143,10 +241,61 @@ export default function ManagerAgentBuilderPage() {
 
       if (data?.type === "ai-result") {
         const reply = safeStr(data?.reply || "No response received.");
+        const diagnostics: TurnDiagnostics = {
+          provider: safeStr(data?.provider || ""),
+          model: safeStr(data?.model || ""),
+          contextType: safeStr(data?.contextType || ""),
+          contextLabel: safeStr(data?.contextLabel || ""),
+          memoryProvider: safeStr(data?.meta?.memory?.provider || ""),
+          memoryTurnCount: Number(data?.meta?.memory?.turnCount || 0) || 0,
+          routing:
+            data?.routing && typeof data.routing === "object"
+              ? data.routing
+              : undefined,
+          agentEmployee:
+            data?.agentEmployee && typeof data.agentEmployee === "object"
+              ? data.agentEmployee
+              : null,
+          actionMcp:
+            data?.meta?.actionMcp && typeof data.meta.actionMcp === "object"
+              ? data.meta.actionMcp
+              : null,
+          workflow:
+            data?.meta?.workflow && typeof data.meta.workflow === "object"
+              ? {
+                  engine: safeStr(data.meta.workflow.engine || ""),
+                  graphTrace: Array.isArray(data.meta.workflow.graphTrace)
+                    ? data.meta.workflow.graphTrace
+                    : [],
+                }
+              : null,
+          approval:
+            data?.meta?.approval && typeof data.meta.approval === "object"
+              ? data.meta.approval
+              : null,
+          guardrails:
+            data?.meta?.guardrails && typeof data.meta.guardrails === "object"
+              ? data.meta.guardrails
+              : null,
+        };
+        const approval = diagnostics.approval;
+        if (approval?.required) {
+          setPendingApproval({
+            action: safeStr(approval.action || ""),
+            agentId: safeStr(approval.agentId || ""),
+            proposedInput:
+              approval.proposedInput && typeof approval.proposedInput === "object"
+                ? approval.proposedInput
+                : {},
+          });
+        } else {
+          setPendingApproval(null);
+        }
         updateTurnByRequest(requestClientId, (turn) => ({
           ...turn,
           reply,
           status: "done",
+          diagnostics,
         }));
         setLoadingMode(null);
         activeRequestClientIdRef.current = null;
@@ -203,6 +352,107 @@ export default function ManagerAgentBuilderPage() {
     };
   }, [token]);
 
+  async function loadAgentAdminData(force = false) {
+    if (!token) return;
+    const cacheTokenKey = safeStr((user as any)?.username || "anon").toLowerCase();
+    const cacheKey = `${ADMIN_CACHE_KEY}__${cacheTokenKey}`;
+    try {
+      const cachedRaw = force ? "" : localStorage.getItem(cacheKey);
+      if (!force && cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        const ts = Number(cached?.ts || 0);
+        if (Date.now() - ts < ADMIN_CACHE_TTL_MS) {
+          const cachedAgents = Array.isArray(cached?.agents) ? cached.agents : [];
+          const cachedPolicies = Array.isArray(cached?.policies) ? cached.policies : [];
+          const cachedAssignments = Array.isArray(cached?.assignments) ? cached.assignments : [];
+          const cachedEmployees = Array.isArray(cached?.employees) ? cached.employees : [];
+          setAgentCatalog(cachedAgents);
+          setMcpPolicies(cachedPolicies);
+          setAssignments(cachedAssignments);
+          setEmployees(cachedEmployees);
+          if (cachedAgents.length && !cachedAgents.find((a: any) => a.agentId === selectedAgentId)) {
+            setSelectedAgentId(String(cachedAgents[0].agentId || ""));
+          }
+          return;
+        }
+      }
+    } catch {}
+    try {
+      const [agentsRes, policiesRes, assignmentsRes, usersRes] = await Promise.all([
+        fetch(`${API_BASE}/admin/ai/agents`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE}/admin/ai/mcp-policies`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE}/admin/ai/agent-assignments`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE}/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      const agentsJson = await agentsRes.json().catch(() => ({}));
+      const policiesJson = await policiesRes.json().catch(() => ({}));
+      const assignmentsJson = await assignmentsRes.json().catch(() => ({}));
+      const usersJson = await usersRes.json().catch(() => ({}));
+      const agents = Array.isArray(agentsJson?.agents) ? agentsJson.agents : [];
+      const policies = Array.isArray(policiesJson?.policies) ? policiesJson.policies : [];
+      const assignmentRows = Array.isArray(assignmentsJson?.assignments) ? assignmentsJson.assignments : [];
+      const usersRaw = Array.isArray(usersJson) ? usersJson : Array.isArray(usersJson?.items) ? usersJson.items : [];
+      const employeeRows: EmployeeLite[] = usersRaw
+        .map((u: any) => ({
+          username: safeStr(u?.username).toLowerCase(),
+          employee_name: safeStr(u?.employee_name),
+        }))
+        .filter((u: EmployeeLite) => !!u.username);
+      setAgentCatalog(agents);
+      setMcpPolicies(policies);
+      setAssignments(assignmentRows);
+      setEmployees(employeeRows);
+      try {
+        localStorage.setItem(
+          cacheKey,
+          JSON.stringify({ ts: Date.now(), agents, policies, assignments: assignmentRows, employees: employeeRows })
+        );
+      } catch {}
+      if (!agents.length) {
+        setSelectedAgentId("");
+      } else if (!agents.find((a: any) => a.agentId === selectedAgentId)) {
+        setSelectedAgentId(String(agents[0].agentId || ""));
+      }
+      if (!safeStr(agentForm.agentId) && agents.length) {
+        const first = agents[0];
+        setAgentForm({
+          agentId: safeStr(first?.agentId),
+          name: safeStr(first?.name || first?.agentId),
+          description: safeStr(first?.description),
+          allowedActions: Array.isArray(first?.allowedActions) ? first.allowedActions : [],
+          approvalPolicy:
+            first?.approvalPolicy && typeof first.approvalPolicy === "object"
+              ? first.approvalPolicy
+              : { mode: "always" },
+        });
+      }
+      if (!safeStr(policyForm.action) && policies.length) {
+        setPolicyForm(policies[0]);
+      }
+    } catch {}
+  }
+
+  function invalidateAgentAdminCache() {
+    const cacheTokenKey = safeStr((user as any)?.username || "anon").toLowerCase();
+    const cacheKey = `${ADMIN_CACHE_KEY}__${cacheTokenKey}`;
+    try {
+      localStorage.removeItem(cacheKey);
+    } catch {}
+  }
+
+  useEffect(() => {
+    loadAgentAdminData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
 function buildManagerQuestion(mode: Mode, raw: string) {
   const base = raw.trim();
   if (mode === "plan") {
@@ -219,7 +469,34 @@ function buildManagerQuestion(mode: Mode, raw: string) {
   );
 }
 
+function parseMcpInput(text: string) {
+  const trimmed = safeStr(text).trim();
+  if (!trimmed) return {};
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    throw new Error("MCP input must be a JSON object.");
+  } catch (err: any) {
+    throw new Error(safeStr(err?.message || "Invalid MCP input JSON."));
+  }
+}
+
   async function run(mode: Mode) {
+    return runWithApproval(mode, null);
+  }
+
+  async function runWithApproval(
+    mode: Mode,
+    approval:
+      | {
+          decision: ApprovalDecision;
+          remember: boolean;
+          action: string;
+          agentId: string;
+          proposedInput: Record<string, any>;
+        }
+      | null
+  ) {
     const q = instruction.trim();
     if (!q) {
       setError("Please enter an instruction first.");
@@ -227,6 +504,14 @@ function buildManagerQuestion(mode: Mode, raw: string) {
     }
     if (mode === "execute" && !canExecute) {
       setError("Execute is restricted to admin/super users.");
+      return;
+    }
+    if (!agentCatalog.length) {
+      setError("No dynamic agents available. Create an agent in Agents tab first.");
+      return;
+    }
+    if (!safeStr(selectedAgentId)) {
+      setError("Select an agent profile before plan/execute.");
       return;
     }
     if (wsState !== "connected") {
@@ -256,6 +541,18 @@ function buildManagerQuestion(mode: Mode, raw: string) {
       ...prev,
     ]);
 
+    let parsedMcpInput: Record<string, any> = {};
+    if (mode === "execute" && useMcpOverrides) {
+      try {
+        parsedMcpInput = parseMcpInput(mcpInputText);
+      } catch (err: any) {
+        setLoadingMode(null);
+        setBotStatus("neutral");
+        setError(safeStr(err?.message || "Invalid MCP input."));
+        return;
+      }
+    }
+
     try {
       const response = await fetch(`${API_BASE}/ai/chat/internal`, {
         method: "POST",
@@ -269,9 +566,27 @@ function buildManagerQuestion(mode: Mode, raw: string) {
           requestId: requestClientId,
           context: "internal",
           question: buildManagerQuestion(mode, q),
-          agentEmployeeId: "project_manager_core",
+          agentEmployeeId: selectedAgentId,
+          agentId: selectedAgentId,
           agentRole: "project_manager",
           perform: mode === "execute",
+          ...(mode === "execute"
+            ? {
+                mcpInputMode: useMcpOverrides ? "override" : "auto",
+                ...(useMcpOverrides ? { mcpInput: parsedMcpInput } : {}),
+                ...(approval
+                  ? {
+                      approval: {
+                        decision: approval.decision,
+                        remember: approval.remember,
+                        action: approval.action,
+                        agentId: approval.agentId,
+                        proposedInput: approval.proposedInput,
+                      },
+                    }
+                  : {}),
+              }
+            : {}),
           provider,
         }),
       });
@@ -308,6 +623,17 @@ function buildManagerQuestion(mode: Mode, raw: string) {
     }
   }
 
+  async function submitApproval(decision: ApprovalDecision, remember: boolean) {
+    if (!pendingApproval) return;
+    await runWithApproval("execute", {
+      decision,
+      remember,
+      action: pendingApproval.action || "",
+      agentId: pendingApproval.agentId || selectedAgentId,
+      proposedInput: pendingApproval.proposedInput || {},
+    });
+  }
+
   return (
     <>
       <style>{`
@@ -339,8 +665,45 @@ function buildManagerQuestion(mode: Mode, raw: string) {
         }
         .mgr-textarea { min-height: 98px; resize: vertical; font-family: inherit; line-height: 1.45; }
         .mgr-input:focus, .mgr-select:focus, .mgr-textarea:focus { border-color: rgba(56,189,248,0.55); box-shadow: 0 0 0 3px rgba(56,189,248,0.2); }
+        .mgr-select.mgr-select-strong {
+          height: 44px;
+          border: 1px solid rgba(96,165,250,0.7);
+          background:
+            linear-gradient(180deg, rgba(30,41,59,0.92), rgba(15,23,42,0.92));
+          color: #f8fafc;
+          font-weight: 700;
+          padding-right: 34px;
+          appearance: none;
+          background-image:
+            linear-gradient(180deg, rgba(30,41,59,0.92), rgba(15,23,42,0.92)),
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23bfdbfe' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+          background-repeat: no-repeat, no-repeat;
+          background-position: 0 0, right 10px center;
+          background-size: auto, 16px;
+        }
+        .mgr-select.mgr-select-strong:focus {
+          border-color: rgba(56,189,248,0.92);
+          box-shadow: 0 0 0 3px rgba(56,189,248,0.28);
+        }
         .mgr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .mgr-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+        .mgr-segment { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+        .mgr-seg-btn {
+          border: 1px solid rgba(96,165,250,0.45);
+          background: rgba(15,23,42,0.75);
+          color: #dbeafe;
+          border-radius: 10px;
+          padding: 8px 10px;
+          font-weight: 800;
+          font-size: 12px;
+          letter-spacing: 0.4px;
+          cursor: pointer;
+        }
+        .mgr-seg-btn.active {
+          border-color: rgba(16,185,129,0.75);
+          background: linear-gradient(180deg, rgba(16,185,129,0.28), rgba(5,150,105,0.2));
+          color: #ecfdf5;
+        }
         .mgr-btn {
           border: 1px solid rgba(148,163,184,0.28);
           background: rgba(15,23,42,0.8);
@@ -373,6 +736,31 @@ function buildManagerQuestion(mode: Mode, raw: string) {
           text-transform: uppercase;
         }
         .mgr-mini { margin-top: 10px; font-size: 12px; color: rgba(191,219,254,0.85); line-height: 1.45; }
+        .mgr-diag {
+          margin-top: 8px;
+          border: 1px solid rgba(148,163,184,0.2);
+          border-radius: 10px;
+          background: rgba(15,23,42,0.38);
+          padding: 8px;
+          font-size: 12px;
+          color: rgba(191,219,254,0.9);
+        }
+        .mgr-diag-line { margin: 2px 0; }
+        .mgr-diag-trace {
+          margin-top: 6px;
+          padding-top: 6px;
+          border-top: 1px dashed rgba(148,163,184,0.28);
+          display: grid;
+          gap: 4px;
+        }
+        .mgr-diag-trace-item {
+          font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          color: rgba(191,219,254,0.92);
+          background: rgba(2,6,23,0.35);
+          border: 1px solid rgba(148,163,184,0.18);
+          border-radius: 8px;
+          padding: 5px 6px;
+        }
         .mgr-history { display: grid; gap: 10px; margin-top: 10px; max-height: 58vh; overflow: auto; padding-right: 2px; }
         .mgr-turn { border: 1px solid rgba(148,163,184,0.24); border-radius: 12px; background: rgba(2,6,23,0.3); padding: 10px; }
         .mgr-turn-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
@@ -389,11 +777,30 @@ function buildManagerQuestion(mode: Mode, raw: string) {
       <div className="mgr-wrap">
         <div className="mgr-hero">
           <h1 className="mgr-title">Manager Agent Builder</h1>
+          <div className="mgr-actions" style={{ marginTop: 8 }}>
+            <button className={`mgr-btn ${tab === "execute" ? "secondary" : ""}`} onClick={() => setTab("execute")}>Execute</button>
+            <button className={`mgr-btn ${tab === "agents" ? "secondary" : ""}`} onClick={() => setTab("agents")}>Agents</button>
+            <button className={`mgr-btn ${tab === "assignments" ? "secondary" : ""}`} onClick={() => setTab("assignments")}>Assignments</button>
+            <button className={`mgr-btn ${tab === "policies" ? "secondary" : ""}`} onClick={() => setTab("policies")}>MCP Policies</button>
+          </div>
+          {toast ? (
+            <div
+              className="mgr-error"
+              style={{
+                marginTop: 10,
+                borderColor: toast.type === "ok" ? "rgba(16,185,129,0.6)" : undefined,
+                background: toast.type === "ok" ? "rgba(6,78,59,0.25)" : undefined,
+                color: toast.type === "ok" ? "#a7f3d0" : undefined,
+              }}
+            >
+              {toast.text}
+            </div>
+          ) : null}
           <p className="mgr-sub">
             Async manager workflow using existing websocket + worker pipeline.
           </p>
 
-          <div className="mgr-grid">
+          {tab === "execute" ? <div className="mgr-grid">
             <section className="mgr-card">
               <div style={{ display: "flex", justifyContent: "center" }}>
                 <BotAvatar status={botStatus} size={130} />
@@ -403,37 +810,58 @@ function buildManagerQuestion(mode: Mode, raw: string) {
                 <span className="mgr-pill">Role: Manager</span>
               </div>
 
-              <div style={{ marginTop: 14 }}>
-                <label className="mgr-label">Agent Name</label>
-                <input
-                  className="mgr-input"
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  placeholder="Hiring Manager"
-                />
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Agent Profile</label>
+                <div className="mgr-actions" style={{ marginTop: 0, marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: "rgba(191,219,254,0.9)" }}>
+                    Available Agents: <b>{agentCatalog.length}</b>
+                  </span>
+                  <button
+                    type="button"
+                    className="mgr-btn"
+                    onClick={() => loadAgentAdminData(true)}
+                  >
+                    Refresh Agents
+                  </button>
+                </div>
+                <div className="mgr-segment" style={{ marginBottom: 8 }}>
+                  {agentCatalog.map((a: any) => {
+                    const id = String(a.agentId || "");
+                    const active = selectedAgentId === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`mgr-seg-btn ${active ? "active" : ""}`}
+                        onClick={() => setSelectedAgentId(id)}
+                      >
+                        {String(a.name || id)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <select
+                  className="mgr-select mgr-select-strong"
+                  value={selectedAgentId}
+                  onChange={(e) => setSelectedAgentId(e.target.value)}
+                >
+                  <option value="">Select agent...</option>
+                  {agentCatalog.map((a: any) => (
+                    <option key={String(a.agentId)} value={String(a.agentId)}>
+                      {String(a.name || a.agentId)} ({String(a.agentId)})
+                    </option>
+                  ))}
+                </select>
+                {!agentCatalog.length ? (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "#fca5a5" }}>
+                    No agents found in `AI_AGENT_STORE`. Create one in Agents tab, then refresh.
+                  </div>
+                ) : null}
               </div>
 
-              <div className="mgr-row" style={{ marginTop: 10 }}>
-                <div>
-                  <label className="mgr-label">Provider</label>
-                  <select
-                    className="mgr-select"
-                    value={provider}
-                    onChange={(e) => setProvider(e.target.value as Provider)}
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="ollama">Ollama</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mgr-label">Execution Access</label>
-                  <input
-                    className="mgr-input"
-                    value={canExecute ? "Allowed" : "Read-only"}
-                    readOnly
-                  />
-                </div>
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Execution Access</label>
+                <span className="mgr-pill">{canExecute ? "Allowed" : "Read-only"}</span>
               </div>
 
               <label className="mgr-toggle">
@@ -460,6 +888,29 @@ function buildManagerQuestion(mode: Mode, raw: string) {
               />
 
               <div className="mgr-actions">
+                <div className="mgr-segment" style={{ marginTop: 0 }}>
+                  <button
+                    type="button"
+                    className={`mgr-seg-btn ${provider === "auto" ? "active" : ""}`}
+                    onClick={() => setProvider("auto")}
+                  >
+                    auto
+                  </button>
+                  <button
+                    type="button"
+                    className={`mgr-seg-btn ${provider === "openai" ? "active" : ""}`}
+                    onClick={() => setProvider("openai")}
+                  >
+                    openai
+                  </button>
+                  <button
+                    type="button"
+                    className={`mgr-seg-btn ${provider === "ollama" ? "active" : ""}`}
+                    onClick={() => setProvider("ollama")}
+                  >
+                    ollama
+                  </button>
+                </div>
                 <button
                   className="mgr-btn secondary"
                   disabled={isBusy}
@@ -477,7 +928,53 @@ function buildManagerQuestion(mode: Mode, raw: string) {
                 </button>
               </div>
 
+              <div className="mgr-row" style={{ marginTop: 10 }}>
+                <div>
+                  <label className="mgr-label">Action Routing</label>
+                  <div className="mgr-mini">
+                    Action is auto-selected by selected agent policy + MCP policy matrix.
+                  </div>
+                </div>
+                <div>
+                  <label className="mgr-label">MCP Input JSON</label>
+                  <label className="mgr-toggle" style={{ marginTop: 0, marginBottom: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={useMcpOverrides}
+                      onChange={(e) => setUseMcpOverrides(e.target.checked)}
+                    />
+                    Use JSON as override (otherwise AI generates payload from instruction)
+                  </label>
+                  <textarea
+                    className="mgr-textarea"
+                    style={{ minHeight: 98 }}
+                    value={mcpInputText}
+                    onChange={(e) => setMcpInputText(e.target.value)}
+                    placeholder='{"title":"Gameplay Programmer"}'
+                  />
+                </div>
+              </div>
+
               {error ? <div className="mgr-error">{error}</div> : null}
+              {pendingApproval ? (
+                <div className="mgr-card" style={{ marginTop: 10, borderColor: "rgba(250,204,21,0.5)" }}>
+                  <div className="mgr-label">Human Approval Required</div>
+                  <div style={{ color: "#fde68a", fontSize: 13, marginBottom: 8 }}>
+                    Action <b>{pendingApproval.action || "auto-detected"}</b> needs confirmation before execute.
+                  </div>
+                  <div className="mgr-actions">
+                    <button className="mgr-btn primary" disabled={isBusy} onClick={() => submitApproval("allow", false)}>
+                      Allow
+                    </button>
+                    <button className="mgr-btn secondary" disabled={isBusy} onClick={() => submitApproval("allow", true)}>
+                      Allow & don't ask again
+                    </button>
+                    <button className="mgr-btn" disabled={isBusy} onClick={() => submitApproval("cancel", false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {lastTurn ? (
                 <div style={{ marginTop: 8, fontSize: 12, color: "rgba(191,219,254,0.9)" }}>
@@ -490,7 +987,7 @@ function buildManagerQuestion(mode: Mode, raw: string) {
                   <article className="mgr-turn" key={turn.id}>
                     <div className="mgr-turn-head">
                       <span className="mgr-pill">
-                        {turn.mode === "plan" ? "Plan" : "Execute"} - {agentName || "Manager"} -{" "}
+                        {turn.mode === "plan" ? "Plan" : "Execute"} - {safeStr(selectedAgentId) || "No Agent"} -{" "}
                         {turn.status}
                       </span>
                       <span style={{ color: "rgba(191,219,254,0.74)", fontSize: 12 }}>
@@ -498,6 +995,75 @@ function buildManagerQuestion(mode: Mode, raw: string) {
                       </span>
                     </div>
                     <pre>{`Instruction:\n${turn.request}\n\nResponse:\n${turn.reply}`}</pre>
+                    {turn.diagnostics ? (
+                      <div className="mgr-diag">
+                        <div className="mgr-diag-line">
+                          Provider: <b>{turn.diagnostics.provider || "-"}</b> | Model:{" "}
+                          <b>{turn.diagnostics.model || "-"}</b>
+                        </div>
+                        <div className="mgr-diag-line">
+                          Context: <b>{turn.diagnostics.contextType || "-"}</b> (
+                          {turn.diagnostics.contextLabel || "-"})
+                        </div>
+                        <div className="mgr-diag-line">
+                          Memory/RAG: <b>{turn.diagnostics.memoryProvider || "none"}</b> | turns:{" "}
+                          <b>{turn.diagnostics.memoryTurnCount || 0}</b>
+                        </div>
+                        <div className="mgr-diag-line">
+                          Agent:{" "}
+                          <b>
+                            {safeStr(turn.diagnostics.agentEmployee?.id) ||
+                              safeStr(turn.diagnostics.routing?.agentEmployeeId) ||
+                              "-"}
+                          </b>{" "}
+                          | executor:{" "}
+                          <b>{safeStr(turn.diagnostics.routing?.actionExecutor) || "-"}</b>
+                        </div>
+                        {turn.diagnostics.actionMcp ? (
+                          <div className="mgr-diag-line">
+                            MCP fired: <b>{safeStr(turn.diagnostics.actionMcp?.action) || "-"}</b>{" "}
+                            via <b>{safeStr(turn.diagnostics.actionMcp?.route) || "-"}</b>
+                          </div>
+                        ) : (
+                          <div className="mgr-diag-line">
+                            MCP fired: <b>no</b>
+                          </div>
+                        )}
+                        <div className="mgr-diag-line">
+                          Workflow: <b>{safeStr(turn.diagnostics.workflow?.engine) || "none"}</b>
+                        </div>
+                        {safeStr(turn.diagnostics.guardrails?.deniedReason) ? (
+                          <div className="mgr-diag-line">
+                            Guardrails: <b>{safeStr(turn.diagnostics.guardrails?.deniedReason)}</b>
+                          </div>
+                        ) : null}
+                        {Array.isArray(turn.diagnostics.workflow?.graphTrace) &&
+                        turn.diagnostics.workflow!.graphTrace!.length ? (
+                          <div className="mgr-diag-trace">
+                            {turn.diagnostics.workflow!.graphTrace!.map((step, idx) => {
+                              const node = safeStr((step as any)?.node || `step_${idx + 1}`);
+                              const summary = Object.entries((step || {}) as Record<string, any>)
+                                .filter(([k]) => k !== "node")
+                                .map(([k, v]) => {
+                                  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+                                    return `${k}=${String(v)}`;
+                                  }
+                                  if (Array.isArray(v)) return `${k}=[${v.length}]`;
+                                  if (v && typeof v === "object") return `${k}={...}`;
+                                  return `${k}=`;
+                                })
+                                .join(" | ");
+                              return (
+                                <div key={`${turn.id}_trace_${idx}`} className="mgr-diag-trace-item">
+                                  {idx + 1}. {node}
+                                  {summary ? ` -> ${summary}` : ""}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </article>
                 ))}
                 {!history.length ? (
@@ -507,7 +1073,297 @@ function buildManagerQuestion(mode: Mode, raw: string) {
                 ) : null}
               </div>
             </section>
-          </div>
+          </div> : null}
+
+          {tab === "agents" ? (
+            <section className="mgr-card" style={{ marginTop: 12 }}>
+              <div className="mgr-row">
+                <div>
+                  <label className="mgr-label">Existing Agents</label>
+                  <div className="mgr-segment">
+                    {agentCatalog.map((a) => {
+                      const active = safeStr(agentForm.agentId) === safeStr(a.agentId);
+                      return (
+                        <button
+                          key={a.agentId}
+                          type="button"
+                          className={`mgr-seg-btn ${active ? "active" : ""}`}
+                          onClick={() =>
+                            setAgentForm({
+                              agentId: safeStr(a.agentId),
+                              name: safeStr(a.name || a.agentId),
+                              description: safeStr(a.description),
+                              allowedActions: Array.isArray(a.allowedActions) ? a.allowedActions : [],
+                              approvalPolicy:
+                                a?.approvalPolicy && typeof a.approvalPolicy === "object"
+                                  ? a.approvalPolicy
+                                  : { mode: "always" },
+                            })
+                          }
+                        >
+                          {a.name || a.agentId}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="mgr-label">Allowed Actions</label>
+                  <div className="mgr-segment">
+                    {AVAILABLE_MCP_ACTIONS.map((action) => (
+                      <button
+                        key={action}
+                        type="button"
+                        className={`mgr-seg-btn ${agentForm.allowedActions.includes(action) ? "active" : ""}`}
+                        onClick={() =>
+                          setAgentForm((s) => ({
+                            ...s,
+                            allowedActions: toggleInList(s.allowedActions || [], action),
+                          }))
+                        }
+                      >
+                        {action}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mgr-row" style={{ marginTop: 10 }}>
+                <div>
+                  <label className="mgr-label">Agent Id</label>
+                  <input className="mgr-input" value={agentForm.agentId} onChange={(e) => setAgentForm((s) => ({ ...s, agentId: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="mgr-label">Name</label>
+                  <input className="mgr-input" value={agentForm.name} onChange={(e) => setAgentForm((s) => ({ ...s, name: e.target.value }))} />
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Description</label>
+                <textarea className="mgr-textarea" value={agentForm.description || ""} onChange={(e) => setAgentForm((s) => ({ ...s, description: e.target.value }))} />
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Approval Mode</label>
+                <select
+                  className="mgr-select"
+                  value={safeStr(agentForm.approvalPolicy?.mode || "always")}
+                  onChange={(e) => setAgentForm((s) => ({ ...s, approvalPolicy: { mode: e.target.value } }))}
+                >
+                  <option value="always">always</option>
+                  <option value="first_time">first_time</option>
+                  <option value="never">never</option>
+                </select>
+              </div>
+              <div className="mgr-actions">
+                <button
+                  className="mgr-btn primary"
+                  onClick={async () => {
+                    try {
+                      await fetch(`${API_BASE}/admin/ai/agents/upsert`, {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify(agentForm),
+                      });
+                      invalidateAgentAdminCache();
+                      await loadAgentAdminData();
+                      notify("ok", "Agent saved");
+                    } catch {
+                      notify("err", "Failed to save agent");
+                    }
+                  }}
+                >
+                  Save Agent
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {tab === "assignments" ? (
+            <section className="mgr-card" style={{ marginTop: 12 }}>
+              <div className="mgr-row">
+                <div>
+                  <label className="mgr-label">Users</label>
+                  <div className="mgr-segment">
+                    {employees.map((row) => {
+                      const active = assignUsername === row.username;
+                      return (
+                        <button
+                          key={row.username}
+                          type="button"
+                          className={`mgr-seg-btn ${active ? "active" : ""}`}
+                          onClick={() => {
+                            setAssignUsername(row.username);
+                            const existing = assignments.find((x) => x.username === row.username);
+                            const allowed = Array.isArray(existing?.allowedAgents) ? existing!.allowedAgents! : [];
+                            setAssignAllowedAgentsText(allowed.join(", "));
+                            setAssignDefaultAgent(safeStr(existing?.defaultAgentId));
+                          }}
+                        >
+                          {safeStr(row.employee_name) ? `${row.employee_name} (${row.username})` : row.username}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="mgr-label">Default Agent</label>
+                  <div className="mgr-segment">
+                    {agentCatalog.map((a) => {
+                      const active = assignDefaultAgent === a.agentId;
+                      return (
+                        <button
+                          key={a.agentId}
+                          type="button"
+                          className={`mgr-seg-btn ${active ? "active" : ""}`}
+                          onClick={() => setAssignDefaultAgent(a.agentId)}
+                        >
+                          {a.agentId}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Allowed Agents</label>
+                <div className="mgr-segment">
+                  {agentCatalog.map((a) => {
+                    const selected = assignAllowedAgentsText.split(",").map((x) => x.trim()).filter(Boolean);
+                    const active = selected.includes(a.agentId);
+                    return (
+                      <button
+                        key={a.agentId}
+                        type="button"
+                        className={`mgr-seg-btn ${active ? "active" : ""}`}
+                        onClick={() => setAssignAllowedAgentsText(toggleInList(selected, a.agentId).join(", "))}
+                      >
+                        {a.agentId}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="mgr-actions">
+                <button
+                  className="mgr-btn secondary"
+                  onClick={async () => {
+                    try {
+                      await fetch(`${API_BASE}/admin/ai/agent-assignments/upsert`, {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          username: assignUsername,
+                          defaultAgentId: assignDefaultAgent,
+                          allowedAgents: assignAllowedAgentsText.split(",").map((x) => x.trim()).filter(Boolean),
+                        }),
+                      });
+                      invalidateAgentAdminCache();
+                      await loadAgentAdminData();
+                      notify("ok", "User assignment saved");
+                    } catch {
+                      notify("err", "Failed to save user assignment");
+                    }
+                  }}
+                >
+                  Save User Assignment
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {tab === "policies" ? (
+            <section className="mgr-card" style={{ marginTop: 12 }}>
+              <div className="mgr-row">
+                <div>
+                  <label className="mgr-label">MCP Action</label>
+                  <div className="mgr-segment">
+                    {mcpPolicies.map((p) => {
+                      const active = policyForm.action === p.action;
+                      return (
+                        <button
+                          key={p.action}
+                          type="button"
+                          className={`mgr-seg-btn ${active ? "active" : ""}`}
+                          onClick={() => setPolicyForm(p)}
+                        >
+                          {p.action}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="mgr-label">Allowed Roles</label>
+                  <div className="mgr-segment">
+                    {AVAILABLE_ROLES.map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        className={`mgr-seg-btn ${policyForm.allowedRoles.includes(role) ? "active" : ""}`}
+                        onClick={() =>
+                          setPolicyForm((s) => ({
+                            ...s,
+                            allowedRoles: toggleInList(s.allowedRoles || [], role),
+                          }))
+                        }
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Policy Name</label>
+                <input className="mgr-input" value={policyForm.policyName} onChange={(e) => setPolicyForm((s) => ({ ...s, policyName: e.target.value }))} />
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-toggle">
+                  <input
+                    type="checkbox"
+                    checked={policyForm.requireApproval}
+                    onChange={(e) => setPolicyForm((s) => ({ ...s, requireApproval: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: "#10b981", cursor: "pointer" }}
+                  />
+                  Require human approval
+                </label>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Description</label>
+                <textarea className="mgr-textarea" value={policyForm.description || ""} onChange={(e) => setPolicyForm((s) => ({ ...s, description: e.target.value }))} />
+              </div>
+              <div className="mgr-actions">
+                <button
+                  className="mgr-btn primary"
+                  onClick={async () => {
+                    try {
+                      await fetch(`${API_BASE}/admin/ai/mcp-policies/upsert`, {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify(policyForm),
+                      });
+                      invalidateAgentAdminCache();
+                      await loadAgentAdminData();
+                      notify("ok", "MCP policy saved");
+                    } catch {
+                      notify("err", "Failed to save MCP policy");
+                    }
+                  }}
+                >
+                  Save MCP Policy
+                </button>
+              </div>
+            </section>
+          ) : null}
         </div>
       </div>
     </>

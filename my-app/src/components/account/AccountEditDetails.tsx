@@ -1,7 +1,6 @@
 // src/components/account/AccountEditDetails.tsx
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ApiUser } from "../../api";
-import AwardUnlockModal from "./AwardUnlockModal";
 
 declare const M: any;
 
@@ -144,48 +143,6 @@ function Pill({
   );
 }
 
-function SocialStatusIcon({
-  network,
-  connected,
-}: {
-  network: "linkedin" | "discord";
-  connected: boolean;
-}) {
-  const label = network === "linkedin" ? "LinkedIn" : "Discord";
-  const bg = network === "linkedin" ? "#0a66c2" : "#5865f2";
-  return (
-    <span
-      title={`${label} ${connected ? "connected" : "not connected"}`}
-      aria-label={`${label} ${connected ? "connected" : "not connected"}`}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 28,
-        height: 28,
-        borderRadius: 999,
-        background: bg,
-        color: "#fff",
-        fontSize: network === "linkedin" ? 13 : 14,
-        fontWeight: 1000,
-        border: connected ? "2px solid #16a34a" : "2px solid #cbd5e1",
-        opacity: connected ? 1 : 0.72,
-      }}
-    >
-      {network === "linkedin" ? (
-        "in"
-      ) : (
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
-          <path
-            fill="currentColor"
-            d="M20.317 4.369a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037 13.714 13.714 0 0 0-.608 1.249 18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.249.077.077 0 0 0-.08-.037 19.736 19.736 0 0 0-4.885 1.515.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.994 3.03.077.077 0 0 0 .084-.028 14.16 14.16 0 0 0 1.226-1.994.076.076 0 0 0-.041-.104 13.12 13.12 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.011c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.1.246.198.373.292a.077.077 0 0 1-.006.128 12.297 12.297 0 0 1-1.873.892.077.077 0 0 0-.04.104 15.43 15.43 0 0 0 1.225 1.994.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.055c.5-5.177-.838-9.674-3.548-13.66a.061.061 0 0 0-.031-.03ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.166 1.095 2.156 2.418 0 1.334-.955 2.419-2.156 2.419Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.166 1.095 2.156 2.418 0 1.334-.946 2.419-2.156 2.419Z"
-          />
-        </svg>
-      )}
-    </span>
-  );
-}
-
 function EditableDropdown({
   open,
   onToggle,
@@ -240,12 +197,7 @@ export default function AccountEditDetails({
   });
 
   const [savingProfile, setSavingProfile] = useState(false);
-  const [linkedinConnecting, setLinkedinConnecting] = useState(false);
-  const [discordConnecting, setDiscordConnecting] = useState(false);
-  const [unlockOpen, setUnlockOpen] = useState(false);
-  const [unlockItems, setUnlockItems] = useState<any[]>([]);
   const [pulse, setPulse] = useState(false);
-  const [socialRewardsChecked, setSocialRewardsChecked] = useState(false);
 
   const [picError, setPicError] = useState(false);
   const [employeePicError, setEmployeePicError] = useState(false);
@@ -253,134 +205,6 @@ export default function AccountEditDetails({
   useEffect(() => {
     if (typeof M !== "undefined") setTimeout(() => M.updateTextFields(), 0);
   }, [api]);
-
-  function showUnlocks(resp: any, achievement: any) {
-    const achievementItem =
-      resp?.awarded === false
-        ? null
-        : {
-            kind: "achievement",
-            id: achievement?.achievementId || achievement?.id,
-            title: achievement?.title,
-            description: achievement?.description,
-            metric: achievement?.metric,
-            threshold: achievement?.threshold,
-            setKey: achievement?.setKey,
-          };
-    const trophyItems = Array.isArray(resp?.unlockedTrophies)
-      ? resp.unlockedTrophies.map((t: any) => ({
-          kind: "trophy",
-          id: t?.id,
-          title: t?.title,
-          description: t?.description,
-          tier: t?.tier,
-          imageUrl: t?.imageUrl,
-          achievementSetKey: t?.achievementSetKey,
-        }))
-      : [];
-    const items = [achievementItem, ...trophyItems].filter((x: any) => !!x?.id || !!x?.title);
-
-    if (items.length) {
-      setUnlockItems(items);
-      setUnlockOpen(true);
-    }
-  }
-
-  useEffect(() => {
-    function onLinkedInMessage(event: MessageEvent) {
-      const data = event?.data || {};
-      if (data?.type === "linkedin-connected") {
-        setLinkedinConnecting(false);
-        refreshMeSafe();
-        setEdit("employee_picture", false);
-        void api
-          .awardAchievement({
-            achievementId: "linkedin_connect",
-            title: "Connect To Linked-In",
-            description: "Connect to LinkedIn to autofill your profile data.",
-            metric: "linkedinSocials",
-            setKey: "connectSocials",
-            threshold: 1,
-          })
-          .then((resp: any) => {
-            showUnlocks(resp, {
-              id: "linkedin_connect",
-              title: "Connect To Linked-In",
-              description: "Connect to LinkedIn to autofill your profile data.",
-              metric: "linkedinSocials",
-              setKey: "connectSocials",
-              threshold: 1,
-            });
-          })
-          .catch(() => {});
-        if (typeof M !== "undefined") {
-          M.toast({ html: "LinkedIn photo synced.", classes: "green" });
-        }
-      }
-      if (data?.type === "linkedin-error") {
-        setLinkedinConnecting(false);
-        if (typeof M !== "undefined") {
-          M.toast({ html: data?.message || "LinkedIn connect failed.", classes: "red" });
-        }
-      }
-    }
-
-    window.addEventListener("message", onLinkedInMessage);
-    return () => window.removeEventListener("message", onLinkedInMessage);
-  }, [api]);
-
-  useEffect(() => {
-    function onDiscordMessage(event: MessageEvent) {
-      const data = event?.data || {};
-      if (data?.type === "discord-connected") {
-        setDiscordConnecting(false);
-        refreshMeSafe();
-        const joinUrl = safeStr(data?.joinUrl);
-        if (joinUrl) {
-          try {
-            window.open(joinUrl, "_blank", "noopener,noreferrer");
-          } catch {}
-        }
-        void api
-          .awardAchievement({
-            achievementId: "discord_connect",
-            title: "Join Discord Server",
-            description: "Connect to the Fluke Games Discord server.",
-            metric: "connectSocials",
-            setKey: "connectSocials",
-            threshold: 1,
-          })
-          .then((resp: any) => {
-            showUnlocks(resp, {
-              id: "discord_connect",
-              title: "Join Discord Server",
-              description: "Connect to the Fluke Games Discord server.",
-              metric: "connectSocials",
-              setKey: "connectSocials",
-              threshold: 1,
-            });
-          })
-          .catch(() => {});
-        if (typeof M !== "undefined") {
-          M.toast({
-            html: joinUrl
-              ? `Discord connected. <a href="${joinUrl}" target="_blank" rel="noreferrer" class="white-text text-lighten-4">Open server</a>`
-              : "Discord connected.",
-            classes: "green",
-          });
-        }
-      }
-      if (data?.type === "discord-error") {
-        setDiscordConnecting(false);
-        if (typeof M !== "undefined") {
-          M.toast({ html: data?.message || "Discord connect failed.", classes: "red" });
-        }
-      }
-    }
-
-    window.addEventListener("message", onDiscordMessage);
-    return () => window.removeEventListener("message", onDiscordMessage);
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -424,45 +248,7 @@ export default function AccountEditDetails({
   const email = safeStr((me as any)?.employee_email) || username || "—";
   const role = (safeStr((me as any)?.employee_role) || "employee").toUpperCase();
   const title = safeStr((me as any)?.employee_title) || "—";
-  const linkedinConnected = Boolean(
-    (me as any)?.linkedin_connected ||
-      safeStr((me as any)?.linkedin_connected_at) ||
-      safeStr((me as any)?.linkedin_member_id)
-  );
-  const linkedinConnectedAt = safeStr((me as any)?.linkedin_connected_at);
-  const discordConnected = Boolean(
-    (me as any)?.discord_connected ||
-      safeStr((me as any)?.discord_connected_at) ||
-      safeStr((me as any)?.discord_member_id)
-  );
-
-  useEffect(() => {
-    if (!me) return;
-    if (!linkedinConnected || !discordConnected) return;
-    if (socialRewardsChecked) return;
-
-    setSocialRewardsChecked(true);
-    void api
-      .awardAchievement({
-        achievementId: "linkedin_connect",
-        title: "Connect To Linked-In",
-        description: "Connect to LinkedIn to autofill your profile data.",
-        metric: "linkedinSocials",
-        setKey: "connectSocials",
-        threshold: 1,
-      })
-      .then((resp: any) => {
-        showUnlocks(resp, {
-          id: "linkedin_connect",
-          title: "Connect To Linked-In",
-          description: "Connect to LinkedIn to autofill your profile data.",
-          metric: "linkedinSocials",
-          setKey: "connectSocials",
-          threshold: 1,
-        });
-      })
-      .catch(() => {});
-  }, [api, me, linkedinConnected, discordConnected, socialRewardsChecked]);
+  
 
   const dept = safeStr((me as any)?.department) || "—";
   const employmentType = safeStr((me as any)?.employment_type) || "—";
@@ -630,92 +416,6 @@ export default function AccountEditDetails({
       M.toast({ html: err?.message || "Update failed.", classes: "red" });
     } finally {
       setSavingProfile(false);
-    }
-  }
-
-  async function connectLinkedInPhoto() {
-    if (linkedinConnecting || savingProfile) return;
-
-    const popup = window.open(
-      "",
-      "linkedin-connect",
-      "width=560,height=760,left=120,top=120"
-    );
-
-    if (!popup) {
-      M?.toast?.({ html: "Popup blocked. Please allow popups and try again.", classes: "red" });
-      return;
-    }
-
-    try {
-      setLinkedinConnecting(true);
-      popup.document.write("<p style='font-family:Arial,sans-serif;padding:20px'>Opening LinkedIn...</p>");
-      const popupMonitor = window.setInterval(() => {
-        try {
-          if (popup.closed) {
-            window.clearInterval(popupMonitor);
-            setLinkedinConnecting(false);
-          }
-        } catch {
-          window.clearInterval(popupMonitor);
-          setLinkedinConnecting(false);
-        }
-      }, 500);
-      const resp = await api.startLinkedInConnect({ returnTo: window.location.href });
-      if (!resp?.authorizeUrl) {
-        throw new Error("Missing LinkedIn authorize URL.");
-      }
-      popup.location.href = resp.authorizeUrl;
-      popup.focus();
-    } catch (err: any) {
-      setLinkedinConnecting(false);
-      try {
-        popup.close();
-      } catch {}
-      M?.toast?.({ html: err?.message || "Failed to start LinkedIn connect.", classes: "red" });
-    }
-  }
-
-  async function connectDiscordPhoto() {
-    if (discordConnecting || savingProfile) return;
-
-    const popup = window.open(
-      "",
-      "discord-connect",
-      "width=560,height=760,left=140,top=140"
-    );
-
-    if (!popup) {
-      M?.toast?.({ html: "Popup blocked. Please allow popups and try again.", classes: "red" });
-      return;
-    }
-
-    try {
-      setDiscordConnecting(true);
-      popup.document.write("<p style='font-family:Arial,sans-serif;padding:20px'>Opening Discord...</p>");
-      const popupMonitor = window.setInterval(() => {
-        try {
-          if (popup.closed) {
-            window.clearInterval(popupMonitor);
-            setDiscordConnecting(false);
-          }
-        } catch {
-          window.clearInterval(popupMonitor);
-          setDiscordConnecting(false);
-        }
-      }, 500);
-      const resp = await api.startDiscordConnect({ returnTo: window.location.href });
-      if (!resp?.authorizeUrl) {
-        throw new Error("Missing Discord authorize URL.");
-      }
-      popup.location.href = resp.authorizeUrl;
-      popup.focus();
-    } catch (err: any) {
-      setDiscordConnecting(false);
-      try {
-        popup.close();
-      } catch {}
-      M?.toast?.({ html: err?.message || "Failed to start Discord connect.", classes: "red" });
     }
   }
 
@@ -1064,62 +764,6 @@ export default function AccountEditDetails({
         </div>
 
         <div className="card-content" style={{ padding: 16 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginBottom: 14,
-              padding: 14,
-              borderRadius: 16,
-              border: "1px solid #e6edf2",
-              background: "linear-gradient(135deg, #f8fbff 0%, #ffffff 70%, #f7fafc 100%)",
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 1000, color: "#0f172a", fontSize: 14 }}>
-                Social Connections
-              </div>
-              <div style={{ fontSize: 12, color: "#607d8b", fontWeight: 700, marginTop: 2 }}>
-                Connect LinkedIn and Discord to sync profile details and unlock social achievements.
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                className="accBtn subtle"
-                onClick={connectLinkedInPhoto}
-                disabled={savingProfile || linkedinConnecting || discordConnecting}
-                style={{ padding: "7px 10px", fontSize: 12 }}
-              >
-                <i className="material-icons" style={{ fontSize: 18 }}>{linkedinConnecting ? "hourglass_empty" : "link"}</i>
-                <span>{linkedinConnecting ? "Connecting..." : "Connect LinkedIn"}</span>
-              </button>
-              <button
-                type="button"
-                className="accBtn subtle"
-                onClick={connectDiscordPhoto}
-                disabled={savingProfile || linkedinConnecting || discordConnecting}
-                style={{ padding: "7px 10px", fontSize: 12 }}
-              >
-                {discordConnecting ? (
-                  <i className="material-icons" style={{ fontSize: 18 }}>hourglass_empty</i>
-                ) : (
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-                    <path
-                      fill="currentColor"
-                      d="M20.317 4.369a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037 13.714 13.714 0 0 0-.608 1.249 18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.249.077.077 0 0 0-.08-.037 19.736 19.736 0 0 0-4.885 1.515.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.994 3.03.077.077 0 0 0 .084-.028 14.16 14.16 0 0 0 1.226-1.994.076.076 0 0 0-.041-.104 13.12 13.12 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.011c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.1.246.198.373.292a.077.077 0 0 1-.006.128 12.297 12.297 0 0 1-1.873.892.077.077 0 0 0-.04.104 15.43 15.43 0 0 0 1.225 1.994.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.055c.5-5.177-.838-9.674-3.548-13.66a.061.061 0 0 0-.031-.03ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.166 1.095 2.156 2.418 0 1.334-.955 2.419-2.156 2.419Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.166 1.095 2.156 2.418 0 1.334-.946 2.419-2.156 2.419Z"
-                    />
-                  </svg>
-                )}
-                <span>{discordConnecting ? "Connecting..." : "Connect Discord"}</span>
-              </button>
-              <SocialStatusIcon network="linkedin" connected={linkedinConnected} />
-              <SocialStatusIcon network="discord" connected={discordConnected} />
-            </div>
-          </div>
           {loadingMe ? (
             <div className="emptyState">Loading…</div>
           ) : (
@@ -1140,12 +784,10 @@ export default function AccountEditDetails({
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 1000, color: "#0f172a", fontSize: 14 }}>
-                    LinkedIn sync {linkedinConnected ? "• Connected" : "• Not connected"}
+                    Profile sync status is now managed in Settings / Integrations.
                   </div>
                 <div style={{ fontSize: 12, color: "#607d8b", fontWeight: 700, marginTop: 2 }}>
-                  {linkedinConnected && linkedinConnectedAt
-                    ? `Last connected ${fmtMaybeDate(linkedinConnectedAt)}.`
-                    : "Pull your LinkedIn photo into Employee Picture."}
+                  Use Settings to connect or disconnect LinkedIn/Discord/Jira.
                 </div>
                 </div>
               </div>
@@ -1608,7 +1250,6 @@ export default function AccountEditDetails({
           )}
         </div>
       </div>
-      <AwardUnlockModal open={unlockOpen} items={unlockItems} onClose={() => setUnlockOpen(false)} />
     </>
   );
 }

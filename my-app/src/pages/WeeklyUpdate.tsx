@@ -3,6 +3,7 @@ import TimeSheet from "../components/Timesheet";
 import { useUpdates, startOfWeekMonday, toISODate } from "./UpdatesContext";
 import { useAuth } from "../auth/AuthContext";
 import type { UpdateSubmission } from "./UpdatesContext";
+import type { ApiProject } from "../api/types/projects";
 import type {
   PresignedUploadItem,
   SubmitUpdateResponse,
@@ -208,6 +209,14 @@ export default function WeeklyUpdate() {
   const [hours, setHours] = useState<Record<string, number>>({});
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [projectId, setProjectId] = useState<string>("");
+  const [jiraTickets, setJiraTickets] = useState<
+    Array<{ key: string; summary?: string; status?: string; assignee?: string; updated?: string }>
+  >([]);
+  const [selectedJiraTicketKeys, setSelectedJiraTicketKeys] = useState<string[]>([]);
+  const [jiraLoading, setJiraLoading] = useState(false);
+  const [jiraError, setJiraError] = useState("");
 
   const totalHours = Object.values(hours).reduce(
     (a, b) => a + (Number(b) || 0),
@@ -227,6 +236,47 @@ export default function WeeklyUpdate() {
     } catch {}
   }, [accomplishments, blockers, next, worked, didnt, improve, selectedFiles]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await api.getProjects();
+        setProjects(Array.isArray(list) ? list : []);
+        const fromUser = String((user as any)?.project_id || "").trim();
+        if (fromUser) setProjectId(fromUser);
+      } catch {
+        setProjects([]);
+      }
+    })();
+  }, [api, user]);
+
+  useEffect(() => {
+    const pid = String(projectId || "").trim();
+    if (!pid) {
+      setJiraTickets([]);
+      setSelectedJiraTicketKeys([]);
+      setJiraError("");
+      return;
+    }
+    (async () => {
+      try {
+        setJiraLoading(true);
+        setJiraError("");
+        const resp = await api.getJiraTickets({ projectId: pid, weekStart, limit: 40 });
+        const items = Array.isArray(resp?.items) ? resp.items : [];
+        setJiraTickets(items);
+        setSelectedJiraTicketKeys((prev) =>
+          prev.filter((k) => items.some((x) => String(x.key) === String(k)))
+        );
+      } catch (err: any) {
+        setJiraTickets([]);
+        setSelectedJiraTicketKeys([]);
+        setJiraError(String(err?.message || "Could not load Jira tickets."));
+      } finally {
+        setJiraLoading(false);
+      }
+    })();
+  }, [api, projectId, weekStart]);
+
   const addRow = (list: string[], set: (x: string[]) => void) =>
     set([...list, ""]);
 
@@ -242,6 +292,27 @@ export default function WeeklyUpdate() {
 
   const trimList = (list: string[]) =>
     list.map((s) => s.trim()).filter(Boolean);
+
+  function toggleJiraTicket(key: string) {
+    const normalized = String(key || "").trim().toUpperCase();
+    if (!normalized) return;
+    setSelectedJiraTicketKeys((prev) => {
+      if (prev.includes(normalized)) return prev.filter((x) => x !== normalized);
+      return [...prev, normalized];
+    });
+  }
+
+  function tagJiraInAccomplishments(key: string) {
+    const normalized = String(key || "").trim().toUpperCase();
+    if (!normalized) return;
+    const token = `@${normalized}`;
+    setAccomplishments((prev) => {
+      const base = String(prev || "");
+      if (base.includes(token)) return base;
+      const needsSpace = base.length > 0 && !base.endsWith("\n");
+      return `${base}${needsSpace ? "\n" : ""}${token} `;
+    });
+  }
 
   function ingestFiles(files: File[]) {
     if (!files.length) return;
@@ -429,6 +500,17 @@ export default function WeeklyUpdate() {
         retrospective: submission.retrospective,
         timesheet,
         uploadedFiles,
+        projectId,
+        jiraTicketKeys: selectedJiraTicketKeys,
+        jiraTickets: jiraTickets
+          .filter((t) => selectedJiraTicketKeys.includes(String(t.key)))
+          .map((t) => ({
+            key: String(t.key || "").trim().toUpperCase(),
+            summary: String(t.summary || ""),
+            status: String(t.status || ""),
+            assignee: String(t.assignee || ""),
+            updated: String(t.updated || ""),
+          })),
       });
 
       save({
@@ -587,6 +669,25 @@ export default function WeeklyUpdate() {
                   </label>
                 </div>
               </div>
+
+              <div className="col s12 m6">
+                <div className="input-field" style={{ marginTop: 0 }}>
+                  <select
+                    className="browser-default"
+                    value={projectId}
+                    onChange={(e) => setProjectId(String(e.target.value || ""))}
+                    style={{ borderRadius: 12 }}
+                  >
+                    <option value="">Select project</option>
+                    {projects.map((p) => (
+                      <option key={String(p.projectId)} value={String(p.projectId)}>
+                        {String(p.name || p.projectId)} ({String(p.projectId)})
+                      </option>
+                    ))}
+                  </select>
+                  <span className="helper-text">Project used for update and Jira ticket lookup.</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -597,6 +698,75 @@ export default function WeeklyUpdate() {
                 title="Activity Summary"
                 subtitle="These appear in Activity Report. Keep them crisp, scannable, and manager-friendly."
               />
+
+              <div className="row" style={{ marginBottom: 10 }}>
+                <div className="col s12">
+                  <label style={{ fontWeight: 800, color: "#0f172a", display: "block", marginBottom: 8 }}>
+                    Jira Tickets (optional)
+                  </label>
+                  <div
+                    style={{
+                      border: "1px solid rgba(148,163,184,.25)",
+                      borderRadius: 12,
+                      padding: 10,
+                      minHeight: 56,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      background: "#fff",
+                    }}
+                  >
+                    {jiraTickets.map((t) => {
+                      const key = String(t.key || "").trim().toUpperCase();
+                      if (!key) return null;
+                      const selected = selectedJiraTicketKeys.includes(key);
+                      const summary = String(t.summary || "").trim();
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          title={summary || key}
+                          onClick={() => {
+                            toggleJiraTicket(key);
+                            tagJiraInAccomplishments(key);
+                          }}
+                          style={{
+                            border: selected
+                              ? "1px solid rgba(16,185,129,.45)"
+                              : "1px solid rgba(59,130,246,.32)",
+                            background: selected
+                              ? "rgba(16,185,129,.14)"
+                              : "rgba(59,130,246,.08)",
+                            color: selected ? "#065f46" : "#1d4ed8",
+                            borderRadius: 999,
+                            padding: "6px 10px",
+                            fontWeight: 900,
+                            fontSize: 12,
+                            lineHeight: 1,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {key}
+                        </button>
+                      );
+                    })}
+                    {!jiraLoading && !jiraTickets.length && (
+                      <span style={{ color: "#64748b", fontSize: 12 }}>
+                        No tickets available.
+                      </span>
+                    )}
+                  </div>
+                  <div className="helper-text">
+                    {jiraLoading
+                      ? "Loading Jira tickets..."
+                      : jiraError
+                      ? jiraError
+                      : jiraTickets.length
+                      ? `${jiraTickets.length} ticket(s) available. Click chips to select and auto-tag in Accomplishments.`
+                      : "No Jira tickets found or Jira not configured for this project."}
+                  </div>
+                </div>
+              </div>
 
               <div className="row" style={{ marginBottom: 0 }}>
                 <div className="col s12">

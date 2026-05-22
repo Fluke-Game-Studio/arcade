@@ -591,7 +591,6 @@ async function importTalkingHeadCtor(): Promise<TalkingHeadCtor> {
 export default function TalkingHeadAI() {
   const { api } = useAuth();
   const token = String((api as any)?.token || "").trim();
-  const platform = String((api as any)?.getPlatform?.() || "portal").trim() || "portal";
 
   const sessionIdRef = useRef<string>(getStableSessionId());
   const avatarNodeRef = useRef<HTMLDivElement | null>(null);

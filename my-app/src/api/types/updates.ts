@@ -119,6 +119,14 @@ export type SubmitUpdateBody = {
   timesheet: { date: string; hours: number }[];
   uploadedFiles?: UploadedFileRef[];
   projectId?: string;
+  jiraTicketKeys?: string[];
+  jiraTickets?: Array<{
+    key: string;
+    summary?: string;
+    status?: string;
+    assignee?: string;
+    updated?: string;
+  }>;
 };
 
 export type SubmitUpdateResponse = {

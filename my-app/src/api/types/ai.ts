@@ -1,6 +1,11 @@
 // src/api/types/ai.ts
 
-export type ApiRole = "super" | "admin" | "employee";
+export type ApiRole =
+  | "super"
+  | "admin"
+  | "employee"
+  | "admin-readonly"
+  | "super-readonly";
 export type AIProvider = "auto" | "openai" | "ollama";
 export type AIContextId = "vaibhav" | "internal" | "flukegames" | string;
 
@@ -150,6 +155,8 @@ export type AIStartChatBody = {
   agentId?: string;
   agentRole?: string;
   perform?: boolean;
+  mcpAction?: "upsert_job" | "send_email" | "submit_weekly_update" | string;
+  mcpInput?: Record<string, any>;
 };
 
 export type AIStartChatResponse = {

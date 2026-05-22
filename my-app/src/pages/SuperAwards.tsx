@@ -135,8 +135,14 @@ export default function SuperAwards() {
   const [savingRule, setSavingRule] = useState(false);
   const [rulesQuery, setRulesQuery] = useState("");
 
-  const userRole = safeStr((user as any)?.role).toLowerCase();
-  const isSuperOrAdmin = userRole === "super" || userRole === "admin";
+  const userRole = safeStr((user as any)?.role)
+    .toLowerCase()
+    .replace(/_/g, "-");
+  const isSuperOrAdmin =
+    userRole === "super" ||
+    userRole === "admin" ||
+    userRole === "super-readonly" ||
+    userRole === "admin-readonly";
 
   async function loadUsers() {
     setLoadingUsers(true);

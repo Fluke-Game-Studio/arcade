@@ -4,6 +4,7 @@ import AccountEditDetails from "../components/account/AccountEditDetails";
 import AccountProfileSecurity from "../components/account/AccountProfileSecurity";
 import AccountMyUpdates from "../components/account/AccountMyUpdates";
 import AccountGamification from "../components/account/AccountGamification";
+import AccountSettingsPanel from "../components/account/AccountSettingsPanel";
 import AwardUnlockModal from "../components/account/AwardUnlockModal";
 
 declare const M: any;
@@ -806,64 +807,12 @@ export default function Account() {
         )}
 
         {activeTab === "settings" && (
-          <section className="panelCard" style={{ background: "#fff" }}>
-            <div className="panelHead">
-              <div>
-                <div className="h">Settings</div>
-                <div className="p">App preferences</div>
-              </div>
-            </div>
-            <div style={{ padding: 16 }}>
-              <div
-                style={{
-                  border: "1px solid #e6edf2",
-                  borderRadius: 16,
-                  padding: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 12,
-                      border: "1px solid #dbe5ec",
-                      background: "rgba(37,99,235,0.10)",
-                      display: "grid",
-                      placeItems: "center",
-                    }}
-                  >
-                    <i className="material-icons" style={{ fontSize: 18, color: "#1d4ed8" }}>
-                      {theme === "dark" ? "dark_mode" : "light_mode"}
-                    </i>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 900, color: "#0f172a" }}>Theme</div>
-                    <div style={{ fontSize: 12, color: "#607d8b", fontWeight: 700 }}>
-                      {theme === "dark" ? "Night mode enabled" : "Day mode enabled"}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="accBtn subtle"
-                  onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-                  aria-label="Toggle day/night mode"
-                >
-                  <i className="material-icons" style={{ fontSize: 18 }}>
-                    {theme === "dark" ? "wb_sunny" : "nightlight_round"}
-                  </i>
-                  {theme === "dark" ? "Switch To Day" : "Switch To Night"}
-                </button>
-              </div>
-            </div>
-          </section>
+          <AccountSettingsPanel
+            api={api}
+            me={user}
+            theme={theme}
+            onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          />
         )}
       </div>
       <AwardUnlockModal open={unlockOpen} items={unlockItems} onClose={() => setUnlockOpen(false)} />
