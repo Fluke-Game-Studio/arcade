@@ -143,6 +143,17 @@ function formatBytes(bytes: number) {
   return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+function parseProjectIds(value: any): string[] {
+  if (Array.isArray(value)) return Array.from(new Set(value.map((x) => String(x || "").trim()).filter(Boolean)));
+  const s = String(value || "").trim();
+  if (!s) return [];
+  try {
+    const parsed = JSON.parse(s);
+    if (Array.isArray(parsed)) return Array.from(new Set(parsed.map((x) => String(x || "").trim()).filter(Boolean)));
+  } catch {}
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
 async function uploadFileWithProgress(
   uploadUrl: string,
   file: File,
@@ -217,6 +228,7 @@ export default function WeeklyUpdate() {
   const [selectedJiraTicketKeys, setSelectedJiraTicketKeys] = useState<string[]>([]);
   const [jiraLoading, setJiraLoading] = useState(false);
   const [jiraError, setJiraError] = useState("");
+  const ALL_ASSIGNED_PROJECTS = "__all_assigned__";
 
   const totalHours = Object.values(hours).reduce(
     (a, b) => a + (Number(b) || 0),
@@ -241,8 +253,11 @@ export default function WeeklyUpdate() {
       try {
         const list = await api.getProjects();
         setProjects(Array.isArray(list) ? list : []);
-        const fromUser = String((user as any)?.project_id || "").trim();
-        if (fromUser) setProjectId(fromUser);
+        const fromUserSingle = String((user as any)?.project_id || "").trim();
+        const fromUserMulti = parseProjectIds((user as any)?.project_ids);
+        if (fromUserMulti.length > 1) setProjectId(ALL_ASSIGNED_PROJECTS);
+        else if (fromUserMulti.length === 1) setProjectId(fromUserMulti[0]);
+        else if (fromUserSingle) setProjectId(fromUserSingle);
       } catch {
         setProjects([]);
       }
@@ -261,7 +276,12 @@ export default function WeeklyUpdate() {
       try {
         setJiraLoading(true);
         setJiraError("");
-        const resp = await api.getJiraTickets({ projectId: pid, weekStart, limit: 40 });
+        const useProjectId = pid && pid !== ALL_ASSIGNED_PROJECTS ? pid : "";
+        const resp = await api.getJiraTickets({
+          ...(useProjectId ? { projectId: useProjectId } : {}),
+          weekStart,
+          limit: 40,
+        });
         const items = Array.isArray(resp?.items) ? resp.items : [];
         setJiraTickets(items);
         setSelectedJiraTicketKeys((prev) =>
@@ -679,6 +699,7 @@ export default function WeeklyUpdate() {
                     style={{ borderRadius: 12 }}
                   >
                     <option value="">Select project</option>
+                    <option value={ALL_ASSIGNED_PROJECTS}>All Assigned Projects</option>
                     {projects.map((p) => (
                       <option key={String(p.projectId)} value={String(p.projectId)}>
                         {String(p.name || p.projectId)} ({String(p.projectId)})

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
 import BotAvatar, { type BotStatus } from "../components/BotAvatar2DBit";
+import { useAgentAdminData } from "../hooks/useAgentAdminData";
 
 type Provider = "auto" | "openai" | "ollama";
 type Mode = "plan" | "execute";
@@ -70,10 +71,8 @@ type EmployeeLite = {
 };
 
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
-const AVAILABLE_MCP_ACTIONS = ["upsert_job", "send_email", "submit_weekly_update"] as const;
-const AVAILABLE_ROLES = ["employee", "admin", "super", "admin-readonly", "super-readonly"] as const;
-const ADMIN_CACHE_TTL_MS = 5 * 60 * 1000;
-const ADMIN_CACHE_KEY = "mgr_builder_admin_cache_v2";
+const FALLBACK_CAPABILITIES = ["jobs_write", "mail_write", "updates_write", "jira_read", "jira_write", "jira_admin"] as const;
+const FALLBACK_ROLES = ["employee", "admin", "super", "admin-readonly", "super-readonly"] as const;
 
 function uid() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -95,6 +94,16 @@ function toggleInList(list: string[], value: string) {
   const has = list.includes(value);
   if (has) return list.filter((x) => x !== value);
   return [...list, value];
+}
+
+function defaultPolicyForAction(action: string): MpcPolicy {
+  return {
+    action,
+    policyName: `${action}_policy`,
+    description: "",
+    allowedRoles: ["admin", "super"],
+    requireApproval: true,
+  };
 }
 
 export default function ManagerAgentBuilderPage() {
@@ -131,8 +140,8 @@ export default function ManagerAgentBuilderPage() {
   const [assignDefaultAgent, setAssignDefaultAgent] = useState("");
   const [assignAllowedAgentsText, setAssignAllowedAgentsText] = useState("");
   const [policyForm, setPolicyForm] = useState<MpcPolicy>({
-    action: "send_email",
-    policyName: "send_email_policy",
+    action: "mail_write",
+    policyName: "mail_write_policy",
     description: "",
     allowedRoles: ["admin", "super"],
     requireApproval: true,
@@ -149,12 +158,20 @@ export default function ManagerAgentBuilderPage() {
   const activeRequestClientIdRef = useRef<string | null>(null);
   const registeredClientIdRef = useRef<string | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const runPollTimersRef = useRef<Record<string, number>>({});
   const speakTimer = useRef<number | null>(null);
   const sessionIdRef = useRef(`mgr_${uid()}`);
 
   const roleLower = safeStr((user as any)?.role || "").toLowerCase();
   const canExecute = roleLower === "admin" || roleLower === "super";
   const isBusy = !!loadingMode;
+  const adminData = useAgentAdminData(token, safeStr((user as any)?.username || ""));
+  const availableCapabilities =
+    adminData.definitions.capabilities.length > 0
+      ? adminData.definitions.capabilities
+      : [...FALLBACK_CAPABILITIES];
+  const availableRoles =
+    adminData.definitions.roles.length > 0 ? adminData.definitions.roles : [...FALLBACK_ROLES];
 
   const lastTurn = useMemo(() => (history.length ? history[0] : null), [history]);
 
@@ -204,6 +221,149 @@ export default function ManagerAgentBuilderPage() {
     setHistory((prev) => prev.map((turn) => (turn.requestClientId === requestClientId ? updater(turn) : turn)));
   }
 
+  function clearRunPolling(requestClientId: string) {
+    const timer = runPollTimersRef.current[requestClientId];
+    if (timer) {
+      window.clearInterval(timer);
+      delete runPollTimersRef.current[requestClientId];
+    }
+  }
+
+  function diagnosticsFromPayload(data: any): TurnDiagnostics {
+    return {
+      provider: safeStr(data?.provider || ""),
+      model: safeStr(data?.model || ""),
+      contextType: safeStr(data?.contextType || ""),
+      contextLabel: safeStr(data?.contextLabel || ""),
+      memoryProvider: safeStr(data?.meta?.memory?.provider || ""),
+      memoryTurnCount: Number(data?.meta?.memory?.turnCount || 0) || 0,
+      routing:
+        data?.routing && typeof data.routing === "object"
+          ? data.routing
+          : undefined,
+      agentEmployee:
+        data?.agentEmployee && typeof data.agentEmployee === "object"
+          ? data.agentEmployee
+          : null,
+      actionMcp:
+        data?.meta?.actionMcp && typeof data.meta.actionMcp === "object"
+          ? data.meta.actionMcp
+          : null,
+      workflow:
+        data?.meta?.workflow && typeof data.meta.workflow === "object"
+          ? {
+              engine: safeStr(data.meta.workflow.engine || ""),
+              graphTrace: Array.isArray(data.meta.workflow.graphTrace)
+                ? data.meta.workflow.graphTrace
+                : [],
+            }
+          : null,
+      approval:
+        data?.meta?.approval && typeof data.meta.approval === "object"
+          ? data.meta.approval
+          : null,
+      guardrails:
+        data?.meta?.guardrails && typeof data.meta.guardrails === "object"
+          ? data.meta.guardrails
+          : null,
+    };
+  }
+
+  function finishTurnFromPayload(requestClientId: string, data: any) {
+    clearRunPolling(requestClientId);
+    const reply = safeStr(data?.reply || "No response received.");
+    const diagnostics = diagnosticsFromPayload(data);
+    const approval = diagnostics.approval;
+    if (approval?.required) {
+      setPendingApproval({
+        action: safeStr(approval.action || ""),
+        agentId: safeStr(approval.agentId || ""),
+        proposedInput:
+          approval.proposedInput && typeof approval.proposedInput === "object"
+            ? approval.proposedInput
+            : {},
+      });
+    } else {
+      setPendingApproval(null);
+    }
+    updateTurnByRequest(requestClientId, (turn) => ({
+      ...turn,
+      reply,
+      status: "done",
+      diagnostics,
+    }));
+    setLoadingMode(null);
+    if (activeRequestClientIdRef.current === requestClientId) activeRequestClientIdRef.current = null;
+    setBotStatus("neutral");
+    clearSpeakingTimer();
+    speakTimer.current = window.setTimeout(() => speak(reply), 120);
+  }
+
+  function failTurn(requestClientId: string, msg: string) {
+    clearRunPolling(requestClientId);
+    updateTurnByRequest(requestClientId, (turn) => ({
+      ...turn,
+      reply: `Error: ${msg}`,
+      status: "error",
+    }));
+    setError(msg);
+    setLoadingMode(null);
+    if (activeRequestClientIdRef.current === requestClientId) activeRequestClientIdRef.current = null;
+    setBotStatus("neutral");
+  }
+
+  function startRunPolling(requestClientId: string) {
+    clearRunPolling(requestClientId);
+    let attempts = 0;
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const resp = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(requestClientId)}`, {
+          headers: {
+            Accept: "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        if (resp.status === 404) {
+          if (attempts > 45) failTurn(requestClientId, "Timed out waiting for worker result.");
+          return;
+        }
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          const msg = safeStr(data?.error || `HTTP ${resp.status}`);
+          if (resp.status >= 500) {
+            failTurn(requestClientId, msg);
+            return;
+          }
+          throw new Error(msg);
+        }
+        const run = data?.run || {};
+        const status = safeStr(run?.status).toLowerCase();
+        if (status === "running") {
+          updateTurnByRequest(requestClientId, (turn) => ({ ...turn, status: "running" }));
+          return;
+        }
+        if (status === "done" || status === "needs_approval" || status === "denied") {
+          finishTurnFromPayload(requestClientId, run?.resultPayload || {
+            type: "ai-result",
+            requestId: requestClientId,
+            clientId: requestClientId,
+            reply: safeStr(run?.reply || run?.replySummary || "No response received."),
+          });
+          return;
+        }
+        if (status === "error") {
+          const payload = run?.errorPayload || {};
+          failTurn(requestClientId, safeStr(payload?.error || run?.deniedReason || "Worker failed."));
+        }
+      } catch (err: any) {
+        if (attempts > 45) failTurn(requestClientId, safeStr(err?.message || "Timed out waiting for worker result."));
+      }
+    };
+    poll();
+    runPollTimersRef.current[requestClientId] = window.setInterval(poll, 2000);
+  }
+
   function connectWebSocket() {
     if (!token) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -240,82 +400,13 @@ export default function ManagerAgentBuilderPage() {
       }
 
       if (data?.type === "ai-result") {
-        const reply = safeStr(data?.reply || "No response received.");
-        const diagnostics: TurnDiagnostics = {
-          provider: safeStr(data?.provider || ""),
-          model: safeStr(data?.model || ""),
-          contextType: safeStr(data?.contextType || ""),
-          contextLabel: safeStr(data?.contextLabel || ""),
-          memoryProvider: safeStr(data?.meta?.memory?.provider || ""),
-          memoryTurnCount: Number(data?.meta?.memory?.turnCount || 0) || 0,
-          routing:
-            data?.routing && typeof data.routing === "object"
-              ? data.routing
-              : undefined,
-          agentEmployee:
-            data?.agentEmployee && typeof data.agentEmployee === "object"
-              ? data.agentEmployee
-              : null,
-          actionMcp:
-            data?.meta?.actionMcp && typeof data.meta.actionMcp === "object"
-              ? data.meta.actionMcp
-              : null,
-          workflow:
-            data?.meta?.workflow && typeof data.meta.workflow === "object"
-              ? {
-                  engine: safeStr(data.meta.workflow.engine || ""),
-                  graphTrace: Array.isArray(data.meta.workflow.graphTrace)
-                    ? data.meta.workflow.graphTrace
-                    : [],
-                }
-              : null,
-          approval:
-            data?.meta?.approval && typeof data.meta.approval === "object"
-              ? data.meta.approval
-              : null,
-          guardrails:
-            data?.meta?.guardrails && typeof data.meta.guardrails === "object"
-              ? data.meta.guardrails
-              : null,
-        };
-        const approval = diagnostics.approval;
-        if (approval?.required) {
-          setPendingApproval({
-            action: safeStr(approval.action || ""),
-            agentId: safeStr(approval.agentId || ""),
-            proposedInput:
-              approval.proposedInput && typeof approval.proposedInput === "object"
-                ? approval.proposedInput
-                : {},
-          });
-        } else {
-          setPendingApproval(null);
-        }
-        updateTurnByRequest(requestClientId, (turn) => ({
-          ...turn,
-          reply,
-          status: "done",
-          diagnostics,
-        }));
-        setLoadingMode(null);
-        activeRequestClientIdRef.current = null;
-        setBotStatus("neutral");
-        clearSpeakingTimer();
-        speakTimer.current = window.setTimeout(() => speak(reply), 120);
+        finishTurnFromPayload(requestClientId, data);
         return;
       }
 
       if (data?.type === "ai-error") {
         const msg = safeStr(data?.error || "Unknown websocket error");
-        updateTurnByRequest(requestClientId, (turn) => ({
-          ...turn,
-          reply: `Error: ${msg}`,
-          status: "error",
-        }));
-        setError(msg);
-        setLoadingMode(null);
-        activeRequestClientIdRef.current = null;
-        setBotStatus("neutral");
+        failTurn(requestClientId, msg);
       }
     };
 
@@ -347,111 +438,53 @@ export default function ManagerAgentBuilderPage() {
         wsRef.current.close();
         wsRef.current = null;
       }
+      for (const timer of Object.values(runPollTimersRef.current)) {
+        window.clearInterval(timer);
+      }
+      runPollTimersRef.current = {};
       registeredClientIdRef.current = null;
       setWsState("disconnected");
     };
   }, [token]);
 
   async function loadAgentAdminData(force = false) {
-    if (!token) return;
-    const cacheTokenKey = safeStr((user as any)?.username || "anon").toLowerCase();
-    const cacheKey = `${ADMIN_CACHE_KEY}__${cacheTokenKey}`;
-    try {
-      const cachedRaw = force ? "" : localStorage.getItem(cacheKey);
-      if (!force && cachedRaw) {
-        const cached = JSON.parse(cachedRaw);
-        const ts = Number(cached?.ts || 0);
-        if (Date.now() - ts < ADMIN_CACHE_TTL_MS) {
-          const cachedAgents = Array.isArray(cached?.agents) ? cached.agents : [];
-          const cachedPolicies = Array.isArray(cached?.policies) ? cached.policies : [];
-          const cachedAssignments = Array.isArray(cached?.assignments) ? cached.assignments : [];
-          const cachedEmployees = Array.isArray(cached?.employees) ? cached.employees : [];
-          setAgentCatalog(cachedAgents);
-          setMcpPolicies(cachedPolicies);
-          setAssignments(cachedAssignments);
-          setEmployees(cachedEmployees);
-          if (cachedAgents.length && !cachedAgents.find((a: any) => a.agentId === selectedAgentId)) {
-            setSelectedAgentId(String(cachedAgents[0].agentId || ""));
-          }
-          return;
-        }
-      }
-    } catch {}
-    try {
-      const [agentsRes, policiesRes, assignmentsRes, usersRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/ai/agents`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_BASE}/admin/ai/mcp-policies`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_BASE}/admin/ai/agent-assignments`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_BASE}/admin/users`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
-      const agentsJson = await agentsRes.json().catch(() => ({}));
-      const policiesJson = await policiesRes.json().catch(() => ({}));
-      const assignmentsJson = await assignmentsRes.json().catch(() => ({}));
-      const usersJson = await usersRes.json().catch(() => ({}));
-      const agents = Array.isArray(agentsJson?.agents) ? agentsJson.agents : [];
-      const policies = Array.isArray(policiesJson?.policies) ? policiesJson.policies : [];
-      const assignmentRows = Array.isArray(assignmentsJson?.assignments) ? assignmentsJson.assignments : [];
-      const usersRaw = Array.isArray(usersJson) ? usersJson : Array.isArray(usersJson?.items) ? usersJson.items : [];
-      const employeeRows: EmployeeLite[] = usersRaw
-        .map((u: any) => ({
-          username: safeStr(u?.username).toLowerCase(),
-          employee_name: safeStr(u?.employee_name),
-        }))
-        .filter((u: EmployeeLite) => !!u.username);
-      setAgentCatalog(agents);
-      setMcpPolicies(policies);
-      setAssignments(assignmentRows);
-      setEmployees(employeeRows);
-      try {
-        localStorage.setItem(
-          cacheKey,
-          JSON.stringify({ ts: Date.now(), agents, policies, assignments: assignmentRows, employees: employeeRows })
-        );
-      } catch {}
-      if (!agents.length) {
-        setSelectedAgentId("");
-      } else if (!agents.find((a: any) => a.agentId === selectedAgentId)) {
-        setSelectedAgentId(String(agents[0].agentId || ""));
-      }
-      if (!safeStr(agentForm.agentId) && agents.length) {
-        const first = agents[0];
-        setAgentForm({
-          agentId: safeStr(first?.agentId),
-          name: safeStr(first?.name || first?.agentId),
-          description: safeStr(first?.description),
-          allowedActions: Array.isArray(first?.allowedActions) ? first.allowedActions : [],
-          approvalPolicy:
-            first?.approvalPolicy && typeof first.approvalPolicy === "object"
-              ? first.approvalPolicy
-              : { mode: "always" },
-        });
-      }
-      if (!safeStr(policyForm.action) && policies.length) {
-        setPolicyForm(policies[0]);
-      }
-    } catch {}
+    await adminData.load(force);
   }
 
   function invalidateAgentAdminCache() {
-    const cacheTokenKey = safeStr((user as any)?.username || "anon").toLowerCase();
-    const cacheKey = `${ADMIN_CACHE_KEY}__${cacheTokenKey}`;
-    try {
-      localStorage.removeItem(cacheKey);
-    } catch {}
+    adminData.invalidate();
   }
 
   useEffect(() => {
-    loadAgentAdminData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+    setAgentCatalog(adminData.agents as any);
+    setMcpPolicies(adminData.policies as any);
+    setAssignments(adminData.assignments as any);
+    setEmployees(adminData.employees as any);
+  }, [adminData.agents, adminData.policies, adminData.assignments, adminData.employees]);
+
+  useEffect(() => {
+    const agents = adminData.agents as any[];
+    if (!agents.length) {
+      setSelectedAgentId("");
+      return;
+    }
+    if (!agents.find((a: any) => a.agentId === selectedAgentId)) {
+      setSelectedAgentId(String(agents[0].agentId || ""));
+    }
+    if (!safeStr(agentForm.agentId)) {
+      const first = agents[0];
+      setAgentForm({
+        agentId: safeStr(first?.agentId),
+        name: safeStr(first?.name || first?.agentId),
+        description: safeStr(first?.description),
+        allowedActions: Array.isArray(first?.allowedActions) ? first.allowedActions : [],
+        approvalPolicy:
+          first?.approvalPolicy && typeof first.approvalPolicy === "object"
+            ? first.approvalPolicy
+            : { mode: "always" },
+      });
+    }
+  }, [adminData.agents, selectedAgentId, agentForm.agentId]);
 
 function buildManagerQuestion(mode: Mode, raw: string) {
   const base = raw.trim();
@@ -514,11 +547,6 @@ function parseMcpInput(text: string) {
       setError("Select an agent profile before plan/execute.");
       return;
     }
-    if (wsState !== "connected") {
-      setError("WebSocket is not connected yet. Please retry in a moment.");
-      return;
-    }
-
     const requestClientId = `${sessionIdRef.current}__${mode}__${uid()}`;
     activeRequestClientIdRef.current = requestClientId;
     if (registeredClientIdRef.current !== requestClientId) {
@@ -609,6 +637,7 @@ function parseMcpInput(text: string) {
         ...turn,
         status: "submitted",
       }));
+      startRunPolling(requestClientId);
     } catch (err: any) {
       const msg = safeStr(err?.message || "Request failed.");
       setError(msg);
@@ -1108,9 +1137,9 @@ function parseMcpInput(text: string) {
                   </div>
                 </div>
                 <div>
-                  <label className="mgr-label">Allowed Actions</label>
+                  <label className="mgr-label">Allowed Capabilities</label>
                   <div className="mgr-segment">
-                    {AVAILABLE_MCP_ACTIONS.map((action) => (
+                    {availableCapabilities.map((action) => (
                       <button
                         key={action}
                         type="button"
@@ -1281,18 +1310,21 @@ function parseMcpInput(text: string) {
             <section className="mgr-card" style={{ marginTop: 12 }}>
               <div className="mgr-row">
                 <div>
-                  <label className="mgr-label">MCP Action</label>
+                  <label className="mgr-label">MCP Permission</label>
                   <div className="mgr-segment">
-                    {mcpPolicies.map((p) => {
-                      const active = policyForm.action === p.action;
+                    {availableCapabilities.map((action) => {
+                      const active = policyForm.action === action;
                       return (
                         <button
-                          key={p.action}
+                          key={action}
                           type="button"
                           className={`mgr-seg-btn ${active ? "active" : ""}`}
-                          onClick={() => setPolicyForm(p)}
+                          onClick={() => {
+                            const existing = mcpPolicies.find((p) => p.action === action);
+                            setPolicyForm(existing || defaultPolicyForAction(action));
+                          }}
                         >
-                          {p.action}
+                          {action}
                         </button>
                       );
                     })}
@@ -1301,7 +1333,7 @@ function parseMcpInput(text: string) {
                 <div>
                   <label className="mgr-label">Allowed Roles</label>
                   <div className="mgr-segment">
-                    {AVAILABLE_ROLES.map((role) => (
+                    {availableRoles.map((role) => (
                       <button
                         key={role}
                         type="button"
