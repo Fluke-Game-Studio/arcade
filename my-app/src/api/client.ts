@@ -509,6 +509,24 @@ export class ApiClient {
     };
   }
 
+  async getMyAiAgentAccessRequests(): Promise<{ ok: boolean; count: number; requests: any[] }> {
+    const r = await fetch(`${API_BASE}/ai/agent-access/requests?status=all&limit=50`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getMyAiAgentAccessRequests failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      count: Number(payload?.count) || 0,
+      requests: Array.isArray(payload?.requests) ? payload.requests : [],
+    };
+  }
+
   async getProjects(): Promise<ApiProject[]> {
     const r = await fetch(`${API_BASE}/projects`, {
       method: "GET",
