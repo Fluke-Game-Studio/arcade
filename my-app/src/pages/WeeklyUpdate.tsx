@@ -228,6 +228,7 @@ export default function WeeklyUpdate() {
   const [selectedJiraTicketKeys, setSelectedJiraTicketKeys] = useState<string[]>([]);
   const [jiraLoading, setJiraLoading] = useState(false);
   const [jiraError, setJiraError] = useState("");
+  const [jiraInfo, setJiraInfo] = useState("");
   const ALL_ASSIGNED_PROJECTS = "__all_assigned__";
 
   const totalHours = Object.values(hours).reduce(
@@ -270,19 +271,31 @@ export default function WeeklyUpdate() {
       setJiraTickets([]);
       setSelectedJiraTicketKeys([]);
       setJiraError("");
+      setJiraInfo("");
       return;
     }
     (async () => {
       try {
         setJiraLoading(true);
         setJiraError("");
+        setJiraInfo("");
         const useProjectId = pid && pid !== ALL_ASSIGNED_PROJECTS ? pid : "";
-        const resp = await api.getJiraTickets({
+        let resp = await api.getJiraTickets({
           ...(useProjectId ? { projectId: useProjectId } : {}),
           weekStart,
           limit: 40,
         });
-        const items = Array.isArray(resp?.items) ? resp.items : [];
+        let items = Array.isArray(resp?.items) ? resp.items : [];
+        if (!items.length && weekStart) {
+          resp = await api.getJiraTickets({
+            ...(useProjectId ? { projectId: useProjectId } : {}),
+            limit: 40,
+          });
+          items = Array.isArray(resp?.items) ? resp.items : [];
+          if (items.length) {
+            setJiraInfo("No current-week Jira updates found; showing active assigned tickets instead.");
+          }
+        }
         setJiraTickets(items);
         setSelectedJiraTicketKeys((prev) =>
           prev.filter((k) => items.some((x) => String(x.key) === String(k)))
@@ -291,6 +304,7 @@ export default function WeeklyUpdate() {
         setJiraTickets([]);
         setSelectedJiraTicketKeys([]);
         setJiraError(String(err?.message || "Could not load Jira tickets."));
+        setJiraInfo("");
       } finally {
         setJiraLoading(false);
       }
@@ -783,7 +797,7 @@ export default function WeeklyUpdate() {
                       : jiraError
                       ? jiraError
                       : jiraTickets.length
-                      ? `${jiraTickets.length} ticket(s) available. Click chips to select and auto-tag in Accomplishments.`
+                      ? `${jiraTickets.length} ticket(s) available. Click chips to select and auto-tag in Accomplishments.${jiraInfo ? ` ${jiraInfo}` : ""}`
                       : "No Jira tickets found or Jira not configured for this project."}
                   </div>
                 </div>

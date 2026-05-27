@@ -118,7 +118,7 @@ export default function Navbar() {
         { to: "/admin/endpoints", label: "Endpoint Access" },
         { to: "/super/ai-character-training", label: "AI Character Training" },
         { to: "/super/talking-head-page", label: "Talking Head Training" },
-        { to: "/super/manager-agent-builder", label: "Manager Agent Builder" },
+        { to: "/super/manager-agent-builder", label: "Agent Builder" },
       ],
     }),
     [isSuper]

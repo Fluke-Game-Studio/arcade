@@ -154,6 +154,7 @@ export type AIStartChatBody = {
   agentEmployeeId?: string;
   agentId?: string;
   agentRole?: string;
+  executionMode?: "plan" | "execute" | string;
   perform?: boolean;
   mcpAction?:
     | "upsert_job"

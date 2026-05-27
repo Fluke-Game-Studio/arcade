@@ -3,10 +3,11 @@ import { API_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
 import BotAvatar, { type BotStatus } from "../components/BotAvatar2DBit";
 import { useAgentAdminData } from "../hooks/useAgentAdminData";
+import AgentTransactionLogsPage from "./AgentTransactionLogsPage";
 
 type Provider = "auto" | "openai" | "ollama";
 type Mode = "plan" | "execute";
-type BuilderTab = "execute" | "agents" | "assignments" | "policies";
+type BuilderTab = "execute" | "agents" | "assignments" | "policies" | "history";
 type WsState = "disconnected" | "connecting" | "connected";
 type TurnStatus = "queued" | "running" | "done" | "error" | "submitted";
 type ApprovalDecision = "allow" | "cancel";
@@ -18,6 +19,8 @@ type TurnDiagnostics = {
   contextLabel?: string;
   memoryProvider?: string;
   memoryTurnCount?: number;
+  actionRagProvider?: string;
+  actionRagTopAction?: string;
   routing?: Record<string, any>;
   agentEmployee?: Record<string, any> | null;
   actionMcp?: Record<string, any> | null;
@@ -33,6 +36,11 @@ type TurnDiagnostics = {
   } | null;
   guardrails?: {
     deniedReason?: string;
+  } | null;
+  execution?: {
+    mode?: string;
+    perform?: boolean;
+    requestedMode?: string;
   } | null;
 };
 
@@ -50,7 +58,13 @@ type AgentConfig = {
   agentId: string;
   name: string;
   description?: string;
+  role?: string;
+  systemPrompt?: string;
   allowedActions: string[];
+  allowedContexts?: string[];
+  defaultContext?: string;
+  actionExecutor?: string;
+  sourcesByContext?: Record<string, string[]>;
   approvalPolicy?: { mode?: string };
 };
 type MpcPolicy = {
@@ -71,8 +85,12 @@ type EmployeeLite = {
 };
 
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
-const FALLBACK_CAPABILITIES = ["jobs_write", "mail_write", "updates_write", "jira_read", "jira_write", "jira_admin"] as const;
 const FALLBACK_ROLES = ["employee", "admin", "super", "admin-readonly", "super-readonly"] as const;
+
+function isReadCapability(capability: string) {
+  const key = safeStr(capability).toLowerCase();
+  return key.endsWith("_read");
+}
 
 function uid() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -90,10 +108,54 @@ function safeStr(v: any) {
   return String(v);
 }
 
+function prettyJson(value: any) {
+  try {
+    if (value === null || value === undefined) return "";
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return safeStr(value);
+  }
+}
+
+function hasObjectContent(value: any) {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return Object.keys(value).length > 0;
+}
+
+function pickIntentTrace(workflow: any) {
+  const trace = Array.isArray(workflow?.graphTrace) ? workflow.graphTrace : [];
+  return trace.find((step: any) => safeStr(step?.node) === "intent") || null;
+}
+
 function toggleInList(list: string[], value: string) {
   const has = list.includes(value);
   if (has) return list.filter((x) => x !== value);
   return [...list, value];
+}
+
+function formFromAgent(agent: any): AgentConfig {
+  return {
+    agentId: safeStr(agent?.agentId),
+    name: safeStr(agent?.name || agent?.agentId),
+    description: safeStr(agent?.description),
+    role: safeStr(agent?.role || "assistant"),
+    systemPrompt: safeStr(agent?.systemPrompt),
+    allowedActions: Array.isArray(agent?.allowedActions) ? agent.allowedActions : [],
+    allowedContexts: Array.isArray(agent?.allowedContexts)
+      ? agent.allowedContexts
+      : ["internal", "flukegames", "vaibhav"],
+    defaultContext: safeStr(agent?.defaultContext || "internal"),
+    actionExecutor: safeStr(agent?.actionExecutor),
+    sourcesByContext:
+      agent?.sourcesByContext && typeof agent.sourcesByContext === "object"
+        ? agent.sourcesByContext
+        : {},
+    approvalPolicy:
+      agent?.approvalPolicy && typeof agent.approvalPolicy === "object"
+        ? agent.approvalPolicy
+        : { mode: "always" },
+  };
 }
 
 function defaultPolicyForAction(action: string): MpcPolicy {
@@ -132,7 +194,13 @@ export default function ManagerAgentBuilderPage() {
     agentId: "",
     name: "",
     description: "",
+    role: "assistant",
+    systemPrompt: "",
     allowedActions: [],
+    allowedContexts: ["internal", "flukegames", "vaibhav"],
+    defaultContext: "internal",
+    actionExecutor: "",
+    sourcesByContext: {},
     approvalPolicy: { mode: "always" },
   });
   const [mcpPolicies, setMcpPolicies] = useState<MpcPolicy[]>([]);
@@ -166,10 +234,9 @@ export default function ManagerAgentBuilderPage() {
   const canExecute = roleLower === "admin" || roleLower === "super";
   const isBusy = !!loadingMode;
   const adminData = useAgentAdminData(token, safeStr((user as any)?.username || ""));
-  const availableCapabilities =
-    adminData.definitions.capabilities.length > 0
-      ? adminData.definitions.capabilities
-      : [...FALLBACK_CAPABILITIES];
+  const availableCapabilities = adminData.definitions.capabilities;
+  const readCapabilities = availableCapabilities.filter(isReadCapability);
+  const writeCapabilities = availableCapabilities.filter((action) => !isReadCapability(action));
   const availableRoles =
     adminData.definitions.roles.length > 0 ? adminData.definitions.roles : [...FALLBACK_ROLES];
 
@@ -230,6 +297,7 @@ export default function ManagerAgentBuilderPage() {
   }
 
   function diagnosticsFromPayload(data: any): TurnDiagnostics {
+    const intentTrace = pickIntentTrace(data?.meta?.workflow);
     return {
       provider: safeStr(data?.provider || ""),
       model: safeStr(data?.model || ""),
@@ -237,6 +305,8 @@ export default function ManagerAgentBuilderPage() {
       contextLabel: safeStr(data?.contextLabel || ""),
       memoryProvider: safeStr(data?.meta?.memory?.provider || ""),
       memoryTurnCount: Number(data?.meta?.memory?.turnCount || 0) || 0,
+      actionRagProvider: safeStr(intentTrace?.ragProvider || ""),
+      actionRagTopAction: safeStr(intentTrace?.ragTopAction || ""),
       routing:
         data?.routing && typeof data.routing === "object"
           ? data.routing
@@ -265,6 +335,10 @@ export default function ManagerAgentBuilderPage() {
       guardrails:
         data?.meta?.guardrails && typeof data.meta.guardrails === "object"
           ? data.meta.guardrails
+          : null,
+      execution:
+        data?.meta?.execution && typeof data.meta.execution === "object"
+          ? data.meta.execution
           : null,
     };
   }
@@ -472,17 +546,7 @@ export default function ManagerAgentBuilderPage() {
       setSelectedAgentId(String(agents[0].agentId || ""));
     }
     if (!safeStr(agentForm.agentId)) {
-      const first = agents[0];
-      setAgentForm({
-        agentId: safeStr(first?.agentId),
-        name: safeStr(first?.name || first?.agentId),
-        description: safeStr(first?.description),
-        allowedActions: Array.isArray(first?.allowedActions) ? first.allowedActions : [],
-        approvalPolicy:
-          first?.approvalPolicy && typeof first.approvalPolicy === "object"
-            ? first.approvalPolicy
-            : { mode: "always" },
-      });
+      setAgentForm(formFromAgent(agents[0]));
     }
   }, [adminData.agents, selectedAgentId, agentForm.agentId]);
 
@@ -592,12 +656,15 @@ function parseMcpInput(text: string) {
         body: JSON.stringify({
           clientId: requestClientId,
           requestId: requestClientId,
+          threadId: sessionIdRef.current,
           context: "internal",
           question: buildManagerQuestion(mode, q),
           agentEmployeeId: selectedAgentId,
           agentId: selectedAgentId,
           agentRole: "project_manager",
+          executionMode: mode,
           perform: mode === "execute",
+          ...(mode === "execute" && approval?.action ? { mcpAction: approval.action } : {}),
           ...(mode === "execute"
             ? {
                 mcpInputMode: useMcpOverrides ? "override" : "auto",
@@ -716,6 +783,25 @@ function parseMcpInput(text: string) {
         }
         .mgr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .mgr-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+        .mgr-cap-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        .mgr-cap-group {
+          border: 1px solid rgba(148,163,184,0.16);
+          border-radius: 12px;
+          background: rgba(2,6,23,0.18);
+          padding: 10px;
+        }
+        .mgr-cap-title {
+          color: rgba(226,232,240,0.92);
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: 0.4px;
+        }
+        .mgr-empty-inline {
+          color: rgba(203,213,225,0.72);
+          font-size: 12px;
+          font-weight: 700;
+          padding: 7px 0;
+        }
         .mgr-segment { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
         .mgr-seg-btn {
           border: 1px solid rgba(96,165,250,0.45);
@@ -747,6 +833,7 @@ function parseMcpInput(text: string) {
         }
         .mgr-btn.primary { border-color: rgba(16,185,129,0.45); background: linear-gradient(180deg, rgba(16,185,129,0.22), rgba(5,150,105,0.15)); color: #d1fae5; }
         .mgr-btn.secondary { border-color: rgba(56,189,248,0.42); background: linear-gradient(180deg, rgba(56,189,248,0.22), rgba(37,99,235,0.16)); color: #e0f2fe; }
+        .mgr-btn.danger { border-color: rgba(248,113,113,0.5); background: linear-gradient(180deg, rgba(248,113,113,0.2), rgba(127,29,29,0.18)); color: #fecaca; }
         .mgr-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .mgr-toggle { display: flex; align-items: center; gap: 8px; color: rgba(191,219,254,0.94); font-size: 13px; margin-top: 8px; }
         .mgr-error { margin-top: 10px; border: 1px solid rgba(248,113,113,0.45); background: rgba(127,29,29,0.22); color: #fecaca; border-radius: 10px; padding: 8px 10px; font-size: 13px; font-weight: 700; }
@@ -774,6 +861,15 @@ function parseMcpInput(text: string) {
           font-size: 12px;
           color: rgba(191,219,254,0.9);
         }
+        .mgr-debug summary {
+          cursor: pointer;
+          color: rgba(191,219,254,0.96);
+          font-weight: 900;
+          letter-spacing: 0.4px;
+          text-transform: uppercase;
+          font-size: 11px;
+        }
+        .mgr-debug[open] summary { margin-bottom: 8px; }
         .mgr-diag-line { margin: 2px 0; }
         .mgr-diag-trace {
           margin-top: 6px;
@@ -790,6 +886,33 @@ function parseMcpInput(text: string) {
           border-radius: 8px;
           padding: 5px 6px;
         }
+        .mgr-mcp-payload {
+          margin-top: 8px;
+          border: 1px solid rgba(56,189,248,0.22);
+          border-radius: 10px;
+          background: rgba(2,6,23,0.28);
+          overflow: hidden;
+        }
+        .mgr-mcp-payload-title {
+          padding: 7px 9px;
+          color: rgba(191,219,254,0.96);
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 0.4px;
+          text-transform: uppercase;
+          border-bottom: 1px solid rgba(56,189,248,0.16);
+        }
+        .mgr-mcp-payload pre {
+          margin: 0;
+          max-height: 260px;
+          overflow: auto;
+          white-space: pre-wrap;
+          color: #e0f2fe;
+          font-size: 11px;
+          line-height: 1.45;
+          padding: 9px;
+          background: rgba(15,23,42,0.42);
+        }
         .mgr-history { display: grid; gap: 10px; margin-top: 10px; max-height: 58vh; overflow: auto; padding-right: 2px; }
         .mgr-turn { border: 1px solid rgba(148,163,184,0.24); border-radius: 12px; background: rgba(2,6,23,0.3); padding: 10px; }
         .mgr-turn-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 7px; }
@@ -805,12 +928,13 @@ function parseMcpInput(text: string) {
 
       <div className="mgr-wrap">
         <div className="mgr-hero">
-          <h1 className="mgr-title">Manager Agent Builder</h1>
+          <h1 className="mgr-title">Agent Builder</h1>
           <div className="mgr-actions" style={{ marginTop: 8 }}>
             <button className={`mgr-btn ${tab === "execute" ? "secondary" : ""}`} onClick={() => setTab("execute")}>Execute</button>
             <button className={`mgr-btn ${tab === "agents" ? "secondary" : ""}`} onClick={() => setTab("agents")}>Agents</button>
             <button className={`mgr-btn ${tab === "assignments" ? "secondary" : ""}`} onClick={() => setTab("assignments")}>Assignments</button>
             <button className={`mgr-btn ${tab === "policies" ? "secondary" : ""}`} onClick={() => setTab("policies")}>MCP Policies</button>
+            <button className={`mgr-btn ${tab === "history" ? "secondary" : ""}`} onClick={() => setTab("history")}>Transaction History</button>
           </div>
           {toast ? (
             <div
@@ -1025,7 +1149,8 @@ function parseMcpInput(text: string) {
                     </div>
                     <pre>{`Instruction:\n${turn.request}\n\nResponse:\n${turn.reply}`}</pre>
                     {turn.diagnostics ? (
-                      <div className="mgr-diag">
+                      <details className="mgr-diag mgr-debug">
+                        <summary>Debug details</summary>
                         <div className="mgr-diag-line">
                           Provider: <b>{turn.diagnostics.provider || "-"}</b> | Model:{" "}
                           <b>{turn.diagnostics.model || "-"}</b>
@@ -1035,8 +1160,17 @@ function parseMcpInput(text: string) {
                           {turn.diagnostics.contextLabel || "-"})
                         </div>
                         <div className="mgr-diag-line">
-                          Memory/RAG: <b>{turn.diagnostics.memoryProvider || "none"}</b> | turns:{" "}
+                          Memory: <b>{turn.diagnostics.memoryProvider || "none"}</b> | turns:{" "}
                           <b>{turn.diagnostics.memoryTurnCount || 0}</b>
+                        </div>
+                        <div className="mgr-diag-line">
+                          Action RAG: <b>{turn.diagnostics.actionRagProvider || "none"}</b>
+                          {turn.diagnostics.actionRagTopAction ? (
+                            <>
+                              {" "}
+                              | top action: <b>{turn.diagnostics.actionRagTopAction}</b>
+                            </>
+                          ) : null}
                         </div>
                         <div className="mgr-diag-line">
                           Agent:{" "}
@@ -1047,6 +1181,10 @@ function parseMcpInput(text: string) {
                           </b>{" "}
                           | executor:{" "}
                           <b>{safeStr(turn.diagnostics.routing?.actionExecutor) || "-"}</b>
+                        </div>
+                        <div className="mgr-diag-line">
+                          Execution: <b>{safeStr(turn.diagnostics.execution?.mode) || turn.mode}</b> | perform:{" "}
+                          <b>{turn.diagnostics.execution?.perform === true ? "true" : "false"}</b>
                         </div>
                         {turn.diagnostics.actionMcp ? (
                           <div className="mgr-diag-line">
@@ -1064,6 +1202,18 @@ function parseMcpInput(text: string) {
                         {safeStr(turn.diagnostics.guardrails?.deniedReason) ? (
                           <div className="mgr-diag-line">
                             Guardrails: <b>{safeStr(turn.diagnostics.guardrails?.deniedReason)}</b>
+                          </div>
+                        ) : null}
+                        {hasObjectContent(turn.diagnostics.actionMcp?.response) ? (
+                          <div className="mgr-mcp-payload">
+                            <div className="mgr-mcp-payload-title">Action MCP Response</div>
+                            <pre>{prettyJson(turn.diagnostics.actionMcp?.response)}</pre>
+                          </div>
+                        ) : null}
+                        {hasObjectContent(turn.diagnostics.actionMcp?.request) ? (
+                          <div className="mgr-mcp-payload">
+                            <div className="mgr-mcp-payload-title">Action MCP Request</div>
+                            <pre>{prettyJson(turn.diagnostics.actionMcp?.request)}</pre>
                           </div>
                         ) : null}
                         {Array.isArray(turn.diagnostics.workflow?.graphTrace) &&
@@ -1091,7 +1241,7 @@ function parseMcpInput(text: string) {
                             })}
                           </div>
                         ) : null}
-                      </div>
+                      </details>
                     ) : null}
                   </article>
                 ))}
@@ -1118,16 +1268,7 @@ function parseMcpInput(text: string) {
                           type="button"
                           className={`mgr-seg-btn ${active ? "active" : ""}`}
                           onClick={() =>
-                            setAgentForm({
-                              agentId: safeStr(a.agentId),
-                              name: safeStr(a.name || a.agentId),
-                              description: safeStr(a.description),
-                              allowedActions: Array.isArray(a.allowedActions) ? a.allowedActions : [],
-                              approvalPolicy:
-                                a?.approvalPolicy && typeof a.approvalPolicy === "object"
-                                  ? a.approvalPolicy
-                                  : { mode: "always" },
-                            })
+                            setAgentForm(formFromAgent(a))
                           }
                         >
                           {a.name || a.agentId}
@@ -1138,22 +1279,47 @@ function parseMcpInput(text: string) {
                 </div>
                 <div>
                   <label className="mgr-label">Allowed Capabilities</label>
-                  <div className="mgr-segment">
-                    {availableCapabilities.map((action) => (
-                      <button
-                        key={action}
-                        type="button"
-                        className={`mgr-seg-btn ${agentForm.allowedActions.includes(action) ? "active" : ""}`}
-                        onClick={() =>
-                          setAgentForm((s) => ({
-                            ...s,
-                            allowedActions: toggleInList(s.allowedActions || [], action),
-                          }))
-                        }
-                      >
-                        {action}
-                      </button>
-                    ))}
+                  <div className="mgr-cap-grid">
+                    <div className="mgr-cap-group">
+                      <div className="mgr-cap-title">Read / Context MCP</div>
+                      <div className="mgr-segment">
+                        {readCapabilities.length ? readCapabilities.map((action) => (
+                          <button
+                            key={action}
+                            type="button"
+                            className={`mgr-seg-btn ${agentForm.allowedActions.includes(action) ? "active" : ""}`}
+                            onClick={() =>
+                              setAgentForm((s) => ({
+                                ...s,
+                                allowedActions: toggleInList(s.allowedActions || [], action),
+                              }))
+                            }
+                          >
+                            {action}
+                          </button>
+                        )) : <span className="mgr-empty-inline">No read capabilities returned by backend.</span>}
+                      </div>
+                    </div>
+                    <div className="mgr-cap-group">
+                      <div className="mgr-cap-title">Write / Admin Action MCP</div>
+                      <div className="mgr-segment">
+                        {writeCapabilities.length ? writeCapabilities.map((action) => (
+                          <button
+                            key={action}
+                            type="button"
+                            className={`mgr-seg-btn ${agentForm.allowedActions.includes(action) ? "active" : ""}`}
+                            onClick={() =>
+                              setAgentForm((s) => ({
+                                ...s,
+                                allowedActions: toggleInList(s.allowedActions || [], action),
+                              }))
+                            }
+                          >
+                            {action}
+                          </button>
+                        )) : <span className="mgr-empty-inline">No write capabilities returned by backend.</span>}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1205,6 +1371,51 @@ function parseMcpInput(text: string) {
                   }}
                 >
                   Save Agent
+                </button>
+                <button
+                  className="mgr-btn danger"
+                  disabled={!safeStr(agentForm.agentId)}
+                  onClick={async () => {
+                    const agentId = safeStr(agentForm.agentId).toLowerCase();
+                    if (!agentId) return;
+                    const ok = window.confirm(
+                      `Delete agent "${agentForm.name || agentId}"?\n\nThis removes the agent definition from the AI agent store. User assignments that referenced it may need cleanup.`
+                    );
+                    if (!ok) return;
+                    try {
+                      const resp = await fetch(`${API_BASE}/admin/ai/agents/delete`, {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ agentId }),
+                      });
+                      const data = await resp.json().catch(() => ({}));
+                      if (!resp.ok) throw new Error(safeStr(data?.error || `HTTP ${resp.status}`));
+                      setAgentForm({
+                        agentId: "",
+                        name: "",
+                        description: "",
+                        role: "assistant",
+                        systemPrompt: "",
+                        allowedActions: [],
+                        allowedContexts: ["internal", "flukegames", "vaibhav"],
+                        defaultContext: "internal",
+                        actionExecutor: "",
+                        sourcesByContext: {},
+                        approvalPolicy: { mode: "always" },
+                      });
+                      if (selectedAgentId === agentId) setSelectedAgentId("");
+                      invalidateAgentAdminCache();
+                      await loadAgentAdminData(true);
+                      notify("ok", "Agent deleted");
+                    } catch (err: any) {
+                      notify("err", safeStr(err?.message || "Failed to delete agent"));
+                    }
+                  }}
+                >
+                  Delete Agent
                 </button>
               </div>
             </section>
@@ -1311,23 +1522,49 @@ function parseMcpInput(text: string) {
               <div className="mgr-row">
                 <div>
                   <label className="mgr-label">MCP Permission</label>
-                  <div className="mgr-segment">
-                    {availableCapabilities.map((action) => {
-                      const active = policyForm.action === action;
-                      return (
-                        <button
-                          key={action}
-                          type="button"
-                          className={`mgr-seg-btn ${active ? "active" : ""}`}
-                          onClick={() => {
-                            const existing = mcpPolicies.find((p) => p.action === action);
-                            setPolicyForm(existing || defaultPolicyForAction(action));
-                          }}
-                        >
-                          {action}
-                        </button>
-                      );
-                    })}
+                  <div className="mgr-cap-grid">
+                    <div className="mgr-cap-group">
+                      <div className="mgr-cap-title">Read / Context MCP</div>
+                      <div className="mgr-segment">
+                        {readCapabilities.length ? readCapabilities.map((action) => {
+                          const active = policyForm.action === action;
+                          return (
+                            <button
+                              key={action}
+                              type="button"
+                              className={`mgr-seg-btn ${active ? "active" : ""}`}
+                              onClick={() => {
+                                const existing = mcpPolicies.find((p) => p.action === action);
+                                setPolicyForm(existing || defaultPolicyForAction(action));
+                              }}
+                            >
+                              {action}
+                            </button>
+                          );
+                        }) : <span className="mgr-empty-inline">No read capabilities returned by backend.</span>}
+                      </div>
+                    </div>
+                    <div className="mgr-cap-group">
+                      <div className="mgr-cap-title">Write / Admin Action MCP</div>
+                      <div className="mgr-segment">
+                        {writeCapabilities.length ? writeCapabilities.map((action) => {
+                          const active = policyForm.action === action;
+                          return (
+                            <button
+                              key={action}
+                              type="button"
+                              className={`mgr-seg-btn ${active ? "active" : ""}`}
+                              onClick={() => {
+                                const existing = mcpPolicies.find((p) => p.action === action);
+                                setPolicyForm(existing || defaultPolicyForAction(action));
+                              }}
+                            >
+                              {action}
+                            </button>
+                          );
+                        }) : <span className="mgr-empty-inline">No write capabilities returned by backend.</span>}
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -1396,6 +1633,8 @@ function parseMcpInput(text: string) {
               </div>
             </section>
           ) : null}
+
+          {tab === "history" ? <AgentTransactionLogsPage embedded /> : null}
         </div>
       </div>
     </>

@@ -5,7 +5,13 @@ type AgentConfig = {
   agentId: string;
   name: string;
   description?: string;
+  role?: string;
+  systemPrompt?: string;
   allowedActions: string[];
+  allowedContexts?: string[];
+  defaultContext?: string;
+  actionExecutor?: string;
+  sourcesByContext?: Record<string, string[]>;
   approvalPolicy?: { mode?: string };
 };
 
@@ -35,7 +41,7 @@ type Definitions = {
 };
 
 const ADMIN_CACHE_TTL_MS = 5 * 60 * 1000;
-const ADMIN_CACHE_KEY = "mgr_builder_admin_cache_v3";
+const ADMIN_CACHE_KEY = "mgr_builder_admin_cache_v4";
 
 function safeStr(v: any) {
   if (v === null || v === undefined) return "";
@@ -171,4 +177,3 @@ export function useAgentAdminData(token: string, username: string) {
     invalidate,
   };
 }
-
