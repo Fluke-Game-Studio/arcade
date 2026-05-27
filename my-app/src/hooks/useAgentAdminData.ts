@@ -29,6 +29,18 @@ type AgentAssignment = {
   allowedAgents?: string[];
 };
 
+type AgentAccessRequest = {
+  requestId: string;
+  username: string;
+  agentId: string;
+  reason?: string;
+  status: string;
+  createdAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewNote?: string;
+};
+
 type EmployeeLite = {
   username: string;
   employee_name?: string;
@@ -52,6 +64,7 @@ export function useAgentAdminData(token: string, username: string) {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [policies, setPolicies] = useState<MpcPolicy[]>([]);
   const [assignments, setAssignments] = useState<AgentAssignment[]>([]);
+  const [accessRequests, setAccessRequests] = useState<AgentAccessRequest[]>([]);
   const [employees, setEmployees] = useState<EmployeeLite[]>([]);
   const [definitions, setDefinitions] = useState<Definitions>({
     capabilities: [],
@@ -84,6 +97,7 @@ export function useAgentAdminData(token: string, username: string) {
             setAgents(Array.isArray(cached?.agents) ? cached.agents : []);
             setPolicies(Array.isArray(cached?.policies) ? cached.policies : []);
             setAssignments(Array.isArray(cached?.assignments) ? cached.assignments : []);
+            setAccessRequests(Array.isArray(cached?.accessRequests) ? cached.accessRequests : []);
             setEmployees(Array.isArray(cached?.employees) ? cached.employees : []);
             setDefinitions(
               cached?.definitions && typeof cached.definitions === "object"
@@ -94,11 +108,12 @@ export function useAgentAdminData(token: string, username: string) {
           }
         }
 
-        const [defsRes, agentsRes, policiesRes, assignmentsRes, usersRes] = await Promise.all([
+        const [defsRes, agentsRes, policiesRes, assignmentsRes, accessRequestsRes, usersRes] = await Promise.all([
           fetch(`${API_BASE}/admin/ai/definitions`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API_BASE}/admin/ai/agents`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API_BASE}/admin/ai/mcp-policies`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API_BASE}/admin/ai/agent-assignments`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_BASE}/admin/ai/agent-access/requests?status=all&limit=100`, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`${API_BASE}/admin/users`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
 
@@ -106,6 +121,7 @@ export function useAgentAdminData(token: string, username: string) {
         const agentsJson = await agentsRes.json().catch(() => ({}));
         const policiesJson = await policiesRes.json().catch(() => ({}));
         const assignmentsJson = await assignmentsRes.json().catch(() => ({}));
+        const accessRequestsJson = await accessRequestsRes.json().catch(() => ({}));
         const usersJson = await usersRes.json().catch(() => ({}));
 
         const nextDefinitions: Definitions =
@@ -128,6 +144,9 @@ export function useAgentAdminData(token: string, username: string) {
         const nextAssignments = Array.isArray(assignmentsJson?.assignments)
           ? assignmentsJson.assignments
           : [];
+        const nextAccessRequests = Array.isArray(accessRequestsJson?.requests)
+          ? accessRequestsJson.requests
+          : [];
         const usersRaw = Array.isArray(usersJson) ? usersJson : Array.isArray(usersJson?.items) ? usersJson.items : [];
         const nextEmployees: EmployeeLite[] = usersRaw
           .map((u: any) => ({
@@ -140,6 +159,7 @@ export function useAgentAdminData(token: string, username: string) {
         setAgents(nextAgents);
         setPolicies(nextPolicies);
         setAssignments(nextAssignments);
+        setAccessRequests(nextAccessRequests);
         setEmployees(nextEmployees);
 
         try {
@@ -151,6 +171,7 @@ export function useAgentAdminData(token: string, username: string) {
               agents: nextAgents,
               policies: nextPolicies,
               assignments: nextAssignments,
+              accessRequests: nextAccessRequests,
               employees: nextEmployees,
             })
           );
@@ -172,6 +193,7 @@ export function useAgentAdminData(token: string, username: string) {
     agents,
     policies,
     assignments,
+    accessRequests,
     employees,
     load,
     invalidate,
