@@ -7,7 +7,7 @@ import AgentTransactionLogsPage from "./AgentTransactionLogsPage";
 
 type Provider = "auto" | "openai" | "ollama";
 type Mode = "plan" | "execute";
-type BuilderTab = "execute" | "agents" | "assignments" | "policies" | "history";
+type BuilderTab = "execute" | "agents" | "assignments" | "requests" | "policies" | "history";
 type WsState = "disconnected" | "connecting" | "connected";
 type TurnStatus = "queued" | "running" | "done" | "error" | "submitted";
 type ApprovalDecision = "allow" | "cancel";
@@ -78,6 +78,17 @@ type AgentAssignment = {
   username: string;
   defaultAgentId?: string;
   allowedAgents?: string[];
+};
+type AgentAccessRequest = {
+  requestId: string;
+  username: string;
+  agentId: string;
+  reason?: string;
+  status: string;
+  createdAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewNote?: string;
 };
 type EmployeeLite = {
   username: string;
@@ -215,6 +226,7 @@ export default function ManagerAgentBuilderPage() {
     requireApproval: true,
   });
   const [assignments, setAssignments] = useState<AgentAssignment[]>([]);
+  const [accessRequests, setAccessRequests] = useState<AgentAccessRequest[]>([]);
   const [employees, setEmployees] = useState<EmployeeLite[]>([]);
   const [pendingApproval, setPendingApproval] = useState<{
     action: string;
@@ -533,8 +545,9 @@ export default function ManagerAgentBuilderPage() {
     setAgentCatalog(adminData.agents as any);
     setMcpPolicies(adminData.policies as any);
     setAssignments(adminData.assignments as any);
+    setAccessRequests(adminData.accessRequests as any);
     setEmployees(adminData.employees as any);
-  }, [adminData.agents, adminData.policies, adminData.assignments, adminData.employees]);
+  }, [adminData.agents, adminData.policies, adminData.assignments, adminData.accessRequests, adminData.employees]);
 
   useEffect(() => {
     const agents = adminData.agents as any[];
@@ -851,6 +864,9 @@ function parseMcpInput(text: string) {
           letter-spacing: 0.5px;
           text-transform: uppercase;
         }
+        .mgr-pill.ok { border-color: rgba(16,185,129,0.46); background: rgba(16,185,129,0.16); color: #d1fae5; }
+        .mgr-pill.warn { border-color: rgba(250,204,21,0.5); background: rgba(250,204,21,0.12); color: #fef3c7; }
+        .mgr-pill.err { border-color: rgba(248,113,113,0.5); background: rgba(127,29,29,0.2); color: #fecaca; }
         .mgr-mini { margin-top: 10px; font-size: 12px; color: rgba(191,219,254,0.85); line-height: 1.45; }
         .mgr-diag {
           margin-top: 8px;
@@ -933,6 +949,7 @@ function parseMcpInput(text: string) {
             <button className={`mgr-btn ${tab === "execute" ? "secondary" : ""}`} onClick={() => setTab("execute")}>Execute</button>
             <button className={`mgr-btn ${tab === "agents" ? "secondary" : ""}`} onClick={() => setTab("agents")}>Agents</button>
             <button className={`mgr-btn ${tab === "assignments" ? "secondary" : ""}`} onClick={() => setTab("assignments")}>Assignments</button>
+            <button className={`mgr-btn ${tab === "requests" ? "secondary" : ""}`} onClick={() => setTab("requests")}>Requests</button>
             <button className={`mgr-btn ${tab === "policies" ? "secondary" : ""}`} onClick={() => setTab("policies")}>MCP Policies</button>
             <button className={`mgr-btn ${tab === "history" ? "secondary" : ""}`} onClick={() => setTab("history")}>Transaction History</button>
           </div>
@@ -1513,6 +1530,124 @@ function parseMcpInput(text: string) {
                 >
                   Save User Assignment
                 </button>
+              </div>
+            </section>
+          ) : null}
+
+          {tab === "requests" ? (
+            <section className="mgr-card" style={{ marginTop: 12 }}>
+              <div className="mgr-turn-head">
+                <div>
+                  <label className="mgr-label">Agent Access Requests</label>
+                  <div style={{ color: "rgba(191,219,254,0.75)", fontSize: 13 }}>
+                    Review requests submitted from Settings / AI Access.
+                  </div>
+                </div>
+                <button
+                  className="mgr-btn secondary"
+                  onClick={async () => {
+                    invalidateAgentAdminCache();
+                    await loadAgentAdminData(true);
+                    notify("ok", "Requests refreshed");
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+              <div className="mgr-history" style={{ maxHeight: "none" }}>
+                {accessRequests.length ? accessRequests.map((request) => {
+                  const agent = agentCatalog.find((a) => safeStr(a.agentId).toLowerCase() === safeStr(request.agentId).toLowerCase());
+                  const employee = employees.find((e) => safeStr(e.username).toLowerCase() === safeStr(request.username).toLowerCase());
+                  const status = safeStr(request.status || "pending").toLowerCase();
+                  const pending = status === "pending";
+                  return (
+                    <article key={request.requestId} className="mgr-turn">
+                      <div className="mgr-turn-head">
+                        <div>
+                          <div style={{ fontWeight: 900, color: "#f8fafc" }}>
+                            {safeStr(employee?.employee_name) || request.username}
+                          </div>
+                          <div style={{ color: "rgba(191,219,254,0.78)", fontSize: 12, marginTop: 2 }}>
+                            {request.username} requested <b>{safeStr(agent?.name) || request.agentId}</b>
+                          </div>
+                        </div>
+                        <span className={`mgr-pill ${pending ? "warn" : status === "approved" ? "ok" : "err"}`}>
+                          {status || "pending"}
+                        </span>
+                      </div>
+                      <div style={{ color: "#dbeafe", fontSize: 13 }}>
+                        Agent: <b>{request.agentId}</b>
+                        {request.createdAt ? ` | ${new Date(request.createdAt).toLocaleString()}` : ""}
+                      </div>
+                      {safeStr(request.reason) ? (
+                        <pre>{request.reason}</pre>
+                      ) : (
+                        <div style={{ marginTop: 8, color: "rgba(191,219,254,0.65)", fontSize: 13 }}>No reason provided.</div>
+                      )}
+                      {safeStr(request.reviewNote) ? (
+                        <div style={{ marginTop: 8, color: "rgba(191,219,254,0.75)", fontSize: 13 }}>
+                          Review note: {request.reviewNote}
+                        </div>
+                      ) : null}
+                      {pending ? (
+                        <div className="mgr-actions">
+                          <button
+                            className="mgr-btn primary"
+                            onClick={async () => {
+                              try {
+                                const resp = await fetch(`${API_BASE}/admin/ai/agent-access/review`, {
+                                  method: "POST",
+                                  headers: {
+                                    Authorization: `Bearer ${token}`,
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({ requestId: request.requestId, decision: "approved" }),
+                                });
+                                const data = await resp.json().catch(() => ({}));
+                                if (!resp.ok) throw new Error(safeStr(data?.error || `HTTP ${resp.status}`));
+                                invalidateAgentAdminCache();
+                                await loadAgentAdminData(true);
+                                notify("ok", "Request approved");
+                              } catch (err: any) {
+                                notify("err", safeStr(err?.message || "Failed to approve request"));
+                              }
+                            }}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="mgr-btn danger"
+                            onClick={async () => {
+                              try {
+                                const resp = await fetch(`${API_BASE}/admin/ai/agent-access/review`, {
+                                  method: "POST",
+                                  headers: {
+                                    Authorization: `Bearer ${token}`,
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({ requestId: request.requestId, decision: "rejected" }),
+                                });
+                                const data = await resp.json().catch(() => ({}));
+                                if (!resp.ok) throw new Error(safeStr(data?.error || `HTTP ${resp.status}`));
+                                invalidateAgentAdminCache();
+                                await loadAgentAdminData(true);
+                                notify("ok", "Request rejected");
+                              } catch (err: any) {
+                                notify("err", safeStr(err?.message || "Failed to reject request"));
+                              }
+                            }}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                }) : (
+                  <div style={{ color: "rgba(191,219,254,0.75)", fontSize: 13 }}>
+                    No access requests found.
+                  </div>
+                )}
               </div>
             </section>
           ) : null}

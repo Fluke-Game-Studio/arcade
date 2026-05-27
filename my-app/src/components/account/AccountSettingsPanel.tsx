@@ -4,6 +4,7 @@ import { useIntegrations } from "./useIntegrations";
 declare const M: any;
 
 type SettingsSectionKey = "general" | "integrations" | "ai_access";
+type AiAccessTabKey = "request" | "requests";
 
 function safeStr(v: any) {
   if (v === null || v === undefined) return "";
@@ -41,6 +42,10 @@ export default function AccountSettingsPanel({
   const [selectedAgent, setSelectedAgent] = useState("");
   const [requestReason, setRequestReason] = useState("");
   const [requestLoading, setRequestLoading] = useState(false);
+  const [aiAccessTab, setAiAccessTab] = useState<AiAccessTabKey>("request");
+  const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [myRequestsLoading, setMyRequestsLoading] = useState(false);
+  const [requestNotice, setRequestNotice] = useState("");
 
   const integrations = useIntegrations(api, me);
 
@@ -60,8 +65,21 @@ export default function AccountSettingsPanel({
     }
   }
 
+  async function loadMyRequests() {
+    try {
+      setMyRequestsLoading(true);
+      const resp = await api.getMyAiAgentAccessRequests();
+      setMyRequests(Array.isArray(resp?.requests) ? resp.requests : []);
+    } catch {
+      setMyRequests([]);
+    } finally {
+      setMyRequestsLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadAvailableAgents();
+    void loadMyRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -82,8 +100,12 @@ export default function AccountSettingsPanel({
         reason: safeStr(requestReason),
       });
       setRequestReason("");
+      setRequestNotice("Access request submitted. You can track it in Submitted Requests.");
+      setAiAccessTab("requests");
+      await loadMyRequests();
       M?.toast?.({ html: "Access request submitted.", classes: "green" });
     } catch (e: any) {
+      setRequestNotice(e?.message || "Failed to submit request.");
       M?.toast?.({ html: e?.message || "Failed to submit request.", classes: "red" });
     } finally {
       setRequestLoading(false);
@@ -217,57 +239,111 @@ export default function AccountSettingsPanel({
             {section === "ai_access" && (
               <div style={{ border: "1px solid #e6edf2", borderRadius: 16, padding: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <div style={{ fontWeight: 900, color: "#0f172a" }}>Request AI Agent Access</div>
-                  <button type="button" className="accBtn subtle" onClick={loadAvailableAgents}>
-                    <i className="material-icons" style={{ fontSize: 18 }}>refresh</i>
-                    Refresh Agents
-                  </button>
+                  <div style={{ fontWeight: 900, color: "#0f172a" }}>AI Agent Access</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" className="accBtn subtle" onClick={() => setAiAccessTab("request")}>
+                      Request Access
+                    </button>
+                    <button type="button" className="accBtn subtle" onClick={() => { setAiAccessTab("requests"); void loadMyRequests(); }}>
+                      Submitted Requests
+                    </button>
+                    <button
+                      type="button"
+                      className="accBtn subtle"
+                      onClick={aiAccessTab === "requests" ? loadMyRequests : loadAvailableAgents}
+                    >
+                      <i className="material-icons" style={{ fontSize: 18 }}>refresh</i>
+                      Refresh
+                    </button>
+                  </div>
                 </div>
-                <div style={{ marginTop: 10, fontSize: 12, color: "#607d8b" }}>
-                  Choose an existing agent and submit an access request.
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Available Agents</label>
-                  <select
-                    value={selectedAgent}
-                    onChange={(e) => setSelectedAgent(e.target.value)}
-                    style={{ width: "100%", height: 38, marginTop: 6, borderRadius: 8, border: "1px solid #cbd5e1" }}
-                  >
-                    {!agents.length ? <option value="">{agentsLoading ? "Loading..." : "No agents found"}</option> : null}
-                    {agents.map((a: any) => (
-                      <option key={String(a.agentId)} value={String(a.agentId)}>
-                        {String(a.name || a.agentId)} ({String(a.agentId)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {selectedAgentMeta ? (
-                  <div style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, background: "#f8fafc" }}>
-                    <div style={{ fontWeight: 800, color: "#0f172a" }}>{String(selectedAgentMeta.name || selectedAgentMeta.agentId)}</div>
-                    <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>{safeStr(selectedAgentMeta.description) || "No description."}</div>
+                {requestNotice ? (
+                  <div style={{ marginTop: 10, border: "1px solid #bae6fd", background: "#f0f9ff", color: "#075985", borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 800 }}>
+                    {requestNotice}
                   </div>
                 ) : null}
 
-                <div style={{ marginTop: 12 }}>
-                  <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Reason (optional)</label>
-                  <textarea
-                    value={requestReason}
-                    onChange={(e) => setRequestReason(e.target.value)}
-                    rows={4}
-                    style={{ width: "100%", marginTop: 6, borderRadius: 8, border: "1px solid #cbd5e1", padding: 8 }}
-                    placeholder="Why do you need this agent?"
-                  />
-                </div>
-                <div style={{ marginTop: 10 }}>
-                  <button type="button" className="accBtn" onClick={submitRequest} disabled={requestLoading}>
-                    <i className="material-icons" style={{ fontSize: 18 }}>
-                      {requestLoading ? "hourglass_empty" : "send"}
-                    </i>
-                    {requestLoading ? "Submitting..." : "Request Access"}
-                  </button>
-                </div>
+                {aiAccessTab === "request" ? (
+                  <>
+                    <div style={{ marginTop: 10, fontSize: 12, color: "#607d8b" }}>
+                      Choose an existing agent and submit an access request.
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Available Agents</label>
+                      <select
+                        value={selectedAgent}
+                        onChange={(e) => setSelectedAgent(e.target.value)}
+                        style={{ width: "100%", height: 38, marginTop: 6, borderRadius: 8, border: "1px solid #cbd5e1" }}
+                      >
+                        {!agents.length ? <option value="">{agentsLoading ? "Loading..." : "No agents found"}</option> : null}
+                        {agents.map((a: any) => (
+                          <option key={String(a.agentId)} value={String(a.agentId)}>
+                            {String(a.name || a.agentId)} ({String(a.agentId)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {selectedAgentMeta ? (
+                      <div style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, background: "#f8fafc" }}>
+                        <div style={{ fontWeight: 800, color: "#0f172a" }}>{String(selectedAgentMeta.name || selectedAgentMeta.agentId)}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>{safeStr(selectedAgentMeta.description) || "No description."}</div>
+                      </div>
+                    ) : null}
+
+                    <div style={{ marginTop: 12 }}>
+                      <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Reason (optional)</label>
+                      <textarea
+                        value={requestReason}
+                        onChange={(e) => setRequestReason(e.target.value)}
+                        rows={4}
+                        style={{ width: "100%", marginTop: 6, borderRadius: 8, border: "1px solid #cbd5e1", padding: 8 }}
+                        placeholder="Why do you need this agent?"
+                      />
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <button type="button" className="accBtn" onClick={submitRequest} disabled={requestLoading}>
+                        <i className="material-icons" style={{ fontSize: 18 }}>
+                          {requestLoading ? "hourglass_empty" : "send"}
+                        </i>
+                        {requestLoading ? "Submitting..." : "Request Access"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {myRequestsLoading ? (
+                      <div style={{ fontSize: 13, color: "#607d8b" }}>Loading requests...</div>
+                    ) : myRequests.length ? myRequests.map((request: any) => {
+                      const agent = agents.find((a: any) => safeStr(a.agentId).toLowerCase() === safeStr(request.agentId).toLowerCase());
+                      const status = safeStr(request.status || "pending").toLowerCase();
+                      const statusColor =
+                        status === "approved" ? "#047857" : status === "rejected" ? "#b91c1c" : "#92400e";
+                      return (
+                        <div key={safeStr(request.requestId)} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, background: "#f8fafc" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontWeight: 900, color: "#0f172a" }}>{safeStr(agent?.name) || safeStr(request.agentId)}</div>
+                              <div style={{ marginTop: 3, fontSize: 12, color: "#64748b" }}>
+                                {safeStr(request.createdAt) ? new Date(request.createdAt).toLocaleString() : "Submitted"}
+                              </div>
+                            </div>
+                            <div style={{ color: statusColor, fontWeight: 900, fontSize: 12, textTransform: "uppercase" }}>{status}</div>
+                          </div>
+                          {safeStr(request.reason) ? (
+                            <div style={{ marginTop: 8, fontSize: 13, color: "#334155" }}>{safeStr(request.reason)}</div>
+                          ) : null}
+                          {safeStr(request.reviewNote) ? (
+                            <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>Review note: {safeStr(request.reviewNote)}</div>
+                          ) : null}
+                        </div>
+                      );
+                    }) : (
+                      <div style={{ fontSize: 13, color: "#607d8b" }}>No submitted requests yet.</div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
