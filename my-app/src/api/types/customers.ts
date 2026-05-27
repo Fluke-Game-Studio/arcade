@@ -44,7 +44,7 @@ export type UpsertEntitlementBody = {
   product_id: string;
   tier?: string;
   env?: "dev" | "test" | "prod";
-  status?: "active" | "paused" | "restricted" | "revoked";
+  status?: "none" | "active" | "paused" | "restricted" | "revoked";
   customer_type_scope?: string;
   allow_prod_override?: boolean;
   start_at?: string;

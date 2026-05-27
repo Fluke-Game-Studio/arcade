@@ -15,6 +15,7 @@ type EditForm = {
   department: string;
   location: string;
   project_id: string;
+  project_ids: string[];
   project_setup: string;
   portal_access: boolean;
   project_access: boolean;
@@ -36,6 +37,7 @@ const EMPTY_EDIT: EditForm = {
   department: "",
   location: "",
   project_id: "",
+  project_ids: [],
   project_setup: "",
   portal_access: true,
   project_access: true,
@@ -49,6 +51,17 @@ const EMPTY_EDIT: EditForm = {
 function safeStr(v: any) {
   if (v === null || v === undefined) return "";
   return String(v).trim();
+}
+
+function parseProjectIds(value: any): string[] {
+  if (Array.isArray(value)) return Array.from(new Set(value.map((x) => safeStr(x)).filter(Boolean)));
+  const s = safeStr(value);
+  if (!s) return [];
+  try {
+    const parsed = JSON.parse(s);
+    if (Array.isArray(parsed)) return Array.from(new Set(parsed.map((x) => safeStr(x)).filter(Boolean)));
+  } catch {}
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
 function norm(v: any) {
@@ -561,6 +574,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
       department: safeStr((userRow as any)?.department),
       location: safeStr((userRow as any)?.location),
       project_id: safeStr((userRow as any)?.project_id),
+      project_ids: parseProjectIds((userRow as any)?.project_ids || safeStr((userRow as any)?.project_id)),
       project_setup: safeStr((userRow as any)?.project_setup),
       portal_access: (userRow as any)?.portal_access !== false,
       project_access: (userRow as any)?.project_access !== false,
@@ -707,6 +721,7 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
         department: safeStr(editForm.department) || undefined,
         location: safeStr(editForm.location) || undefined,
         project_id: safeStr(editForm.project_id) || undefined,
+        project_ids: Array.isArray(editForm.project_ids) ? editForm.project_ids : undefined,
         // Allow clearing back to "none" (empty string) by sending it explicitly.
         project_setup: String(editForm.project_setup ?? ""),
         employee_id: safeStr(editForm.employee_id) || undefined,
@@ -1257,6 +1272,34 @@ export default function EmployeeExplorerPanel({ currentUser }: { currentUser: an
                   )}
                 </div>
               ))}
+              <div style={{ gridColumn: "span 6" }}>
+                <div className="input-field">
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 6 }}>
+                    Assigned Projects (Multi)
+                  </div>
+                  <select
+                    id="edit_project_ids"
+                    className="browser-default"
+                    multiple
+                    value={Array.isArray(editForm.project_ids) ? editForm.project_ids : []}
+                    onChange={(e) => {
+                      const values = Array.from(e.target.selectedOptions).map((o) => o.value).filter(Boolean);
+                      setEditForm((p) => ({
+                        ...p,
+                        project_ids: values,
+                        project_id: values[0] || p.project_id || "",
+                      }));
+                    }}
+                    style={{ minHeight: 120 }}
+                  >
+                    {projects.map((p) => (
+                      <option key={`multi_${p.projectId}`} value={p.projectId}>
+                        {`${safeStr(p.name)} (${safeStr(p.projectId)})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div style={{ gridColumn: "span 4" }}>
                 <div className="input-field">
                   <input value={safeStr(editForm.employee_role)} disabled />

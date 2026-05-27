@@ -154,8 +154,17 @@ export type AIStartChatBody = {
   agentEmployeeId?: string;
   agentId?: string;
   agentRole?: string;
+  executionMode?: "plan" | "execute" | string;
   perform?: boolean;
-  mcpAction?: "upsert_job" | "send_email" | "submit_weekly_update" | string;
+  mcpAction?:
+    | "upsert_job"
+    | "send_email"
+    | "submit_weekly_update"
+    | "search_jira_issues"
+    | "get_issue_details"
+    | "transition_issue"
+    | "add_comment"
+    | string;
   mcpInput?: Record<string, any>;
 };
 

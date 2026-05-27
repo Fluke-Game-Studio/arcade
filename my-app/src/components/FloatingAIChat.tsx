@@ -16,6 +16,14 @@ type ChatMessage = {
   ts: number;
   tags?: ChatMetaTag[];
   requestClientId?: string;
+  originalQuestion?: string;
+  agentDebug?: any;
+  approval?: {
+    required?: boolean;
+    action?: string;
+    agentId?: string;
+    proposedInput?: Record<string, any>;
+  } | null;
   finalized?: boolean;
   stopped?: boolean;
 };
@@ -25,6 +33,7 @@ type ChatContextType = "personal" | "public" | "internal";
 
 type SidePanelKey =
   | "context"
+  | "agent"
   | "model"
   | "session"
   | "toggles"
@@ -299,6 +308,21 @@ function safeStr(v: unknown) {
   return v == null ? "" : String(v).trim();
 }
 
+function prettyJson(value: any) {
+  try {
+    if (value === null || value === undefined) return "";
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return safeStr(value);
+  }
+}
+
+function hasObjectContent(value: any) {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return Object.keys(value).length > 0;
+}
+
 function getRoleLower(anyUser: any) {
   const r =
     safeStr(anyUser?.employee_role) ||
@@ -499,8 +523,11 @@ export default function FloatingAIChat() {
 
   const [hovered, setHovered] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [settingsCollapsed, setSettingsCollapsed] = useState(false);
+  const [settingsCollapsed, setSettingsCollapsed] = useState(true);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const [agentMode, setAgentMode] = useState(false);
+  const [agentApprovalMode, setAgentApprovalMode] = useState<"always" | "policy">("always");
+  const [agentDebugOpenByDefault, setAgentDebugOpenByDefault] = useState(false);
 
   const [selectedContext, setSelectedContext] =
     useState<ChatContextType>(defaultContext);
@@ -558,10 +585,11 @@ export default function FloatingAIChat() {
   const [runtimeWarmError, setRuntimeWarmError] = useState<Record<string, string>>({});
 
   const [sideOpen, setSideOpen] = useState<Record<SidePanelKey, boolean>>({
-    context: true,
-    model: true,
-    session: true,
-    toggles: true,
+    context: false,
+    agent: false,
+    model: false,
+    session: false,
+    toggles: false,
     generation: false,
     identity: false,
     advanced: false,
@@ -836,10 +864,16 @@ export default function FloatingAIChat() {
       if (data?.type === "ai-result") {
         updateLatestMessageForRequestClientId(targetRequestId, (msg) => {
           if (msg.stopped) return msg;
+          const approval =
+            data?.meta?.approval && typeof data.meta.approval === "object"
+              ? data.meta.approval
+              : null;
 
           return {
             ...msg,
             content: safeStr(data?.reply || "No response received."),
+            agentDebug: agentMode ? data : msg.agentDebug,
+            approval,
             finalized: true,
             tags: [
               { label: "Status", value: "done" },
@@ -854,6 +888,7 @@ export default function FloatingAIChat() {
                   safeStr(data?.meta?.agentEmployeeId) ||
                   currentAgent.agentEmployeeId,
               },
+              ...(agentMode ? [{ label: "Mode", value: "Agent" }] : []),
               { label: "Request", value: targetRequestId },
             ],
           };
@@ -1092,12 +1127,14 @@ export default function FloatingAIChat() {
       content: randomFrom(CHAT_WITTY_MESSAGES),
       ts: Date.now(),
       requestClientId,
+      originalQuestion: trimmed,
       finalized: false,
       tags: [
         { label: "Status", value: "Queued" },
         { label: "Context", value: CONTEXT_META[selectedContext].label },
         { label: "Provider", value: PROVIDER_META[provider].label },
         { label: "Model", value: currentModel },
+        ...(agentMode ? [{ label: "Mode", value: "Agent" }] : []),
         { label: "Request", value: requestClientId },
       ],
     };
@@ -1115,11 +1152,15 @@ export default function FloatingAIChat() {
         {
           question: trimmed,
           clientId: requestClientId,
+          threadId: sessionIdRef.current,
           context: currentAgent.contextId,
           provider,
           model: currentModel,
-          agentEmployeeId: currentAgent.agentEmployeeId,
+          agentEmployeeId: agentMode ? "auto" : currentAgent.agentEmployeeId,
           agentRole: currentAgent.agentRole,
+          perform: agentMode,
+          mode: agentMode ? "execute" : "chat",
+          approvalMode: agentMode ? agentApprovalMode : undefined,
           temperature,
           topP,
           maxTokens,
@@ -1175,6 +1216,112 @@ export default function FloatingAIChat() {
       }
     }
   };
+
+  async function submitAgentApproval(
+    msg: ChatMessage,
+    decision: "allow" | "cancel",
+    remember = false
+  ) {
+    const question = safeStr(msg.originalQuestion || msg.content);
+    const approval = msg.approval;
+    if (!question || !approval?.required) return;
+
+    const requestClientId = makeRequestClientId(sessionIdRef.current);
+    if (!registerSocketClientId(requestClientId)) {
+      setErrorText("WebSocket registration failed.");
+      return;
+    }
+
+    activeRequestClientIdRef.current = requestClientId;
+    setLoading(true);
+    setErrorText("");
+
+    const assistantPlaceholder: ChatMessage = {
+      id: uid(),
+      role: "assistant",
+      content: decision === "allow" ? "Approval accepted. Executing action..." : "Approval cancelled.",
+      ts: Date.now(),
+      requestClientId,
+      originalQuestion: question,
+      finalized: decision === "cancel",
+      tags: [
+        { label: "Status", value: decision === "allow" ? "Queued" : "Cancelled" },
+        { label: "Context", value: CONTEXT_META[selectedContext].label },
+        { label: "Provider", value: PROVIDER_META[provider].label },
+        { label: "Mode", value: "Agent" },
+        { label: "Request", value: requestClientId },
+      ],
+    };
+
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msg.id ? { ...m, approval: null } : m)).concat(assistantPlaceholder)
+    );
+
+    if (decision === "cancel") {
+      setLoading(false);
+      activeRequestClientIdRef.current = null;
+      return;
+    }
+
+    const controller = new AbortController();
+    submitAbortRef.current = controller;
+
+    try {
+      await postToRoute(
+        currentApiUrl,
+        {
+          question,
+          clientId: requestClientId,
+          threadId: sessionIdRef.current,
+          context: currentAgent.contextId,
+          provider,
+          model: currentModel,
+          agentEmployeeId: "auto",
+          agentRole: currentAgent.agentRole,
+          perform: true,
+          mode: "execute",
+          approval: {
+            decision,
+            remember,
+            action: approval.action,
+            agentId: approval.agentId,
+            proposedInput: approval.proposedInput || {},
+          },
+          temperature,
+          topP,
+          maxTokens,
+          streaming,
+          memoryEnabled,
+          includeHistory,
+          safeMode,
+          developerMode,
+        },
+        controller.signal
+      );
+    } catch (err: any) {
+      const text = err?.message || "Approval execution failed.";
+      setErrorText(text);
+      updateLatestMessageForRequestClientId(requestClientId, (m) => ({
+        ...m,
+        content: `Error: ${text}`,
+        finalized: true,
+        tags: [
+          { label: "Status", value: "Error" },
+          { label: "Context", value: CONTEXT_META[selectedContext].label },
+          { label: "Mode", value: "Agent" },
+          { label: "Request", value: requestClientId },
+        ],
+      }));
+      setLoading(false);
+      if (activeRequestClientIdRef.current === requestClientId) {
+        activeRequestClientIdRef.current = null;
+      }
+    } finally {
+      if (submitAbortRef.current === controller) {
+        submitAbortRef.current = null;
+      }
+    }
+  }
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1242,6 +1389,7 @@ export default function FloatingAIChat() {
 
   const collapsedItems: Array<{ key: SidePanelKey; icon: string; label: string }> = isSuper
     ? [
+        { key: "agent", icon: "account_tree", label: "Agent" },
         { key: "context", icon: "category", label: "Context" },
         { key: "model", icon: "tune", label: "Model" },
         { key: "session", icon: "space_dashboard", label: "Session" },
@@ -1521,6 +1669,7 @@ export default function FloatingAIChat() {
                           value={PROVIDER_META[provider].label}
                         />
                         <Pill icon="smart_toy" label="Model" value={currentModel} />
+                        <Pill icon="account_tree" label="Agent Mode" value={agentMode ? "On" : "Off"} />
                         <Pill
                           icon="verified_user"
                           label="Auth"
@@ -1532,6 +1681,56 @@ export default function FloatingAIChat() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => setAgentMode((v) => !v)}
+                      aria-pressed={agentMode}
+                      style={{
+                        height: 42,
+                        borderRadius: 999,
+                        border: agentMode
+                          ? "1px solid rgba(45,212,191,0.46)"
+                          : "1px solid rgba(125,249,255,0.12)",
+                        background: agentMode
+                          ? "linear-gradient(135deg, rgba(20,184,166,0.34), rgba(34,211,238,0.18))"
+                          : "rgba(255,255,255,0.04)",
+                        color: "#e7f8ff",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 9,
+                        padding: "0 13px 0 9px",
+                        fontSize: 12,
+                        fontWeight: 900,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 30,
+                          height: 18,
+                          borderRadius: 999,
+                          background: agentMode ? "#22d3ee" : "rgba(148,163,184,0.22)",
+                          position: "relative",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: 2,
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 999,
+                            background: "#fff",
+                            transform: agentMode ? "translateX(12px)" : "translateX(0)",
+                            transition: "transform 160ms ease",
+                          }}
+                        />
+                      </span>
+                      Agent Mode
+                    </button>
+
                     <button
                       type="button"
                       className="fluke-ai-mobile-settings-btn"
@@ -1705,6 +1904,116 @@ export default function FloatingAIChat() {
                         minHeight: 0,
                       }}
                     >
+                      {isSuper && (
+                        <SideCard
+                          title="Agent Mode"
+                          subtitle="Governed action execution"
+                          icon="account_tree"
+                          open={sideOpen.agent}
+                          onToggle={() => toggleSideCard("agent")}
+                        >
+                          <div style={{ display: "grid", gap: 10 }}>
+                            {[
+                              {
+                                label: "Enable Agent Mode",
+                                value: agentMode,
+                                setValue: setAgentMode,
+                                desc: "Route messages through the governed manager workflow.",
+                              },
+                              {
+                                label: "Open Debug By Default",
+                                value: agentDebugOpenByDefault,
+                                setValue: setAgentDebugOpenByDefault,
+                                desc: "Expand agent diagnostics inside new replies.",
+                              },
+                            ].map((item) => (
+                              <button
+                                key={item.label}
+                                type="button"
+                                onClick={() => item.setValue((v: boolean) => !v)}
+                                style={{
+                                  width: "100%",
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  gap: 12,
+                                  cursor: "pointer",
+                                  padding: "12px 13px",
+                                  borderRadius: 14,
+                                  background: item.value
+                                    ? "linear-gradient(180deg, rgba(20,184,166,0.18), rgba(34,211,238,0.08))"
+                                    : "linear-gradient(180deg, rgba(16,22,36,0.96), rgba(12,17,29,0.96))",
+                                  border: item.value
+                                    ? "1px solid rgba(34,211,238,0.22)"
+                                    : "1px solid rgba(255,255,255,0.06)",
+                                  color: "inherit",
+                                  textAlign: "left",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: 18,
+                                    height: 18,
+                                    borderRadius: 5,
+                                    marginTop: 2,
+                                    flexShrink: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    background: item.value ? "#22d3ee" : "transparent",
+                                    border: item.value
+                                      ? "1px solid #7df9ff"
+                                      : "1px solid rgba(196,244,255,0.45)",
+                                  }}
+                                >
+                                  {item.value && (
+                                    <i className="material-icons" style={{ fontSize: 14, color: "#081018" }}>
+                                      check
+                                    </i>
+                                  )}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 13, fontWeight: 800, color: "#f3fbff" }}>
+                                    {item.label}
+                                  </div>
+                                  <div style={{ marginTop: 3, fontSize: 11, color: "rgba(236,248,255,0.62)" }}>
+                                    {item.desc}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+
+                            <div
+                              style={{
+                                padding: "12px 13px",
+                                borderRadius: 14,
+                                border: "1px solid rgba(255,255,255,0.06)",
+                                background: "rgba(255,255,255,0.03)",
+                              }}
+                            >
+                              <div style={{ fontSize: 11, color: "rgba(196,244,255,0.72)", marginBottom: 8 }}>
+                                Approval Mode
+                              </div>
+                              <select
+                                value={agentApprovalMode}
+                                onChange={(e) => setAgentApprovalMode(e.target.value as "always" | "policy")}
+                                style={{
+                                  width: "100%",
+                                  borderRadius: 10,
+                                  border: "1px solid rgba(125,249,255,0.16)",
+                                  background: "rgba(7,10,18,0.92)",
+                                  color: "#e7f8ff",
+                                  padding: "9px 10px",
+                                  outline: "none",
+                                }}
+                              >
+                                <option value="always">Policy / human approval</option>
+                                <option value="policy">Policy default</option>
+                              </select>
+                            </div>
+                          </div>
+                        </SideCard>
+                      )}
+
                       {isSuper && (
                         <SideCard
                           title="Context Selection"
@@ -2580,6 +2889,174 @@ export default function FloatingAIChat() {
                                   >
                                     {msg.content}
                                   </div>
+
+                                  {!isUser && msg.approval?.required && (
+                                    <div
+                                      style={{
+                                        marginTop: 12,
+                                        borderRadius: 14,
+                                        border: "1px solid rgba(250,204,21,0.42)",
+                                        background: "rgba(113,63,18,0.22)",
+                                        padding: 12,
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          fontSize: 11,
+                                          fontWeight: 900,
+                                          textTransform: "uppercase",
+                                          letterSpacing: 0.8,
+                                          color: "#fde68a",
+                                          marginBottom: 7,
+                                        }}
+                                      >
+                                        Human Approval Required
+                                      </div>
+                                      <div style={{ fontSize: 12, color: "#fef3c7", lineHeight: 1.5 }}>
+                                        Action <b>{safeStr(msg.approval.action || "auto-detected")}</b> needs
+                                        confirmation before execution.
+                                      </div>
+                                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => submitAgentApproval(msg, "allow", false)}
+                                          style={{
+                                            border: "1px solid rgba(16,185,129,0.45)",
+                                            background: "rgba(5,150,105,0.22)",
+                                            color: "#d1fae5",
+                                            borderRadius: 10,
+                                            padding: "8px 10px",
+                                            fontSize: 11,
+                                            fontWeight: 900,
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Allow
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => submitAgentApproval(msg, "allow", true)}
+                                          style={{
+                                            border: "1px solid rgba(56,189,248,0.36)",
+                                            background: "rgba(37,99,235,0.20)",
+                                            color: "#dbeafe",
+                                            borderRadius: 10,
+                                            padding: "8px 10px",
+                                            fontSize: 11,
+                                            fontWeight: 900,
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Allow & Don't Ask Again
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => submitAgentApproval(msg, "cancel", false)}
+                                          style={{
+                                            border: "1px solid rgba(148,163,184,0.28)",
+                                            background: "rgba(15,23,42,0.55)",
+                                            color: "#cbd5e1",
+                                            borderRadius: 10,
+                                            padding: "8px 10px",
+                                            fontSize: 11,
+                                            fontWeight: 900,
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {!isUser && hasObjectContent(msg.agentDebug) && (
+                                    <details
+                                      open={agentDebugOpenByDefault}
+                                      style={{
+                                        marginTop: 12,
+                                        borderRadius: 12,
+                                        border: "1px solid rgba(125,249,255,0.14)",
+                                        background: "rgba(2,6,23,0.30)",
+                                        overflow: "hidden",
+                                      }}
+                                    >
+                                      <summary
+                                        style={{
+                                          cursor: "pointer",
+                                          padding: "9px 10px",
+                                          color: "rgba(191,219,254,0.96)",
+                                          fontSize: 11,
+                                          fontWeight: 900,
+                                          letterSpacing: 0.5,
+                                          textTransform: "uppercase",
+                                        }}
+                                      >
+                                        Debug Details
+                                      </summary>
+                                      <div
+                                        style={{
+                                          borderTop: "1px solid rgba(125,249,255,0.10)",
+                                          padding: 10,
+                                          display: "grid",
+                                          gap: 8,
+                                          fontSize: 11,
+                                          color: "rgba(219,234,254,0.92)",
+                                        }}
+                                      >
+                                        <div>
+                                          Provider: <b>{safeStr(msg.agentDebug?.provider || provider || "-")}</b> | Model:{" "}
+                                          <b>{safeStr(msg.agentDebug?.model || currentModel || "-")}</b>
+                                        </div>
+                                        <div>
+                                          Workflow: <b>{safeStr(msg.agentDebug?.meta?.workflow?.engine || "none")}</b>
+                                        </div>
+                                        {safeStr(msg.agentDebug?.meta?.guardrails?.deniedReason) && (
+                                          <div>
+                                            Guardrails: <b>{safeStr(msg.agentDebug.meta.guardrails.deniedReason)}</b>
+                                          </div>
+                                        )}
+                                        {hasObjectContent(msg.agentDebug?.meta?.actionMcp?.response) && (
+                                          <div>
+                                            <div style={{ fontWeight: 900, marginBottom: 5 }}>Action MCP Response</div>
+                                            <pre
+                                              style={{
+                                                margin: 0,
+                                                maxHeight: 220,
+                                                overflow: "auto",
+                                                whiteSpace: "pre-wrap",
+                                                color: "#e0f2fe",
+                                                background: "rgba(15,23,42,0.55)",
+                                                borderRadius: 8,
+                                                padding: 9,
+                                              }}
+                                            >
+                                              {prettyJson(msg.agentDebug.meta.actionMcp.response)}
+                                            </pre>
+                                          </div>
+                                        )}
+                                        {Array.isArray(msg.agentDebug?.meta?.workflow?.graphTrace) &&
+                                          msg.agentDebug.meta.workflow.graphTrace.length > 0 && (
+                                            <div>
+                                              <div style={{ fontWeight: 900, marginBottom: 5 }}>Graph Trace</div>
+                                              <pre
+                                                style={{
+                                                  margin: 0,
+                                                  maxHeight: 220,
+                                                  overflow: "auto",
+                                                  whiteSpace: "pre-wrap",
+                                                  color: "#e0f2fe",
+                                                  background: "rgba(15,23,42,0.55)",
+                                                  borderRadius: 8,
+                                                  padding: 9,
+                                                }}
+                                              >
+                                                {prettyJson(msg.agentDebug.meta.workflow.graphTrace)}
+                                              </pre>
+                                            </div>
+                                          )}
+                                      </div>
+                                    </details>
+                                  )}
 
                                 </div>
                               </div>

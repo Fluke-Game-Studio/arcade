@@ -18,7 +18,7 @@ export default function CustomersAdmin() {
   const [customerUsers, setCustomerUsers] = useState<any[]>([]);
   const [editingCustomerLogin, setEditingCustomerLogin] = useState(false);
   const [projectSettings, setProjectSettings] = useState<Record<string, {
-    status: "none" | "active" | "paused" | "restricted";
+    status: "none" | "active" | "paused" | "restricted" | "revoked";
     types: Array<"internal" | "test" | "final">;
     tier: "default" | "basic" | "pro" | "premium";
     env: "dev" | "test" | "prod";
@@ -38,10 +38,11 @@ export default function CustomersAdmin() {
     email: "",
     password: "",
   });
-  function nextProjectAccessStatus(curr: "none" | "active" | "paused" | "restricted"): "none" | "active" | "paused" | "restricted" {
+  function nextProjectAccessStatus(curr: "none" | "active" | "paused" | "restricted" | "revoked"): "none" | "active" | "paused" | "restricted" | "revoked" {
     if (curr === "none") return "active";
     if (curr === "active") return "paused";
     if (curr === "paused") return "restricted";
+    if (curr === "restricted") return "revoked";
     return "none";
   }
 
@@ -79,12 +80,16 @@ export default function CustomersAdmin() {
             safe(r.SK).startsWith("USER#")
           );
           const ents = (Array.isArray(rows) ? rows : []).filter((r: any) => safe(r.SK).startsWith("ENTITLEMENT#"));
-          const next: Record<string, { status: "none" | "active" | "paused" | "restricted"; types: Array<"internal" | "test" | "final">; tier: "default" | "basic" | "pro" | "premium"; env: "dev" | "test" | "prod"; }> = {};
+          const next: Record<string, { status: "none" | "active" | "paused" | "restricted" | "revoked"; types: Array<"internal" | "test" | "final">; tier: "default" | "basic" | "pro" | "premium"; env: "dev" | "test" | "prod"; }> = {};
           for (const e of ents) {
             const pid = safe((e as any).product_id);
             if (!pid) continue;
             const sRaw = safe((e as any).status).toLowerCase();
-            const status = (sRaw === "paused" || sRaw === "restricted") ? sRaw : "active";
+            const status = sRaw === "none"
+              ? "none"
+              : (sRaw === "paused" || sRaw === "restricted" || sRaw === "revoked")
+              ? sRaw
+              : "active";
             const tRaw = safe((e as any).customer_type_scope || "internal");
             const types = tRaw
               .split(",")
@@ -149,7 +154,7 @@ export default function CustomersAdmin() {
       });
       const entries = Object.entries(projectSettings);
       for (const [productId, s] of entries) {
-        if (!s || s.status === "none") continue;
+        if (!s) continue;
         await (api as any).upsertCustomerEntitlement(selected.customer_id, {
           product_id: productId,
           tier: s.tier,
@@ -376,7 +381,9 @@ export default function CustomersAdmin() {
                                 }
                                 style={{
                                   border:
-                                    state.status === "restricted"
+                                    state.status === "revoked"
+                                      ? "1px solid #7f1d1d"
+                                      : state.status === "restricted"
                                       ? "1px solid #b91c1c"
                                       : state.status === "paused"
                                       ? "1px solid #b45309"
@@ -384,7 +391,9 @@ export default function CustomersAdmin() {
                                       ? "1px solid #64748b"
                                       : "1px solid #15803d",
                                   background:
-                                    state.status === "restricted"
+                                    state.status === "revoked"
+                                      ? "#fecaca"
+                                      : state.status === "restricted"
                                       ? "#fee2e2"
                                       : state.status === "paused"
                                       ? "#ffedd5"
@@ -392,7 +401,9 @@ export default function CustomersAdmin() {
                                       ? "#f1f5f9"
                                       : "#dcfce7",
                                   color:
-                                    state.status === "restricted"
+                                    state.status === "revoked"
+                                      ? "#7f1d1d"
+                                      : state.status === "restricted"
                                       ? "#991b1b"
                                       : state.status === "paused"
                                       ? "#9a3412"
