@@ -21,6 +21,8 @@ type MpcPolicy = {
   description?: string;
   allowedRoles: string[];
   requireApproval: boolean;
+  allowRememberedApproval?: boolean;
+  requirePasswordAfterApproval?: boolean;
 };
 
 type AgentAssignment = {
