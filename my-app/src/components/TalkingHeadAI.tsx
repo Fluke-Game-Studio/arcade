@@ -23,10 +23,6 @@ const PROVIDER_MODEL: Record<Exclude<AIProvider, "auto">, string> = {
 };
 
 // ─── TalkingHead local module config ──────────────────────────────────────────
-const TALKINGHEAD_MODULE_CANDIDATES = [
-  "./modules/talkinghead.mjs",
-  "./modules/talkingHead.mjs",
-];
 const AVATAR_OPTIONS = [
   { value: "/assets/brunette.glb", label: "Brunette" },
   { value: "/assets/brunette-t.glb", label: "Brunette T" },
@@ -585,10 +581,17 @@ function formatSliderValue(value: number, digits = 2) {
 
 async function importTalkingHeadCtor(): Promise<TalkingHeadCtor> {
   let lastError: unknown = null;
+  const importExternalModule = (path: string) => import(/* @vite-ignore */ path);
 
-  for (const path of TALKINGHEAD_MODULE_CANDIDATES) {
+  const loaders: Array<() => Promise<any>> = [
+    () => import("./modules/talkinghead.mjs"),
+    () => importExternalModule("/assets/modules/talkinghead.mjs"),
+    () => importExternalModule("/assets/modules/talkingHead.mjs"),
+  ];
+
+  for (const load of loaders) {
     try {
-      const mod = await import(/* @vite-ignore */ path);
+      const mod = await load();
       const Ctor = mod?.TalkingHead || mod?.default?.TalkingHead || mod?.default || null;
       if (typeof Ctor === "function") {
         return Ctor as TalkingHeadCtor;
@@ -598,7 +601,7 @@ async function importTalkingHeadCtor(): Promise<TalkingHeadCtor> {
     }
   }
 
-  throw lastError || new Error("Could not import TalkingHead from /public/modules.");
+  throw lastError || new Error("Could not import TalkingHead module.");
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
