@@ -23,6 +23,9 @@ type ChatMessage = {
     action?: string;
     agentId?: string;
     proposedInput?: Record<string, any>;
+    allowRememberedApproval?: boolean;
+    requirePasswordAfterApproval?: boolean;
+    passwordError?: string;
   } | null;
   finalized?: boolean;
   stopped?: boolean;
@@ -1225,6 +1228,14 @@ export default function FloatingAIChat() {
     const question = safeStr(msg.originalQuestion || msg.content);
     const approval = msg.approval;
     if (!question || !approval?.required) return;
+    let approvalPassword = "";
+    if (decision === "allow" && approval.requirePasswordAfterApproval) {
+      approvalPassword = window.prompt("Enter your password to approve this action") || "";
+      if (!approvalPassword.trim()) {
+        setErrorText("Password confirmation is required for this approval.");
+        return;
+      }
+    }
 
     const requestClientId = makeRequestClientId(sessionIdRef.current);
     if (!registerSocketClientId(requestClientId)) {
@@ -1286,6 +1297,7 @@ export default function FloatingAIChat() {
             action: approval.action,
             agentId: approval.agentId,
             proposedInput: approval.proposedInput || {},
+            ...(approvalPassword ? { password: approvalPassword } : {}),
           },
           temperature,
           topP,
@@ -2915,6 +2927,12 @@ export default function FloatingAIChat() {
                                       <div style={{ fontSize: 12, color: "#fef3c7", lineHeight: 1.5 }}>
                                         Action <b>{safeStr(msg.approval.action || "auto-detected")}</b> needs
                                         confirmation before execution.
+                                        {msg.approval.requirePasswordAfterApproval ? (
+                                          <>
+                                            <br />
+                                            Password confirmation is required after approval.
+                                          </>
+                                        ) : null}
                                       </div>
                                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                                         <button
@@ -2933,22 +2951,24 @@ export default function FloatingAIChat() {
                                         >
                                           Allow
                                         </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => submitAgentApproval(msg, "allow", true)}
-                                          style={{
-                                            border: "1px solid rgba(56,189,248,0.36)",
-                                            background: "rgba(37,99,235,0.20)",
-                                            color: "#dbeafe",
-                                            borderRadius: 10,
-                                            padding: "8px 10px",
-                                            fontSize: 11,
-                                            fontWeight: 900,
-                                            cursor: "pointer",
-                                          }}
-                                        >
-                                          Allow & Don't Ask Again
-                                        </button>
+                                        {msg.approval.allowRememberedApproval !== false ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => submitAgentApproval(msg, "allow", true)}
+                                            style={{
+                                              border: "1px solid rgba(56,189,248,0.36)",
+                                              background: "rgba(37,99,235,0.20)",
+                                              color: "#dbeafe",
+                                              borderRadius: 10,
+                                              padding: "8px 10px",
+                                              fontSize: 11,
+                                              fontWeight: 900,
+                                              cursor: "pointer",
+                                            }}
+                                          >
+                                            Allow & Don't Ask Again
+                                          </button>
+                                        ) : null}
                                         <button
                                           type="button"
                                           onClick={() => submitAgentApproval(msg, "cancel", false)}

@@ -33,6 +33,9 @@ type TurnDiagnostics = {
     action?: string;
     agentId?: string;
     proposedInput?: Record<string, any>;
+    allowRememberedApproval?: boolean;
+    requirePasswordAfterApproval?: boolean;
+    passwordError?: string;
   } | null;
   guardrails?: {
     deniedReason?: string;
@@ -73,6 +76,8 @@ type MpcPolicy = {
   description?: string;
   allowedRoles: string[];
   requireApproval: boolean;
+  allowRememberedApproval: boolean;
+  requirePasswordAfterApproval: boolean;
 };
 type AgentAssignment = {
   username: string;
@@ -170,12 +175,29 @@ function formFromAgent(agent: any): AgentConfig {
 }
 
 function defaultPolicyForAction(action: string): MpcPolicy {
+  const readLike = isReadCapability(action);
   return {
     action,
     policyName: `${action}_policy`,
     description: "",
-    allowedRoles: ["admin", "super"],
-    requireApproval: true,
+    allowedRoles: readLike ? ["employee", "admin", "super"] : ["admin", "super"],
+    requireApproval: !readLike,
+    allowRememberedApproval: true,
+    requirePasswordAfterApproval: false,
+  };
+}
+
+function formFromPolicy(action: string, policy?: Partial<MpcPolicy> | null): MpcPolicy {
+  const fallback = defaultPolicyForAction(action);
+  if (!policy) return fallback;
+  return {
+    action: safeStr(policy.action || action).toLowerCase(),
+    policyName: safeStr(policy.policyName || fallback.policyName),
+    description: safeStr(policy.description || ""),
+    allowedRoles: Array.isArray(policy.allowedRoles) ? policy.allowedRoles : fallback.allowedRoles,
+    requireApproval: policy.requireApproval !== false,
+    allowRememberedApproval: policy.allowRememberedApproval !== false,
+    requirePasswordAfterApproval: policy.requirePasswordAfterApproval === true,
   };
 }
 
@@ -224,6 +246,8 @@ export default function ManagerAgentBuilderPage() {
     description: "",
     allowedRoles: ["admin", "super"],
     requireApproval: true,
+    allowRememberedApproval: true,
+    requirePasswordAfterApproval: false,
   });
   const [assignments, setAssignments] = useState<AgentAssignment[]>([]);
   const [accessRequests, setAccessRequests] = useState<AgentAccessRequest[]>([]);
@@ -232,7 +256,11 @@ export default function ManagerAgentBuilderPage() {
     action: string;
     agentId: string;
     proposedInput: Record<string, any>;
+    allowRememberedApproval?: boolean;
+    requirePasswordAfterApproval?: boolean;
+    passwordError?: string;
   } | null>(null);
+  const [approvalPassword, setApprovalPassword] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
   const activeRequestClientIdRef = useRef<string | null>(null);
@@ -368,7 +396,11 @@ export default function ManagerAgentBuilderPage() {
           approval.proposedInput && typeof approval.proposedInput === "object"
             ? approval.proposedInput
             : {},
+        allowRememberedApproval: approval.allowRememberedApproval !== false,
+        requirePasswordAfterApproval: approval.requirePasswordAfterApproval === true,
+        passwordError: safeStr((approval as any).passwordError || ""),
       });
+      setApprovalPassword("");
     } else {
       setPendingApproval(null);
     }
@@ -604,6 +636,7 @@ function parseMcpInput(text: string) {
           action: string;
           agentId: string;
           proposedInput: Record<string, any>;
+          password?: string;
         }
       | null
   ) {
@@ -690,6 +723,7 @@ function parseMcpInput(text: string) {
                         action: approval.action,
                         agentId: approval.agentId,
                         proposedInput: approval.proposedInput,
+                        ...(approval.password ? { password: approval.password } : {}),
                       },
                     }
                   : {}),
@@ -734,12 +768,17 @@ function parseMcpInput(text: string) {
 
   async function submitApproval(decision: ApprovalDecision, remember: boolean) {
     if (!pendingApproval) return;
+    if (decision === "allow" && pendingApproval.requirePasswordAfterApproval && !approvalPassword.trim()) {
+      setError("Enter your password to confirm this approval.");
+      return;
+    }
     await runWithApproval("execute", {
       decision,
       remember,
       action: pendingApproval.action || "",
       agentId: pendingApproval.agentId || selectedAgentId,
       proposedInput: pendingApproval.proposedInput || {},
+      password: decision === "allow" && pendingApproval.requirePasswordAfterApproval ? approvalPassword : undefined,
     });
   }
 
@@ -849,6 +888,51 @@ function parseMcpInput(text: string) {
         .mgr-btn.danger { border-color: rgba(248,113,113,0.5); background: linear-gradient(180deg, rgba(248,113,113,0.2), rgba(127,29,29,0.18)); color: #fecaca; }
         .mgr-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .mgr-toggle { display: flex; align-items: center; gap: 8px; color: rgba(191,219,254,0.94); font-size: 13px; margin-top: 8px; }
+        .mgr-check-row {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          border: 1px solid rgba(148,163,184,0.20);
+          border-radius: 10px;
+          background: rgba(2,6,23,0.22);
+          color: rgba(219,234,254,0.96);
+          padding: 9px 10px;
+          font-size: 13px;
+          font-weight: 700;
+          text-align: left;
+          cursor: pointer;
+        }
+        .mgr-check-row:hover { border-color: rgba(56,189,248,0.45); background: rgba(15,23,42,0.54); }
+        .mgr-check-row:disabled { opacity: 0.55; cursor: not-allowed; }
+        .mgr-check-box {
+          width: 20px;
+          height: 20px;
+          min-width: 20px;
+          display: inline-grid;
+          place-items: center;
+          border-radius: 6px;
+          border: 1px solid rgba(148,163,184,0.55);
+          background: rgba(15,23,42,0.92);
+          color: #ecfdf5;
+          font-size: 15px;
+          font-weight: 900;
+          line-height: 1;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+        }
+        .mgr-check-box.checked {
+          border-color: rgba(16,185,129,0.92);
+          background: linear-gradient(180deg, rgba(16,185,129,0.92), rgba(5,150,105,0.82));
+        }
+        .mgr-check-box.blue.checked {
+          border-color: rgba(56,189,248,0.92);
+          background: linear-gradient(180deg, rgba(56,189,248,0.92), rgba(37,99,235,0.82));
+        }
+        .mgr-check-box.amber.checked {
+          border-color: rgba(251,191,36,0.92);
+          background: linear-gradient(180deg, rgba(251,191,36,0.95), rgba(217,119,6,0.86));
+          color: #111827;
+        }
         .mgr-error { margin-top: 10px; border: 1px solid rgba(248,113,113,0.45); background: rgba(127,29,29,0.22); color: #fecaca; border-radius: 10px; padding: 8px 10px; font-size: 13px; font-weight: 700; }
         .mgr-pill {
           display: inline-flex;
@@ -1132,13 +1216,35 @@ function parseMcpInput(text: string) {
                   <div style={{ color: "#fde68a", fontSize: 13, marginBottom: 8 }}>
                     Action <b>{pendingApproval.action || "auto-detected"}</b> needs confirmation before execute.
                   </div>
+                  {pendingApproval.requirePasswordAfterApproval ? (
+                    <div style={{ marginBottom: 10 }}>
+                      <label className="mgr-label">Password Confirmation</label>
+                      <input
+                        className="mgr-input"
+                        type="password"
+                        value={approvalPassword}
+                        onChange={(e) => setApprovalPassword(e.target.value)}
+                        placeholder="Enter your password to approve"
+                        autoComplete="current-password"
+                      />
+                      {pendingApproval.passwordError ? (
+                        <div style={{ color: "#fecaca", fontSize: 12, marginTop: 6 }}>
+                          {pendingApproval.passwordError === "approval-password-invalid"
+                            ? "Password was invalid. Try again."
+                            : "Password is required for this approval."}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="mgr-actions">
                     <button className="mgr-btn primary" disabled={isBusy} onClick={() => submitApproval("allow", false)}>
                       Allow
                     </button>
-                    <button className="mgr-btn secondary" disabled={isBusy} onClick={() => submitApproval("allow", true)}>
-                      Allow & don't ask again
-                    </button>
+                    {pendingApproval.allowRememberedApproval !== false ? (
+                      <button className="mgr-btn secondary" disabled={isBusy} onClick={() => submitApproval("allow", true)}>
+                        Allow & don't ask again
+                      </button>
+                    ) : null}
                     <button className="mgr-btn" disabled={isBusy} onClick={() => submitApproval("cancel", false)}>
                       Cancel
                     </button>
@@ -1660,9 +1766,13 @@ function parseMcpInput(text: string) {
                   <div className="mgr-cap-grid">
                     <div className="mgr-cap-group">
                       <div className="mgr-cap-title">Read / Context MCP</div>
+                      <div style={{ color: "rgba(191,219,254,0.68)", fontSize: 11, marginBottom: 8 }}>
+                        Select an action, then set role access and approval behavior.
+                      </div>
                       <div className="mgr-segment">
                         {readCapabilities.length ? readCapabilities.map((action) => {
                           const active = policyForm.action === action;
+                          const policy = formFromPolicy(action, mcpPolicies.find((p) => p.action === action));
                           return (
                             <button
                               key={action}
@@ -1670,8 +1780,11 @@ function parseMcpInput(text: string) {
                               className={`mgr-seg-btn ${active ? "active" : ""}`}
                               onClick={() => {
                                 const existing = mcpPolicies.find((p) => p.action === action);
-                                setPolicyForm(existing || defaultPolicyForAction(action));
+                                setPolicyForm(formFromPolicy(action, existing));
                               }}
+                              title={`${action} | approval: ${policy.requireApproval ? "ask" : "no"} | remembered: ${
+                                policy.allowRememberedApproval ? "allowed" : "blocked"
+                              } | password: ${policy.requirePasswordAfterApproval ? "required" : "not required"}`}
                             >
                               {action}
                             </button>
@@ -1681,9 +1794,13 @@ function parseMcpInput(text: string) {
                     </div>
                     <div className="mgr-cap-group">
                       <div className="mgr-cap-title">Write / Admin Action MCP</div>
+                      <div style={{ color: "rgba(191,219,254,0.68)", fontSize: 11, marginBottom: 8 }}>
+                        Approval toggles apply to the selected write/admin MCP policy.
+                      </div>
                       <div className="mgr-segment">
                         {writeCapabilities.length ? writeCapabilities.map((action) => {
                           const active = policyForm.action === action;
+                          const policy = formFromPolicy(action, mcpPolicies.find((p) => p.action === action));
                           return (
                             <button
                               key={action}
@@ -1691,8 +1808,11 @@ function parseMcpInput(text: string) {
                               className={`mgr-seg-btn ${active ? "active" : ""}`}
                               onClick={() => {
                                 const existing = mcpPolicies.find((p) => p.action === action);
-                                setPolicyForm(existing || defaultPolicyForAction(action));
+                                setPolicyForm(formFromPolicy(action, existing));
                               }}
+                              title={`${action} | approval: ${policy.requireApproval ? "ask" : "no"} | remembered: ${
+                                policy.allowRememberedApproval ? "allowed" : "blocked"
+                              } | password: ${policy.requirePasswordAfterApproval ? "required" : "not required"}`}
                             >
                               {action}
                             </button>
@@ -1721,22 +1841,59 @@ function parseMcpInput(text: string) {
                       </button>
                     ))}
                   </div>
+                  <div style={{ marginTop: 18 }}>
+                    <label className="mgr-label">Approval Controls</label>
+                    <div style={{ display: "grid", gap: 10, maxWidth: 520 }}>
+                      <button
+                        type="button"
+                        className="mgr-check-row"
+                        onClick={() => setPolicyForm((s) => ({ ...s, requireApproval: !s.requireApproval }))}
+                      >
+                        <span className={`mgr-check-box ${policyForm.requireApproval ? "checked" : ""}`}>
+                          {policyForm.requireApproval ? "✓" : ""}
+                        </span>
+                        <span>Ask for human approval for this action</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="mgr-check-row"
+                        disabled={!policyForm.requireApproval}
+                        onClick={() =>
+                          setPolicyForm((s) => ({ ...s, allowRememberedApproval: !s.allowRememberedApproval }))
+                        }
+                      >
+                        <span className={`mgr-check-box blue ${policyForm.allowRememberedApproval ? "checked" : ""}`}>
+                          {policyForm.allowRememberedApproval ? "✓" : ""}
+                        </span>
+                        <span>Allow "don't ask again" remembered approval</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="mgr-check-row"
+                        disabled={!policyForm.requireApproval}
+                        onClick={() =>
+                          setPolicyForm((s) => ({
+                            ...s,
+                            requirePasswordAfterApproval: !s.requirePasswordAfterApproval,
+                          }))
+                        }
+                      >
+                        <span
+                          className={`mgr-check-box amber ${
+                            policyForm.requirePasswordAfterApproval ? "checked" : ""
+                          }`}
+                        >
+                          {policyForm.requirePasswordAfterApproval ? "✓" : ""}
+                        </span>
+                        <span>Ask for password after human approval</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div style={{ marginTop: 10 }}>
                 <label className="mgr-label">Policy Name</label>
                 <input className="mgr-input" value={policyForm.policyName} onChange={(e) => setPolicyForm((s) => ({ ...s, policyName: e.target.value }))} />
-              </div>
-              <div style={{ marginTop: 10 }}>
-                <label className="mgr-toggle">
-                  <input
-                    type="checkbox"
-                    checked={policyForm.requireApproval}
-                    onChange={(e) => setPolicyForm((s) => ({ ...s, requireApproval: e.target.checked }))}
-                    style={{ width: 16, height: 16, accentColor: "#10b981", cursor: "pointer" }}
-                  />
-                  Require human approval
-                </label>
               </div>
               <div style={{ marginTop: 10 }}>
                 <label className="mgr-label">Description</label>
