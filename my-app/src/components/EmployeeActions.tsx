@@ -126,7 +126,7 @@ export default function EmployeeActions() {
       <div className="card-content" style={{ padding: 14 }}>
         <div style={{ display: "grid", gap: 10 }}>
           {actions.map((a) => (
-            <ActionCard key={a.to} a={a} />
+            <ActionCard key={`${a.to}:${a.title}`} a={a} />
           ))}
         </div>
       </div>

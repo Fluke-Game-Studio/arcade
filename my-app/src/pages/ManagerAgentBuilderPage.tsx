@@ -7,7 +7,7 @@ import AgentTransactionLogsPage from "./AgentTransactionLogsPage";
 
 type Provider = "auto" | "openai" | "ollama";
 type Mode = "plan" | "execute";
-type BuilderTab = "execute" | "agents" | "assignments" | "requests" | "policies" | "history";
+type BuilderTab = "execute" | "agents" | "assignments" | "requests" | "policies" | "history" | "intake";
 type WsState = "disconnected" | "connecting" | "connected";
 type TurnStatus = "queued" | "running" | "done" | "error" | "submitted";
 type ApprovalDecision = "allow" | "cancel";
@@ -27,6 +27,9 @@ type TurnDiagnostics = {
   workflow?: {
     engine?: string;
     graphTrace?: Array<Record<string, any>>;
+    orchestration?: boolean;
+    plan?: Array<Record<string, any>>;
+    stepResults?: Array<Record<string, any>>;
   } | null;
   approval?: {
     required?: boolean;
@@ -56,6 +59,15 @@ type AgentTurn = {
   at: number;
   status: TurnStatus;
   diagnostics?: TurnDiagnostics;
+};
+type TurnFeedbackState = {
+  value: "yes" | "no" | "";
+  executionOk: "yes" | "no" | "";
+  correctActions: string[];
+  note: string;
+  saving: boolean;
+  saved: boolean;
+  error: string;
 };
 type AgentConfig = {
   agentId: string;
@@ -100,8 +112,91 @@ type EmployeeLite = {
   employee_name?: string;
 };
 
+type StoredIntakeContext = {
+  key: string;
+  label: string;
+  description: string;
+  questions: string[];
+  backgroundInfo: string;
+  customInstructions: string;
+  followUpInstructions: string;
+  endNote: string;
+  mcpActions: string[];
+};
+
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
 const FALLBACK_ROLES = ["employee", "admin", "super", "admin-readonly", "super-readonly"] as const;
+const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
+
+const DEFAULT_INTAKE_CONTEXTS: StoredIntakeContext[] = [
+  {
+    key: "weekly_update",
+    label: "Weekly Update",
+    description: "Collect weekly accomplishments, blockers, next steps and submit via MCP.",
+    questions: [
+      "What did you accomplish this week?",
+      "What blockers did you face?",
+      "What are your next steps?",
+      "Any timesheet summary you want to add?",
+    ],
+    backgroundInfo: "",
+    customInstructions: "",
+    followUpInstructions: "",
+    endNote: "",
+    mcpActions: ["submit_weekly_update"],
+  },
+  {
+    key: "interview_intake",
+    label: "Interview Intake",
+    description: "Run interview-style voice intake and store transcripted response via applicant action flow.",
+    questions: [
+      "Please introduce yourself and your relevant experience.",
+      "Why are you interested in this role?",
+      "Tell me about one project you are proud of.",
+      "Anything else you want to add for this application?",
+    ],
+    backgroundInfo: "",
+    customInstructions: "",
+    followUpInstructions: "",
+    endNote: "",
+    mcpActions: ["applicant_send_email"],
+  },
+];
+
+function migrateIntakeContext(raw: any): StoredIntakeContext {
+  return {
+    key: safeStr(raw?.key),
+    label: safeStr(raw?.label),
+    description: safeStr(raw?.description),
+    questions: Array.isArray(raw?.questions) ? raw.questions : [""],
+    backgroundInfo: safeStr(raw?.backgroundInfo),
+    customInstructions: safeStr(raw?.customInstructions),
+    followUpInstructions: safeStr(raw?.followUpInstructions),
+    endNote: safeStr(raw?.endNote),
+    // migrate old mcpAction string → mcpActions array
+    mcpActions: Array.isArray(raw?.mcpActions)
+      ? raw.mcpActions
+      : safeStr(raw?.mcpAction)
+      ? [safeStr(raw.mcpAction)]
+      : [],
+  };
+}
+
+function loadIntakeContexts(): StoredIntakeContext[] {
+  try {
+    const raw = localStorage.getItem(INTAKE_CONTEXTS_KEY);
+    if (!raw) return DEFAULT_INTAKE_CONTEXTS.map((x) => ({ ...x }));
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed.map(migrateIntakeContext);
+  } catch {}
+  return DEFAULT_INTAKE_CONTEXTS.map((x) => ({ ...x }));
+}
+
+function saveIntakeContexts(contexts: StoredIntakeContext[]) {
+  try {
+    localStorage.setItem(INTAKE_CONTEXTS_KEY, JSON.stringify(contexts));
+  } catch {}
+}
 
 function isReadCapability(capability: string) {
   const key = safeStr(capability).toLowerCase();
@@ -206,7 +301,7 @@ export default function ManagerAgentBuilderPage() {
   const token = safeStr((user as any)?.token || "");
 
   const [provider, setProvider] = useState<Provider>("auto");
-  const [autoSpeak, setAutoSpeak] = useState(true);
+  const [autoSpeak] = useState(false);
   const [instruction, setInstruction] = useState(
     "Create a new job for Digital Marketing Manager in Toronto, full-time, and make it public."
   );
@@ -261,6 +356,13 @@ export default function ManagerAgentBuilderPage() {
     passwordError?: string;
   } | null>(null);
   const [approvalPassword, setApprovalPassword] = useState("");
+  const [turnFeedback, setTurnFeedback] = useState<Record<string, TurnFeedbackState>>({});
+  const [intakeContexts, setIntakeContexts] = useState<StoredIntakeContext[]>(() => loadIntakeContexts());
+  const [selectedIntakeKey, setSelectedIntakeKey] = useState(() => loadIntakeContexts()[0]?.key || "");
+  const [intakeForm, setIntakeForm] = useState<StoredIntakeContext>(() => {
+    const ctxs = loadIntakeContexts();
+    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [] };
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
   const activeRequestClientIdRef = useRef<string | null>(null);
@@ -366,6 +468,9 @@ export default function ManagerAgentBuilderPage() {
               graphTrace: Array.isArray(data.meta.workflow.graphTrace)
                 ? data.meta.workflow.graphTrace
                 : [],
+              orchestration: data.meta.workflow.orchestration === true,
+              plan: Array.isArray(data.meta.workflow.plan) ? data.meta.workflow.plan : [],
+              stepResults: Array.isArray(data.meta.workflow.stepResults) ? data.meta.workflow.stepResults : [],
             }
           : null,
       approval:
@@ -766,6 +871,72 @@ function parseMcpInput(text: string) {
     }
   }
 
+  function predictedActionForTurn(turn: AgentTurn) {
+    const workflow = turn.diagnostics?.workflow as any;
+    const trace = Array.isArray(workflow?.graphTrace) ? workflow.graphTrace : [];
+    const intent = trace.find((x: any) => safeStr(x?.node) === "intent");
+    const fromIntent = safeStr(intent?.actionName);
+    const fromMcp = safeStr((turn.diagnostics?.actionMcp as any)?.action);
+    return fromIntent || fromMcp;
+  }
+
+  async function submitTurnFeedback(turn: AgentTurn) {
+    const key = turn.requestClientId;
+    const state = turnFeedback[key];
+    if (!state) return;
+    const predictedAction = predictedActionForTurn(turn);
+    if (!predictedAction) return;
+    if (!state.value) return;
+    if (state.value === "no" && state.correctActions.length === 0) {
+      setTurnFeedback((prev) => ({
+        ...prev,
+        [key]: { ...state, error: "Add at least one MCP action in order." },
+      }));
+      return;
+    }
+    setTurnFeedback((prev) => ({
+      ...prev,
+      [key]: { ...state, saving: true, error: "" },
+    }));
+    try {
+      await fetch(`${API_BASE}/ai/chat/internal`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          clientId: `${sessionIdRef.current}__feedback__${uid()}`,
+          requestId: `${sessionIdRef.current}__feedback__${uid()}`,
+          threadId: sessionIdRef.current,
+          context: "internal",
+          question: turn.request,
+          requestBody: {
+            intentFeedback: {
+              question: turn.request,
+              predictedAction,
+              wasCorrect: state.value === "yes",
+              executionOk: state.executionOk === "yes",
+              correctAction: state.value === "no" ? state.correctActions[0] || "" : "",
+              correctActionsOrdered: state.value === "no" ? state.correctActions : [],
+              note: state.note || "",
+            },
+          },
+        }),
+      });
+      setTurnFeedback((prev) => ({
+        ...prev,
+        [key]: { ...state, saving: false, saved: true, error: "" },
+      }));
+    } catch (err: any) {
+      setTurnFeedback((prev) => ({
+        ...prev,
+        [key]: { ...state, saving: false, error: safeStr(err?.message || "Failed to save feedback.") },
+      }));
+    }
+  }
+
   async function submitApproval(decision: ApprovalDecision, remember: boolean) {
     if (!pendingApproval) return;
     if (decision === "allow" && pendingApproval.requirePasswordAfterApproval && !approvalPassword.trim()) {
@@ -1036,6 +1207,7 @@ function parseMcpInput(text: string) {
             <button className={`mgr-btn ${tab === "requests" ? "secondary" : ""}`} onClick={() => setTab("requests")}>Requests</button>
             <button className={`mgr-btn ${tab === "policies" ? "secondary" : ""}`} onClick={() => setTab("policies")}>MCP Policies</button>
             <button className={`mgr-btn ${tab === "history" ? "secondary" : ""}`} onClick={() => setTab("history")}>Transaction History</button>
+            <button className={`mgr-btn ${tab === "intake" ? "secondary" : ""}`} onClick={() => setTab("intake")}>Intake Contexts</button>
           </div>
           {toast ? (
             <div
@@ -1117,15 +1289,6 @@ function parseMcpInput(text: string) {
                 <label className="mgr-label">Execution Access</label>
                 <span className="mgr-pill">{canExecute ? "Allowed" : "Read-only"}</span>
               </div>
-
-              <label className="mgr-toggle">
-                <input
-                  type="checkbox"
-                  checked={autoSpeak}
-                  onChange={(e) => setAutoSpeak(e.target.checked)}
-                />
-                Auto-speak assistant replies
-              </label>
 
               <div className="mgr-mini">
                 WS status: <b>{wsState}</b>
@@ -1271,6 +1434,206 @@ function parseMcpInput(text: string) {
                       </span>
                     </div>
                     <pre>{`Instruction:\n${turn.request}\n\nResponse:\n${turn.reply}`}</pre>
+                    {turn.status === "done" ? (() => {
+                      const predictedAction = predictedActionForTurn(turn);
+                      if (!predictedAction) return null;
+                      const fb = turnFeedback[turn.requestClientId] || {
+                        value: "",
+                        executionOk: "",
+                        correctActions: [],
+                        note: "",
+                        saving: false,
+                        saved: false,
+                        error: "",
+                      };
+                      return (
+                        <div className="mgr-card" style={{ marginTop: 8, padding: 10 }}>
+                          {fb.saved ? (
+                            <div>
+                              <div className="mgr-mini" style={{ marginTop: 0 }}>
+                                Feedback saved.
+                              </div>
+                              <div className="mgr-mini">
+                                Intent: <b>{fb.value || "-"}</b> | Execution: <b>{fb.executionOk || "-"}</b>
+                              </div>
+                              {fb.correctActions.length ? (
+                                <div className="mgr-mini">
+                                  Expected steps: <b>{fb.correctActions.join(" -> ")}</b>
+                                </div>
+                              ) : null}
+                              {safeStr(fb.note) ? (
+                                <div className="mgr-mini">Note: {fb.note}</div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <>
+                          <div className="mgr-mini" style={{ marginBottom: 6 }}>
+                            Was this the intent you wanted? <b>({predictedAction})</b>
+                          </div>
+                          <div className="mgr-actions" style={{ marginTop: 0 }}>
+                            <button
+                              type="button"
+                              className={`mgr-btn ${fb.value === "yes" ? "secondary" : ""}`}
+                              onClick={() =>
+                                setTurnFeedback((prev) => ({
+                                  ...prev,
+                                    [turn.requestClientId]: { ...fb, value: "yes", error: "" },
+                                }))
+                              }
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              className={`mgr-btn ${fb.value === "no" ? "secondary" : ""}`}
+                              onClick={() =>
+                                setTurnFeedback((prev) => ({
+                                  ...prev,
+                                    [turn.requestClientId]: { ...fb, value: "no", error: "" },
+                                }))
+                              }
+                            >
+                              No
+                            </button>
+                            <button
+                              type="button"
+                              className="mgr-btn"
+                              disabled={fb.saving || fb.saved || !fb.value}
+                              onClick={() => submitTurnFeedback(turn)}
+                            >
+                              {fb.saved ? "Saved" : fb.saving ? "Saving..." : "Save Feedback"}
+                            </button>
+                          </div>
+                          <div className="mgr-actions" style={{ marginTop: 8 }}>
+                            <span className="mgr-mini" style={{ marginTop: 0 }}>Was full prompt execution complete?</span>
+                            <button
+                              type="button"
+                              className={`mgr-btn ${fb.executionOk === "yes" ? "secondary" : ""}`}
+                              onClick={() =>
+                                setTurnFeedback((prev) => ({
+                                  ...prev,
+                                  [turn.requestClientId]: { ...fb, executionOk: "yes", error: "" },
+                                }))
+                              }
+                            >
+                              Complete
+                            </button>
+                            <button
+                              type="button"
+                              className={`mgr-btn ${fb.executionOk === "no" ? "secondary" : ""}`}
+                              onClick={() =>
+                                setTurnFeedback((prev) => ({
+                                  ...prev,
+                                  [turn.requestClientId]: { ...fb, executionOk: "no", error: "" },
+                                }))
+                              }
+                            >
+                              Incomplete
+                            </button>
+                          </div>
+                          {fb.value === "no" ? (
+                            <div style={{ marginTop: 8 }}>
+                              <div className="mgr-mini" style={{ marginTop: 0, marginBottom: 6 }}>
+                                Select expected MCP actions in order (1, 2, 3...)
+                              </div>
+                              <div className="mgr-segment" style={{ marginTop: 0 }}>
+                                {availableCapabilities.map((cap) => {
+                                  const idx = fb.correctActions.indexOf(cap);
+                                  const selected = idx >= 0;
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={cap}
+                                      className={`mgr-seg-btn ${selected ? "active" : ""}`}
+                                      onClick={() =>
+                                        setTurnFeedback((prev) => {
+                                          const current = prev[turn.requestClientId] || fb;
+                                          const has = current.correctActions.includes(cap);
+                                          const nextActions = has
+                                            ? current.correctActions.filter((x) => x !== cap)
+                                            : [...current.correctActions, cap];
+                                          return {
+                                            ...prev,
+                                            [turn.requestClientId]: {
+                                              ...current,
+                                              correctActions: nextActions,
+                                              error: "",
+                                            },
+                                          };
+                                        })
+                                      }
+                                      title={cap}
+                                    >
+                                      {selected ? (
+                                        <span
+                                          style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            minWidth: 18,
+                                            height: 18,
+                                            borderRadius: 999,
+                                            border: "1px solid rgba(125,211,252,0.7)",
+                                            background: "rgba(2,6,23,0.45)",
+                                            color: "#e0f2fe",
+                                            fontSize: 11,
+                                            fontWeight: 900,
+                                            marginRight: 6,
+                                          }}
+                                        >
+                                          {idx + 1}
+                                        </span>
+                                      ) : null}
+                                      {cap}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {fb.correctActions.length ? (
+                                <div style={{ marginTop: 8 }}>
+                                  {fb.correctActions.map((stepAction, idx) => (
+                                    <div key={`${stepAction}_${idx}`} className="mgr-actions" style={{ marginTop: 4 }}>
+                                      <span className="mgr-pill">{idx + 1}</span>
+                                      <span className="mgr-mini" style={{ marginTop: 0 }}>{stepAction}</span>
+                                      <button
+                                        type="button"
+                                        className="mgr-btn danger"
+                                        onClick={() =>
+                                          setTurnFeedback((prev) => ({
+                                            ...prev,
+                                            [turn.requestClientId]: {
+                                              ...fb,
+                                              correctActions: fb.correctActions.filter((_, i) => i !== idx),
+                                            },
+                                          }))
+                                        }
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                              <textarea
+                                className="mgr-textarea"
+                                style={{ minHeight: 64, marginTop: 8 }}
+                                placeholder="What was missing or wrong in execution?"
+                                value={fb.note}
+                                onChange={(e) =>
+                                  setTurnFeedback((prev) => ({
+                                    ...prev,
+                                    [turn.requestClientId]: { ...fb, note: e.target.value },
+                                  }))
+                                }
+                              />
+                            </div>
+                          ) : null}
+                          {fb.error ? <div className="mgr-error" style={{ marginTop: 8 }}>{fb.error}</div> : null}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })() : null}
                     {turn.diagnostics ? (
                       <details className="mgr-diag mgr-debug">
                         <summary>Debug details</summary>
@@ -1321,6 +1684,13 @@ function parseMcpInput(text: string) {
                         )}
                         <div className="mgr-diag-line">
                           Workflow: <b>{safeStr(turn.diagnostics.workflow?.engine) || "none"}</b>
+                          {turn.diagnostics.workflow?.orchestration ? (
+                            <>
+                              {" "}
+                              | orchestration: <b>on</b> | steps:{" "}
+                              <b>{turn.diagnostics.workflow.stepResults?.length || turn.diagnostics.workflow.plan?.length || 0}</b>
+                            </>
+                          ) : null}
                         </div>
                         {safeStr(turn.diagnostics.guardrails?.deniedReason) ? (
                           <div className="mgr-diag-line">
@@ -1337,6 +1707,13 @@ function parseMcpInput(text: string) {
                           <div className="mgr-mcp-payload">
                             <div className="mgr-mcp-payload-title">Action MCP Request</div>
                             <pre>{prettyJson(turn.diagnostics.actionMcp?.request)}</pre>
+                          </div>
+                        ) : null}
+                        {Array.isArray(turn.diagnostics.workflow?.stepResults) &&
+                        turn.diagnostics.workflow!.stepResults!.length ? (
+                          <div className="mgr-mcp-payload">
+                            <div className="mgr-mcp-payload-title">Orchestration Steps</div>
+                            <pre>{prettyJson(turn.diagnostics.workflow!.stepResults)}</pre>
                           </div>
                         ) : null}
                         {Array.isArray(turn.diagnostics.workflow?.graphTrace) &&
@@ -1922,6 +2299,376 @@ function parseMcpInput(text: string) {
                 >
                   Save MCP Policy
                 </button>
+              </div>
+            </section>
+          ) : null}
+
+          {tab === "intake" ? (
+            <section className="mgr-card" style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div>
+                  <label className="mgr-label" style={{ margin: 0 }}>Intake Contexts</label>
+                  <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginTop: 4 }}>
+                    Configure the questions and AI behavior for each voice intake session. Changes are saved to browser storage and picked up automatically by the AI Intake page.
+                  </div>
+                </div>
+                <div className="mgr-actions" style={{ marginTop: 0, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    className="mgr-btn secondary"
+                    onClick={() => {
+                      const newCtx: StoredIntakeContext = {
+                        key: `context_${Date.now()}`,
+                        label: "New Context",
+                        description: "",
+                        questions: [""],
+                        backgroundInfo: "",
+                        customInstructions: "",
+                        followUpInstructions: "",
+                        endNote: "",
+                        mcpAction: "",
+                      };
+                      const next = [...intakeContexts, newCtx];
+                      setIntakeContexts(next);
+                      setSelectedIntakeKey(newCtx.key);
+                      setIntakeForm(newCtx);
+                    }}
+                  >
+                    + New
+                  </button>
+                  <button
+                    type="button"
+                    className="mgr-btn danger"
+                    disabled={intakeContexts.length <= 1}
+                    onClick={() => {
+                      const ok = window.confirm(`Delete context "${intakeForm.label}"?`);
+                      if (!ok) return;
+                      const next = intakeContexts.filter((x) => x.key !== selectedIntakeKey);
+                      setIntakeContexts(next);
+                      saveIntakeContexts(next);
+                      const first = next[0];
+                      setSelectedIntakeKey(first?.key || "");
+                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [] });
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    className="mgr-btn primary"
+                    onClick={() => {
+                      const next = intakeContexts.map((x) =>
+                        x.key === selectedIntakeKey ? { ...intakeForm } : x
+                      );
+                      setIntakeContexts(next);
+                      saveIntakeContexts(next);
+                      notify("ok", "Intake context saved — intake page will use this config.");
+                    }}
+                  >
+                    Save Context
+                  </button>
+                </div>
+              </div>
+
+              <div className="mgr-segment" style={{ marginBottom: 14 }}>
+                {intakeContexts.map((ctx) => (
+                  <button
+                    key={ctx.key}
+                    type="button"
+                    className={`mgr-seg-btn ${selectedIntakeKey === ctx.key ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedIntakeKey(ctx.key);
+                      setIntakeForm({ ...ctx });
+                    }}
+                  >
+                    {ctx.label || ctx.key}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mgr-row">
+                <div>
+                  <label className="mgr-label">Key (identifier)</label>
+                  <input
+                    className="mgr-input"
+                    value={intakeForm.key}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, key: e.target.value }))}
+                    placeholder="weekly_update"
+                  />
+                </div>
+                <div>
+                  <label className="mgr-label">Label</label>
+                  <input
+                    className="mgr-input"
+                    value={intakeForm.label}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, label: e.target.value }))}
+                    placeholder="Weekly Update"
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Description</label>
+                <input
+                  className="mgr-input"
+                  value={intakeForm.description}
+                  onChange={(e) => setIntakeForm((s) => ({ ...s, description: e.target.value }))}
+                  placeholder="Short description shown on the intake page"
+                />
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <details className="mgr-diag mgr-debug" style={{ padding: 0 }}>
+                  <summary style={{ padding: "9px 10px" }}>
+                    MCP Actions{" "}
+                    {intakeForm.mcpActions.length > 0 ? (
+                      <span style={{ color: "#a7f3d0", fontWeight: 700, textTransform: "none", letterSpacing: 0 }}>
+                        ({intakeForm.mcpActions.join(" → ")})
+                      </span>
+                    ) : (
+                      <span style={{ color: "#fca5a5", fontWeight: 400, textTransform: "none" }}>(none selected)</span>
+                    )}
+                  </summary>
+                  <div style={{ padding: "0 10px 10px" }}>
+                    <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 8 }}>
+                      Click to select actions in execution order. Click again to remove.
+                    </div>
+                    <div className="mgr-cap-grid">
+                      <div className="mgr-cap-group">
+                        <div className="mgr-cap-title">Write / Action MCP</div>
+                        <div className="mgr-segment">
+                          {writeCapabilities.length ? writeCapabilities.map((cap) => {
+                            const idx = intakeForm.mcpActions.indexOf(cap);
+                            const selected = idx >= 0;
+                            return (
+                              <button
+                                key={cap}
+                                type="button"
+                                className={`mgr-seg-btn ${selected ? "active" : ""}`}
+                                onClick={() =>
+                                  setIntakeForm((s) => ({
+                                    ...s,
+                                    mcpActions: s.mcpActions.includes(cap)
+                                      ? s.mcpActions.filter((x) => x !== cap)
+                                      : [...s.mcpActions, cap],
+                                  }))
+                                }
+                              >
+                                {selected ? (
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                                    minWidth: 18, height: 18, borderRadius: 999,
+                                    border: "1px solid rgba(125,211,252,0.7)",
+                                    background: "rgba(2,6,23,0.45)",
+                                    color: "#e0f2fe", fontSize: 11, fontWeight: 900, marginRight: 6,
+                                  }}>
+                                    {idx + 1}
+                                  </span>
+                                ) : null}
+                                {cap}
+                              </button>
+                            );
+                          }) : <span className="mgr-empty-inline">No write capabilities loaded.</span>}
+                        </div>
+                      </div>
+                      <div className="mgr-cap-group">
+                        <div className="mgr-cap-title">Read / Context MCP</div>
+                        <div className="mgr-segment">
+                          {readCapabilities.length ? readCapabilities.map((cap) => {
+                            const idx = intakeForm.mcpActions.indexOf(cap);
+                            const selected = idx >= 0;
+                            return (
+                              <button
+                                key={cap}
+                                type="button"
+                                className={`mgr-seg-btn ${selected ? "active" : ""}`}
+                                onClick={() =>
+                                  setIntakeForm((s) => ({
+                                    ...s,
+                                    mcpActions: s.mcpActions.includes(cap)
+                                      ? s.mcpActions.filter((x) => x !== cap)
+                                      : [...s.mcpActions, cap],
+                                  }))
+                                }
+                              >
+                                {selected ? (
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                                    minWidth: 18, height: 18, borderRadius: 999,
+                                    border: "1px solid rgba(125,211,252,0.7)",
+                                    background: "rgba(2,6,23,0.45)",
+                                    color: "#e0f2fe", fontSize: 11, fontWeight: 900, marginRight: 6,
+                                  }}>
+                                    {idx + 1}
+                                  </span>
+                                ) : null}
+                                {cap}
+                              </button>
+                            );
+                          }) : <span className="mgr-empty-inline">No read capabilities loaded.</span>}
+                        </div>
+                      </div>
+                    </div>
+                    {intakeForm.mcpActions.length > 0 ? (
+                      <div style={{ marginTop: 8 }}>
+                        {intakeForm.mcpActions.map((action, idx) => (
+                          <div key={`${action}_${idx}`} className="mgr-actions" style={{ marginTop: 4 }}>
+                            <span className="mgr-pill">{idx + 1}</span>
+                            <span className="mgr-mini" style={{ marginTop: 0 }}>{action}</span>
+                            <button
+                              type="button"
+                              className="mgr-btn danger"
+                              onClick={() =>
+                                setIntakeForm((s) => ({
+                                  ...s,
+                                  mcpActions: s.mcpActions.filter((_, i) => i !== idx),
+                                }))
+                              }
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <label className="mgr-label">Background Info</label>
+                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
+                  Context that helps the AI understand the purpose of this session (company info, role context, what answers are used for, etc.).
+                </div>
+                <textarea
+                  className="mgr-textarea"
+                  value={intakeForm.backgroundInfo}
+                  onChange={(e) => setIntakeForm((s) => ({ ...s, backgroundInfo: e.target.value }))}
+                  placeholder="E.g. This is for Fluke Games employees to submit their weekly work update. The company makes arcade games. Responses are reviewed by team leads..."
+                />
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Custom Instructions</label>
+                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
+                  Specific behavior the AI should follow — tone, language, response length, format, dos and don'ts.
+                </div>
+                <textarea
+                  className="mgr-textarea"
+                  value={intakeForm.customInstructions}
+                  onChange={(e) => setIntakeForm((s) => ({ ...s, customInstructions: e.target.value }))}
+                  placeholder="E.g. Speak in a warm, professional tone. Keep your responses under 2 sentences. Do not repeat the question back to the user..."
+                />
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">Follow-up Instructions</label>
+                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
+                  Tell the AI when and how to probe deeper before moving to the next question.
+                </div>
+                <textarea
+                  className="mgr-textarea"
+                  value={intakeForm.followUpInstructions}
+                  onChange={(e) => setIntakeForm((s) => ({ ...s, followUpInstructions: e.target.value }))}
+                  placeholder="E.g. If the user's answer is vague or under 15 words, ask one follow-up to get more specific detail before moving on..."
+                />
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label className="mgr-label">End Note</label>
+                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
+                  What the AI says after all questions are answered. Leave blank for a default closing message.
+                </div>
+                <textarea
+                  className="mgr-textarea"
+                  style={{ minHeight: 64 }}
+                  value={intakeForm.endNote}
+                  onChange={(e) => setIntakeForm((s) => ({ ...s, endNote: e.target.value }))}
+                  placeholder="E.g. Thank you for completing your weekly update! Your responses have been recorded and your team lead will review them shortly. Have a great rest of your week!"
+                />
+              </div>
+
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <label className="mgr-label" style={{ margin: 0 }}>
+                    Questions <span style={{ color: "rgba(191,219,254,0.55)", fontWeight: 400 }}>({intakeForm.questions.length})</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="mgr-btn secondary"
+                    onClick={() =>
+                      setIntakeForm((s) => ({ ...s, questions: [...s.questions, ""] }))
+                    }
+                  >
+                    + Add Question
+                  </button>
+                </div>
+                {intakeForm.questions.map((q, idx) => (
+                  <div key={idx} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginBottom: 8 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingTop: 4 }}>
+                      <button
+                        type="button"
+                        className="mgr-btn"
+                        style={{ padding: "3px 7px", fontSize: 11, lineHeight: 1 }}
+                        disabled={idx === 0}
+                        onClick={() =>
+                          setIntakeForm((s) => {
+                            const next = [...s.questions];
+                            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                            return { ...s, questions: next };
+                          })
+                        }
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="mgr-btn"
+                        style={{ padding: "3px 7px", fontSize: 11, lineHeight: 1 }}
+                        disabled={idx === intakeForm.questions.length - 1}
+                        onClick={() =>
+                          setIntakeForm((s) => {
+                            const next = [...s.questions];
+                            [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                            return { ...s, questions: next };
+                          })
+                        }
+                      >
+                        ↓
+                      </button>
+                    </div>
+                    <span style={{ color: "rgba(191,219,254,0.5)", fontSize: 12, paddingTop: 10, minWidth: 22, textAlign: "right" }}>
+                      {idx + 1}.
+                    </span>
+                    <textarea
+                      className="mgr-textarea"
+                      style={{ minHeight: 54, flex: 1 }}
+                      value={q}
+                      onChange={(e) =>
+                        setIntakeForm((s) => {
+                          const next = [...s.questions];
+                          next[idx] = e.target.value;
+                          return { ...s, questions: next };
+                        })
+                      }
+                      placeholder={`Question ${idx + 1}`}
+                    />
+                    <button
+                      type="button"
+                      className="mgr-btn danger"
+                      style={{ padding: "4px 9px", fontSize: 12, marginTop: 4 }}
+                      disabled={intakeForm.questions.length <= 1}
+                      onClick={() =>
+                        setIntakeForm((s) => ({
+                          ...s,
+                          questions: s.questions.filter((_, i) => i !== idx),
+                        }))
+                      }
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
               </div>
             </section>
           ) : null}

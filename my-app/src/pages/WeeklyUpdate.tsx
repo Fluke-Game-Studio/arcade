@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import TimeSheet from "../components/Timesheet";
 import { useUpdates, startOfWeekMonday, toISODate } from "./UpdatesContext";
 import { useAuth } from "../auth/AuthContext";
@@ -205,6 +206,7 @@ async function uploadFileWithProgress(
 export default function WeeklyUpdate() {
   const { save } = useUpdates();
   const { user, api } = useAuth();
+  const navigate = useNavigate();
 
   const mondayISO = useMemo(() => toISODate(startOfWeekMonday(new Date())), []);
   const [weekStart, setWeekStart] = useState(mondayISO);
@@ -648,6 +650,16 @@ export default function WeeklyUpdate() {
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => navigate("/updates/ai-intake")}
+                  style={{ borderRadius: 999, fontWeight: 800 }}
+                  title="Use AI WebRTC intake flow for guided submission"
+                >
+                  <i className="material-icons left">headset_mic</i>
+                  Try The AI Way To Submit
+                </button>
                 <MetaChip
                   icon="event"
                   label="Week"
