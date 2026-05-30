@@ -314,7 +314,7 @@ function formFromPolicy(action: string, policy?: Partial<MpcPolicy> | null): Mpc
 }
 
 export default function ManagerAgentBuilderPage() {
-  const { user } = useAuth() as any;
+  const { user, api } = useAuth() as any;
   const token = safeStr((user as any)?.token || "");
 
   const [provider, setProvider] = useState<Provider>("auto");
