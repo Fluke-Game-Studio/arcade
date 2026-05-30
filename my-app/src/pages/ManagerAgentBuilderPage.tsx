@@ -118,11 +118,23 @@ type StoredIntakeContext = {
   description: string;
   questions: string[];
   backgroundInfo: string;
+  sessionPrompt: string;
   customInstructions: string;
   followUpInstructions: string;
   endNote: string;
   mcpActions: string[];
+  includeJobQuestions: boolean;
 };
+
+const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Games. You have ONE job: conduct this interview by asking the listed questions in order.
+
+=== ABSOLUTE RULES — no exceptions ===
+1. OFF-TOPIC RESPONSE: If the candidate says ANYTHING not related to answering the current interview question, do NOT engage with it. Say exactly: "Let's keep focused on the interview." then immediately repeat the current question word-for-word. Do not acknowledge, comment on, or explore the off-topic content in any way.
+2. QUESTION ORDER: Ask questions strictly in the listed order. Never skip, reorder, or paraphrase. Use the exact wording provided.
+3. INCOMPLETE ANSWERS: If an answer is vague or very short, ask one targeted follow-up before moving on.
+4. MIC INTERRUPTION: If a response seems cut off or too short, say "It seems your response may have been incomplete — could you complete your answer?" Do not advance.
+5. ENGLISH ONLY: Respond only in English, regardless of what language the candidate uses.
+6. BREVITY: Keep your own responses short — one or two sentences maximum before asking or repeating the question.`;
 
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
 const FALLBACK_ROLES = ["employee", "admin", "super", "admin-readonly", "super-readonly"] as const;
@@ -144,6 +156,8 @@ const DEFAULT_INTAKE_CONTEXTS: StoredIntakeContext[] = [
     followUpInstructions: "",
     endNote: "",
     mcpActions: ["submit_weekly_update"],
+    includeJobQuestions: false,
+    sessionPrompt: DEFAULT_SESSION_PROMPT,
   },
   {
     key: "interview_intake",
@@ -160,6 +174,8 @@ const DEFAULT_INTAKE_CONTEXTS: StoredIntakeContext[] = [
     followUpInstructions: "",
     endNote: "",
     mcpActions: ["applicant_send_email"],
+    includeJobQuestions: true,
+    sessionPrompt: DEFAULT_SESSION_PROMPT,
   },
 ];
 
@@ -170,15 +186,16 @@ function migrateIntakeContext(raw: any): StoredIntakeContext {
     description: safeStr(raw?.description),
     questions: Array.isArray(raw?.questions) ? raw.questions : [""],
     backgroundInfo: safeStr(raw?.backgroundInfo),
+    sessionPrompt: safeStr(raw?.sessionPrompt) || DEFAULT_SESSION_PROMPT,
     customInstructions: safeStr(raw?.customInstructions),
     followUpInstructions: safeStr(raw?.followUpInstructions),
     endNote: safeStr(raw?.endNote),
-    // migrate old mcpAction string → mcpActions array
     mcpActions: Array.isArray(raw?.mcpActions)
       ? raw.mcpActions
       : safeStr(raw?.mcpAction)
       ? [safeStr(raw.mcpAction)]
       : [],
+    includeJobQuestions: Boolean(raw?.includeJobQuestions),
   };
 }
 
@@ -361,8 +378,10 @@ export default function ManagerAgentBuilderPage() {
   const [selectedIntakeKey, setSelectedIntakeKey] = useState(() => loadIntakeContexts()[0]?.key || "");
   const [intakeForm, setIntakeForm] = useState<StoredIntakeContext>(() => {
     const ctxs = loadIntakeContexts();
-    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [] };
+    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false };
   });
+  const [intakeJobs, setIntakeJobs] = useState<{ jobId: string; title: string }[]>([]);
+  const [intakeJobsLoaded, setIntakeJobsLoaded] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const activeRequestClientIdRef = useRef<string | null>(null);
@@ -670,6 +689,25 @@ export default function ManagerAgentBuilderPage() {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/admin/ai/intake-contexts`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await r.json().catch(() => ({}));
+        const items = Array.isArray(data?.contexts) ? data.contexts.map(migrateIntakeContext) : [];
+        if (items.length > 0) {
+          setIntakeContexts(items);
+          setSelectedIntakeKey(items[0].key || "");
+          setIntakeForm(items[0]);
+          saveIntakeContexts(items);
+        }
+      } catch {}
+    })();
+  }, [token]);
+
   async function loadAgentAdminData(force = false) {
     await adminData.load(force);
   }
@@ -704,10 +742,11 @@ function buildManagerQuestion(mode: Mode, raw: string) {
   const base = raw.trim();
   if (mode === "plan") {
     return (
-      `${base}\n\n` +
-      "Return a manager action plan using Fluke endpoint schema. " +
-      "If this is a hiring request, return jobs planning fields. " +
-      "If this is a weekly update request, return weekly update intake questions and schema-aligned draft payload."
+      `You are an intent classifier and query optimizer.\n\n` +
+      `The user wrote:\n"${base}"\n\n` +
+      `Parse the intent carefully. Break down any compound or conditional steps into a clear ordered sequence. ` +
+      `Then rewrite this as a single clean, structured, unambiguous instruction that can be pasted directly into an execution prompt and run without confusion. ` +
+      `Output ONLY the rewritten instruction — no explanation, no preamble, no labels. Just the refined query.`
     );
   }
   return (
@@ -1207,7 +1246,15 @@ function parseMcpInput(text: string) {
             <button className={`mgr-btn ${tab === "requests" ? "secondary" : ""}`} onClick={() => setTab("requests")}>Requests</button>
             <button className={`mgr-btn ${tab === "policies" ? "secondary" : ""}`} onClick={() => setTab("policies")}>MCP Policies</button>
             <button className={`mgr-btn ${tab === "history" ? "secondary" : ""}`} onClick={() => setTab("history")}>Transaction History</button>
-            <button className={`mgr-btn ${tab === "intake" ? "secondary" : ""}`} onClick={() => setTab("intake")}>Intake Contexts</button>
+            <button className={`mgr-btn ${tab === "intake" ? "secondary" : ""}`} onClick={() => {
+              setTab("intake");
+              if (!intakeJobsLoaded) {
+                api.listJobsAdmin().then((jobs: any[]) => {
+                  setIntakeJobs(jobs.map((j: any) => ({ jobId: j.jobId, title: j.title || j.jobId })));
+                  setIntakeJobsLoaded(true);
+                }).catch(() => setIntakeJobsLoaded(true));
+              }
+            }}>Intake Contexts</button>
           </div>
           {toast ? (
             <div
@@ -1332,8 +1379,9 @@ function parseMcpInput(text: string) {
                   className="mgr-btn secondary"
                   disabled={isBusy}
                   onClick={() => run("plan")}
+                  title="Reformulates your query into a clean, structured instruction ready for Execute"
                 >
-                  {loadingMode === "plan" ? "Planning..." : "Plan"}
+                  {loadingMode === "plan" ? "Clarifying..." : "Clarify"}
                 </button>
                 <button
                   className="mgr-btn primary"
@@ -1426,7 +1474,7 @@ function parseMcpInput(text: string) {
                   <article className="mgr-turn" key={turn.id}>
                     <div className="mgr-turn-head">
                       <span className="mgr-pill">
-                        {turn.mode === "plan" ? "Plan" : "Execute"} - {safeStr(selectedAgentId) || "No Agent"} -{" "}
+                        {turn.mode === "plan" ? "Clarify" : "Execute"} - {safeStr(selectedAgentId) || "No Agent"} -{" "}
                         {turn.status}
                       </span>
                       <span style={{ color: "rgba(191,219,254,0.74)", fontSize: 12 }}>
@@ -1434,6 +1482,18 @@ function parseMcpInput(text: string) {
                       </span>
                     </div>
                     <pre>{`Instruction:\n${turn.request}\n\nResponse:\n${turn.reply}`}</pre>
+                    {turn.mode === "plan" && turn.status === "done" && turn.reply.trim() && (
+                      <button
+                        className="mgr-btn secondary"
+                        style={{ marginTop: 8, fontSize: 12 }}
+                        onClick={() => {
+                          setInstruction(turn.reply.trim());
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                      >
+                        ↓ Use in Execute
+                      </button>
+                    )}
                     {turn.status === "done" ? (() => {
                       const predictedAction = predictedActionForTurn(turn);
                       if (!predictedAction) return null;
@@ -1747,7 +1807,7 @@ function parseMcpInput(text: string) {
                 ))}
                 {!history.length ? (
                   <div style={{ color: "rgba(191,219,254,0.75)", fontSize: 13 }}>
-                    No actions yet. Start with <b>Plan</b>.
+                    No actions yet. Use <b>Clarify</b> to refine a messy query, then <b>Execute</b>.
                   </div>
                 ) : null}
               </div>
@@ -2323,10 +2383,12 @@ function parseMcpInput(text: string) {
                         description: "",
                         questions: [""],
                         backgroundInfo: "",
+                        sessionPrompt: DEFAULT_SESSION_PROMPT,
                         customInstructions: "",
                         followUpInstructions: "",
                         endNote: "",
-                        mcpAction: "",
+                        mcpActions: [],
+                        includeJobQuestions: false,
                       };
                       const next = [...intakeContexts, newCtx];
                       setIntakeContexts(next);
@@ -2346,9 +2408,14 @@ function parseMcpInput(text: string) {
                       const next = intakeContexts.filter((x) => x.key !== selectedIntakeKey);
                       setIntakeContexts(next);
                       saveIntakeContexts(next);
+                      fetch(`${API_BASE}/admin/ai/intake-contexts`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ contexts: next }),
+                      }).catch(() => {});
                       const first = next[0];
                       setSelectedIntakeKey(first?.key || "");
-                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [] });
+                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false });
                     }}
                   >
                     Delete
@@ -2362,6 +2429,11 @@ function parseMcpInput(text: string) {
                       );
                       setIntakeContexts(next);
                       saveIntakeContexts(next);
+                      fetch(`${API_BASE}/admin/ai/intake-contexts`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ contexts: next }),
+                      }).catch(() => {});
                       notify("ok", "Intake context saved — intake page will use this config.");
                     }}
                   >
@@ -2536,6 +2608,31 @@ function parseMcpInput(text: string) {
               </div>
 
               <div style={{ marginTop: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div>
+                    <label className="mgr-label" style={{ margin: 0 }}>Session Prompt</label>
+                    <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginTop: 2 }}>
+                      The core AI behavior rules. Leave blank to use the built-in defaults. Questions, background info, and end note are always appended automatically.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="mgr-btn secondary"
+                    style={{ flexShrink: 0, marginLeft: 12 }}
+                    onClick={() => setIntakeForm((s) => ({ ...s, sessionPrompt: DEFAULT_SESSION_PROMPT }))}
+                  >
+                    Load Default
+                  </button>
+                </div>
+                <textarea
+                  className="mgr-textarea"
+                  style={{ minHeight: 180, fontFamily: "monospace", fontSize: 12 }}
+                  value={intakeForm.sessionPrompt}
+                  onChange={(e) => setIntakeForm((s) => ({ ...s, sessionPrompt: e.target.value }))}
+                />
+              </div>
+
+              <div style={{ marginTop: 14 }}>
                 <label className="mgr-label">Background Info</label>
                 <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
                   Context that helps the AI understand the purpose of this session (company info, role context, what answers are used for, etc.).
@@ -2586,6 +2683,52 @@ function parseMcpInput(text: string) {
                   onChange={(e) => setIntakeForm((s) => ({ ...s, endNote: e.target.value }))}
                   placeholder="E.g. Thank you for completing your weekly update! Your responses have been recorded and your team lead will review them shortly. Have a great rest of your week!"
                 />
+              </div>
+
+              {/* Job questions toggle */}
+              <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={intakeForm.includeJobQuestions}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, includeJobQuestions: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
+                  />
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>Append role questions from linked job</span>
+                </label>
+                <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
+                  When enabled, add <code style={{ background: "rgba(255,255,255,0.08)", padding: "1px 5px", borderRadius: 4 }}>?jobId=&lt;id&gt;</code> to the interview URL.
+                  The job's role-specific questions will be appended after the questions below.
+                </div>
+
+                {intakeForm.includeJobQuestions && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 11, color: "rgba(191,219,254,0.65)", marginBottom: 6, fontWeight: 600 }}>Test with a job</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <select
+                        className="mgr-input"
+                        style={{ flex: 1, minWidth: 180, maxWidth: 320 }}
+                        defaultValue=""
+                        onChange={(e) => {
+                          const jid = e.target.value;
+                          if (jid) {
+                            const url = `/updates/ai-intake?ctx=${encodeURIComponent(intakeForm.key)}&jobId=${encodeURIComponent(jid)}`;
+                            window.open(url, "_blank");
+                          }
+                        }}
+                      >
+                        <option value="">— pick a job to test —</option>
+                        {intakeJobs.map((j) => (
+                          <option key={j.jobId} value={j.jobId}>{j.title}</option>
+                        ))}
+                      </select>
+                      {!intakeJobsLoaded && <span style={{ fontSize: 11, color: "rgba(191,219,254,0.4)" }}>Loading jobs…</span>}
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 11, color: "rgba(191,219,254,0.4)" }}>
+                      Or navigate manually: <code style={{ background: "rgba(255,255,255,0.06)", padding: "1px 5px", borderRadius: 4 }}>/updates/ai-intake?ctx={intakeForm.key}&amp;jobId=&lt;jobId&gt;</code>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div style={{ marginTop: 16 }}>

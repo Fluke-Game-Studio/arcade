@@ -653,7 +653,7 @@ export default function WeeklyUpdate() {
                 <button
                   type="button"
                   className="btn"
-                  onClick={() => navigate("/updates/ai-intake")}
+                  onClick={() => navigate("/updates/ai-intake?ctx=weekly_update")}
                   style={{ borderRadius: 999, fontWeight: 800 }}
                   title="Use AI WebRTC intake flow for guided submission"
                 >
