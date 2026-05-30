@@ -19,6 +19,7 @@ import JobsAdmin from "./pages/JobsAdmin";
 import ApiEndpoints from "./pages/ApiEndpoints";
 import ApiEndpointsReadOnly from "./pages/ApiEndpointsReadOnly";
 import WeeklyUpdate from "./pages/WeeklyUpdate";
+import RealtimeIntakePage from "./pages/RealtimeIntakePage";
 import RetroBoard from "./pages/RetroBoard";
 import Applicants from "./pages/Applicants";
 import CustomersAdmin from "./pages/CustomersAdmin";
@@ -162,6 +163,7 @@ const router = createBrowserRouter([
       },
 
       { path: "/updates/new", element: <WeeklyUpdate /> },
+      { path: "/updates/ai-intake", element: <RealtimeIntakePage /> },
 
       {
         path: "/updates/board",

@@ -150,29 +150,29 @@ const AVATAR_DEFAULTS: AvatarPolish = {
   browserSpeechPitch: 1.02,
   browserSpeechVolume: 1,
 
-  visemeStrengthBase: 0.92,
-  visemeStrengthWave: 0.28,
-  visemeStrengthFreq: 29,
+  visemeStrengthBase: 0.72,
+  visemeStrengthWave: 0.16,
+  visemeStrengthFreq: 15,
 
-  jawOpenBase: 0.33,
-  jawOpenWave: 0.26,
-  jawOpenFreq: 36,
+  jawOpenBase: 0.18,
+  jawOpenWave: 0.12,
+  jawOpenFreq: 19,
   jawOpenPhase: 0.7,
 
-  mouthOpenBase: 0.31,
-  mouthOpenWave: 0.27,
-  mouthOpenFreq: 39,
+  mouthOpenBase: 0.14,
+  mouthOpenWave: 0.1,
+  mouthOpenFreq: 21,
 
   visemeStartStrength: 0.9,
   visemeResumeStrength: 0.88,
 
-  fallbackTickMs: 36,
-  fallbackSpaceMs: 48,
-  fallbackCommaMs: 95,
-  fallbackSentenceMs: 160,
-  fallbackBoundaryKickoffMs: 60,
+  fallbackTickMs: 58,
+  fallbackSpaceMs: 72,
+  fallbackCommaMs: 160,
+  fallbackSentenceMs: 280,
+  fallbackBoundaryKickoffMs: 120,
 
-  smoothLerpRate: 44,
+  smoothLerpRate: 18,
 
   estimateMsPerWord: 355,
   estimateMinMs: 1800,
@@ -185,46 +185,68 @@ const AVATAR_MOODS = {
 } as const;
 
 const GOOGLE_LIPSYNC_PROFILE: LipProfile = {
-  visemeStrengthBase: 0.95,
-  visemeStrengthWave: 0.24,
-  visemeStrengthFreq: 30,
-  jawOpenBase: 0.3,
-  jawOpenWave: 0.23,
-  jawOpenFreq: 34,
+  visemeStrengthBase: 0.72,
+  visemeStrengthWave: 0.16,
+  visemeStrengthFreq: 15,
+  jawOpenBase: 0.18,
+  jawOpenWave: 0.12,
+  jawOpenFreq: 19,
   jawOpenPhase: 0.7,
-  mouthOpenBase: 0.28,
-  mouthOpenWave: 0.23,
-  mouthOpenFreq: 36,
+  mouthOpenBase: 0.14,
+  mouthOpenWave: 0.1,
+  mouthOpenFreq: 21,
   visemeStartStrength: 0.92,
   visemeResumeStrength: 0.9,
-  fallbackTickMs: 28,
-  fallbackSpaceMs: 40,
-  fallbackCommaMs: 78,
-  fallbackSentenceMs: 130,
-  fallbackBoundaryKickoffMs: 42,
-  smoothLerpRate: 42,
+  fallbackTickMs: 58,
+  fallbackSpaceMs: 72,
+  fallbackCommaMs: 160,
+  fallbackSentenceMs: 280,
+  fallbackBoundaryKickoffMs: 120,
+  smoothLerpRate: 18,
 };
 
 const KOKORO_NATIVE_LIPSYNC_PROFILE: LipProfile = {
-  visemeStrengthBase: 1.14,
+  visemeStrengthBase: 0.72,
   visemeStrengthWave: 0.16,
-  visemeStrengthFreq: 26,
-  jawOpenBase: 0.42,
-  jawOpenWave: 0.28,
-  jawOpenFreq: 33,
+  visemeStrengthFreq: 15,
+  jawOpenBase: 0.18,
+  jawOpenWave: 0.12,
+  jawOpenFreq: 19,
   jawOpenPhase: 0.7,
-  mouthOpenBase: 0.4,
-  mouthOpenWave: 0.28,
-  mouthOpenFreq: 35,
+  mouthOpenBase: 0.14,
+  mouthOpenWave: 0.1,
+  mouthOpenFreq: 21,
   visemeStartStrength: 1.0,
   visemeResumeStrength: 0.96,
-  fallbackTickMs: 30,
-  fallbackSpaceMs: 42,
-  fallbackCommaMs: 80,
-  fallbackSentenceMs: 130,
-  fallbackBoundaryKickoffMs: 45,
-  smoothLerpRate: 40,
+  fallbackTickMs: 58,
+  fallbackSpaceMs: 72,
+  fallbackCommaMs: 160,
+  fallbackSentenceMs: 280,
+  fallbackBoundaryKickoffMs: 120,
+  smoothLerpRate: 18,
 };
+
+const POLISH_PROFILE_STORAGE_KEY = "fluke_talking_head_polish_profile_v1";
+
+function loadStoredPolishProfile() {
+  if (typeof window === "undefined") return { ...AVATAR_DEFAULTS };
+  try {
+    const raw = window.localStorage.getItem(POLISH_PROFILE_STORAGE_KEY);
+    if (!raw) return { ...AVATAR_DEFAULTS };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ...AVATAR_DEFAULTS };
+    }
+    const next = { ...AVATAR_DEFAULTS };
+    (Object.keys(AVATAR_DEFAULTS) as Array<keyof AvatarPolish>).forEach((key) => {
+      const value = Number(parsed[key]);
+      if (Number.isFinite(value)) next[key] = value;
+    });
+    return next;
+  } catch {
+    return { ...AVATAR_DEFAULTS };
+  }
+}
 
 // ─── Witty loading lines ──────────────────────────────────────────────────────
 const CHAT_WITTY_MESSAGES = [
@@ -254,6 +276,8 @@ type ChatMessage = {
   ts: number;
   tags?: ChatMetaTag[];
   requestClientId?: string;
+  agentDebug?: any;
+  approval?: Record<string, any> | null;
   finalized?: boolean;
   stopped?: boolean;
 };
@@ -297,11 +321,11 @@ type RealtimeVisemeStep = {
 };
 
 const VISEME_GROUPS: Record<string, string[]> = {
-  sil: [" ", ".", ",", "!", "?", ";", ":"],
+  sil: [" ", ".", ",", "!", "?"],
   PP: ["b", "m", "p"],
   FF: ["f", "v"],
-  TH: ["th"],
-  DD: ["t", "d", "l"],
+  TH: ["t", "d", "th"],
+  DD: ["l", "n", "r"],
   kk: ["k", "g", "q", "c"],
   CH: ["j", "ch", "sh"],
   SS: ["s", "z", "x"],
@@ -664,7 +688,7 @@ export default function TalkingHeadAI() {
   const kokoroVoiceNameRef = useRef(DEFAULT_KOKORO_VOICE);
   const [focusMode, setFocusMode] = useState<FocusMode>("face");
   const [activeAnim, setActiveAnim] = useState<AnimName | null>(null);
-  const [polish, setPolish] = useState<AvatarPolish>({ ...AVATAR_DEFAULTS });
+  const [polish, setPolish] = useState<AvatarPolish>(() => loadStoredPolishProfile());
 
   const [polishOpen, setPolishOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState({
@@ -800,7 +824,7 @@ export default function TalkingHeadAI() {
   const [errorText, setErrorText] = useState("");
   const [ttsDebug, setTtsDebug] = useState<Record<string, any> | null>(null);
   const [statusText, setStatusText] = useState("Loading avatar...");
-  const [wsState, setWsState] = useState<"disconnected" | "connecting" | "connected">(
+  const [, setWsState] = useState<"disconnected" | "connecting" | "connected">(
     "disconnected"
   );
   const [avatarReady, setAvatarReady] = useState(false);
@@ -860,9 +884,11 @@ export default function TalkingHeadAI() {
   const realtimeHasTranscriptVisemesRef = useRef(false);
   const activeRequestSourceRef = useRef<"typed" | "webrtc">("typed");
   const activeRequestQuestionRef = useRef("");
+  const loadingRef = useRef(false);
   const activeRequestClientIdRef = useRef<string | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
   const registeredClientIdRef = useRef<string | null>(null);
+  const wsConnectPromiseRef = useRef<Promise<boolean> | null>(null);
   const speechDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speakSeqRef = useRef(0);
 
@@ -876,6 +902,18 @@ export default function TalkingHeadAI() {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }
   }, [messages, loading]);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(POLISH_PROFILE_STORAGE_KEY, JSON.stringify(polish));
+    } catch {
+      //
+    }
+  }, [polish]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -941,27 +979,19 @@ export default function TalkingHeadAI() {
       const start = speechAnimStartTsRef.current ?? now;
       const t = (now - start) / 1000;
       speechAnimLastTsRef.current = now;
+      const activeViseme = activeVisemeRef.current;
+      const isSilent = !activeViseme || activeViseme === "sil";
       const lip = activeLipProfileRef.current;
-      const isNativeServerVisemeMode = nativeServerVisemeModeRef.current;
-
       const alpha = 1 - Math.exp(-delta * lip.smoothLerpRate);
 
       const targetVisemeStrength =
-        activeVisemeRef.current && activeVisemeRef.current !== "sil"
-          ? isNativeServerVisemeMode
-            ? lip.visemeStrengthBase
-            : lip.visemeStrengthBase + lip.visemeStrengthWave * Math.sin(t * lip.visemeStrengthFreq)
-          : 0;
-
-      const targetJawOpen =
-        lip.jawOpenBase +
-        (isNativeServerVisemeMode ? lip.jawOpenWave * 0.35 : lip.jawOpenWave) *
-          Math.sin(t * lip.jawOpenFreq + lip.jawOpenPhase);
-
-      const targetMouthOpen =
-        lip.mouthOpenBase +
-        (isNativeServerVisemeMode ? lip.mouthOpenWave * 0.35 : lip.mouthOpenWave) *
-          Math.sin(t * lip.mouthOpenFreq);
+        isSilent ? 0 : lip.visemeStrengthBase + lip.visemeStrengthWave * Math.sin(t * lip.visemeStrengthFreq);
+      const targetJawOpen = isSilent
+        ? 0
+        : lip.jawOpenBase + lip.jawOpenWave * Math.sin(t * lip.jawOpenFreq + lip.jawOpenPhase);
+      const targetMouthOpen = isSilent
+        ? 0
+        : lip.mouthOpenBase + lip.mouthOpenWave * Math.sin(t * lip.mouthOpenFreq);
 
       currentVisemeStrengthRef.current +=
         (targetVisemeStrength - currentVisemeStrengthRef.current) * alpha;
@@ -970,9 +1000,9 @@ export default function TalkingHeadAI() {
       currentMouthOpenRef.current +=
         (targetMouthOpen - currentMouthOpenRef.current) * alpha;
 
-      if (activeVisemeRef.current && activeVisemeRef.current !== "sil") {
+      if (!isSilent && activeViseme) {
         head.setFixedValue?.(
-          `viseme_${activeVisemeRef.current}`,
+          `viseme_${activeViseme}`,
           Math.max(0, currentVisemeStrengthRef.current)
         );
       }
@@ -1004,6 +1034,11 @@ export default function TalkingHeadAI() {
 
     if (viseme !== "sil") {
       head.setFixedValue?.(`viseme_${viseme}`, strength);
+    } else {
+      currentJawOpenRef.current = 0;
+      currentMouthOpenRef.current = 0;
+      head.setFixedValue?.("jawOpen", 0);
+      head.setFixedValue?.("mouthOpen", 0);
     }
   }
 
@@ -1024,8 +1059,8 @@ export default function TalkingHeadAI() {
       const ch = normalized[charIndex] || " ";
       const viseme = isPauseChar(ch) ? "sil" : visemeForTextAt(normalized, charIndex);
       applyViseme(viseme);
-      const lip = activeLipProfileRef.current;
 
+      const lip = activeLipProfileRef.current;
       let delay = lip.fallbackTickMs;
       if (ch === " ") delay = lip.fallbackSpaceMs;
       if (/[,;:]/.test(ch)) delay = lip.fallbackCommaMs;
@@ -1286,23 +1321,26 @@ export default function TalkingHeadAI() {
     if (queue.length && now >= realtimeNextVisemeAtRef.current) {
       const step = queue.shift();
       if (step) {
-        const strength = Math.min(1.15, Math.max(0.38, lip.visemeStrengthBase * (0.62 + level * 0.7)));
+        const strength = Math.min(
+          1.12,
+          Math.max(0.3, lip.visemeStrengthBase * (0.55 + level * 0.55))
+        );
         applyViseme(step.viseme, step.viseme === "sil" ? 0 : strength, true);
-        const energyScale = level > 0.22 ? 0.68 : level > 0.11 ? 0.86 : 1.08;
-        realtimeNextVisemeAtRef.current = now + Math.max(24, step.delayMs * energyScale);
+        const energyScale = level > 0.22 ? 0.38 : level > 0.11 ? 0.52 : 0.66;
+        realtimeNextVisemeAtRef.current = now + Math.max(12, step.delayMs * energyScale);
       }
     } else if (!queue.length && now >= realtimeNextVisemeAtRef.current) {
-      const fallbackViseme = level > 0.2 ? "aa" : level > 0.1 ? "O" : "sil";
+      const fallbackViseme = level > 0.24 ? "aa" : level > 0.14 ? "O" : "sil";
       const strength = realtimeHasTranscriptVisemesRef.current
-        ? Math.min(0.62, level * 1.35)
-        : Math.min(0.74, level * 1.8);
+        ? Math.min(0.48, level * 1.05)
+        : Math.min(0.62, level * 1.45);
       applyViseme(fallbackViseme, fallbackViseme === "sil" ? 0 : strength, true);
-      realtimeNextVisemeAtRef.current = now + 42;
+      realtimeNextVisemeAtRef.current = now + 18;
     }
 
-    const shapeBoost = activeVisemeRef.current && activeVisemeRef.current !== "sil" ? 1 : 0.65;
-    head.setFixedValue("jawOpen", Math.min(0.58, level * 0.7 * shapeBoost));
-    head.setFixedValue("mouthOpen", Math.min(0.44, level * 0.56 * shapeBoost));
+    const isOpenViseme = !!activeVisemeRef.current;
+    head.setFixedValue("jawOpen", isOpenViseme ? Math.min(0.32, 0.18 + level * 0.24) : 0);
+    head.setFixedValue("mouthOpen", isOpenViseme ? Math.min(0.24, 0.14 + level * 0.18) : 0);
   }
 
   function stopRealtimeSession() {
@@ -1593,7 +1631,9 @@ export default function TalkingHeadAI() {
       clearSpeechTimer();
       clearFallbackVisemeTimer();
       stopSpeechAnimationLoop();
-      wsRef.current?.close();
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
 
       try {
         headRef.current?.stopAnimation?.();
@@ -1735,13 +1775,6 @@ export default function TalkingHeadAI() {
     setActiveAnim((prev) => (prev === name ? null : name));
   }
 
-  function registerSocketClientId(clientId: string): boolean {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
-    wsRef.current.send(JSON.stringify({ action: "register", clientId }));
-    registeredClientIdRef.current = clientId;
-    return true;
-  }
-
   function updateLatestForRequest(
     requestClientId: string,
     updater: (msg: ChatMessage) => ChatMessage
@@ -1758,36 +1791,28 @@ export default function TalkingHeadAI() {
     });
   }
 
-  function connectWebSocket() {
-    if (!token) return;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-    if (wsRef.current?.readyState === WebSocket.CONNECTING) return;
+  function registerSocketClientId(clientId: string): boolean {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
+    wsRef.current.send(JSON.stringify({ action: "register", clientId }));
+    registeredClientIdRef.current = clientId;
+    return true;
+  }
 
-    setWsState("connecting");
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-    registeredClientIdRef.current = null;
-
-    ws.onopen = () => {
-      setWsState("connected");
-      registerSocketClientId(activeRequestClientIdRef.current || `${sessionIdRef.current}__idle`);
-    };
-
+  function attachWebSocketHandlers(ws: WebSocket) {
     ws.onmessage = (event) => {
       let data: any = {};
       try {
-        data = JSON.parse(event.data);
+        data = JSON.parse(String(event.data || "{}"));
       } catch {
         return;
       }
 
       if (data?.type === "registered" || data?.type === "ack") return;
-      const reqId = activeRequestClientIdRef.current;
+      const reqId = String(data?.clientId || activeRequestClientIdRef.current || "");
       if (!reqId) return;
-      if (data?.clientId && String(data.clientId) !== reqId) return;
+      if (activeRequestClientIdRef.current && reqId !== activeRequestClientIdRef.current) return;
 
       if (data?.type === "ai-status") {
-        const activeProvider = providerRef.current;
         updateLatestForRequest(reqId, (m) =>
           m.finalized || m.stopped
             ? m
@@ -1796,8 +1821,8 @@ export default function TalkingHeadAI() {
                 tags: [
                   { label: "Status", value: String(data?.status || "running") },
                   { label: "Mode", value: agentModeRef.current ? "Agent" : "Chat" },
-                  { label: "Provider", value: activeProvider },
-                  { label: "Model", value: PROVIDER_MODEL[activeProvider] },
+                  { label: "Provider", value: providerRef.current },
+                  { label: "Model", value: PROVIDER_MODEL[providerRef.current] },
                   { label: "Request", value: reqId },
                 ],
               }
@@ -1809,131 +1834,55 @@ export default function TalkingHeadAI() {
         const reply = polishAssistantReply(String(data?.reply || "No response received."));
         const requestSource = activeRequestSourceRef.current;
         const requestQuestion = activeRequestQuestionRef.current;
-        const reportedProvider = String(data?.provider || "").toLowerCase();
-        if (reportedProvider === "ollama" || reportedProvider === "openai") {
-          resolvedAiProviderRef.current = reportedProvider as ProviderType;
-          setProvider(reportedProvider as ProviderType);
-        }
-        const activeProvider = providerRef.current;
-        const resolvedTtsMode = resolveRequestedTtsMode();
-        if (requestSource === "webrtc") {
-          updateLatestForRequest(reqId, (m) =>
-            m.stopped
-              ? m
-              : {
-                  ...m,
-                  content: reply,
-                  finalized: true,
-                  tags: [
-                    { label: "Status", value: "done" },
-                    { label: "Mode", value: agentModeRef.current ? "Agent" : "Chat" },
-                    { label: "Input", value: "Voice" },
-                    { label: "Provider", value: String(data?.provider || activeProvider) },
-                    { label: "Model", value: PROVIDER_MODEL[activeProvider] },
-                    { label: "Request", value: reqId },
-                  ],
-                }
-          );
-          setLoading(false);
-          activeRequestClientIdRef.current = null;
-          activeRequestSourceRef.current = "typed";
-          activeRequestQuestionRef.current = "";
-          void reconnectRealtimeForFollowup(requestQuestion, reply);
-          return;
-        }
-        const delayReplyForVoice = resolvedTtsMode !== "manual";
-
-        if (delayReplyForVoice) {
-          updateLatestForRequest(reqId, (m) =>
-            m.stopped
-              ? m
-              : {
-                  ...m,
-                  content: "Synthesizing voice...",
-                  finalized: false,
-                    tags: [
-                      { label: "Status", value: "tts" },
-                      { label: "Mode", value: agentModeRef.current ? "Agent" : "Chat" },
-                      { label: "Provider", value: String(data?.provider || activeProvider) },
-                      { label: "Model", value: PROVIDER_MODEL[activeProvider] },
-                      { label: "Request", value: reqId },
-                    ],
-                }
-          );
-          setStatusText("Synthesizing voice...");
-          void speakWithTalkingHead(reply, {
-            onReadyToRevealText: () => {
-              if (activeRequestClientIdRef.current !== reqId) return;
-              updateLatestForRequest(reqId, (m) =>
-                m.stopped
-                  ? m
-                  : {
-                      ...m,
-                      content: reply,
-                      finalized: true,
-                      tags: [
-                        { label: "Status", value: "done" },
-                        { label: "Mode", value: agentModeRef.current ? "Agent" : "Chat" },
-                        { label: "Provider", value: String(data?.provider || activeProvider) },
-                        { label: "Model", value: PROVIDER_MODEL[activeProvider] },
-                        { label: "Request", value: reqId },
-                      ],
-                    }
-              );
-              setLoading(false);
-              activeRequestClientIdRef.current = null;
-            },
-          });
-        } else {
-          updateLatestForRequest(reqId, (m) =>
-            m.stopped
-              ? m
-              : {
-                  ...m,
-                  content: reply,
-                  finalized: true,
-                  tags: [
-                    { label: "Status", value: "done" },
-                    { label: "Mode", value: agentModeRef.current ? "Agent" : "Chat" },
-                    { label: "Provider", value: String(data?.provider || activeProvider) },
-                    { label: "Model", value: PROVIDER_MODEL[activeProvider] },
-                    { label: "Request", value: reqId },
-                  ],
-                }
-          );
-          setLoading(false);
-          activeRequestClientIdRef.current = null;
-          void speakWithTalkingHead(reply);
-        }
-        return;
-      }
-
-      if (data?.type === "ai-error") {
-        const errMsg = String(data?.error || "Unknown websocket error");
-        const requestSource = activeRequestSourceRef.current;
-        const requestQuestion = activeRequestQuestionRef.current;
         updateLatestForRequest(reqId, (m) =>
           m.stopped
             ? m
             : {
                 ...m,
-                content: `Error: ${errMsg}`,
+                content: reply,
                 finalized: true,
+                agentDebug: data,
+                approval:
+                  data?.meta?.approval && typeof data.meta.approval === "object"
+                    ? data.meta.approval
+                    : null,
                 tags: [
-                  { label: "Status", value: "Error" },
+                  { label: "Status", value: "done" },
+                  { label: "Mode", value: agentModeRef.current ? "Agent" : "Chat" },
+                  ...(requestSource === "webrtc" ? [{ label: "Input", value: "Voice" }] : []),
+                  { label: "Provider", value: String(data?.provider || providerRef.current) },
+                  { label: "Model", value: String(data?.model || PROVIDER_MODEL[providerRef.current]) },
                   { label: "Request", value: reqId },
                 ],
               }
         );
-        setErrorText(errMsg);
-        setStatusText("Error");
         setLoading(false);
         activeRequestClientIdRef.current = null;
         activeRequestSourceRef.current = "typed";
         activeRequestQuestionRef.current = "";
         if (requestSource === "webrtc") {
-          void reconnectRealtimeForFollowup(requestQuestion, `Error: ${errMsg}`);
+          void reconnectRealtimeForFollowup(requestQuestion, reply);
         }
+        return;
+      }
+
+      if (data?.type === "ai-error") {
+        const msg = String(data?.error || "Unknown websocket error");
+        updateLatestForRequest(reqId, (m) => ({
+          ...m,
+          content: `Error: ${msg}`,
+          finalized: true,
+          tags: [
+            { label: "Status", value: "Error" },
+            { label: "Request", value: reqId },
+          ],
+        }));
+        setErrorText(msg);
+        setStatusText("Error");
+        setLoading(false);
+        activeRequestClientIdRef.current = null;
+        activeRequestSourceRef.current = "typed";
+        activeRequestQuestionRef.current = "";
       }
     };
 
@@ -1941,14 +1890,68 @@ export default function TalkingHeadAI() {
       setWsState("disconnected");
       wsRef.current = null;
       registeredClientIdRef.current = null;
-
-      if (token) {
-        if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = window.setTimeout(connectWebSocket, 1200);
-      }
     };
 
-    ws.onerror = () => setWsState("disconnected");
+    ws.onerror = () => {
+      setWsState("disconnected");
+    };
+  }
+
+  async function ensureWebSocketConnected(clientId: string): Promise<boolean> {
+    if (!token) return false;
+
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      return registeredClientIdRef.current === clientId || registerSocketClientId(clientId);
+    }
+
+    if (wsConnectPromiseRef.current) {
+      await wsConnectPromiseRef.current;
+      return wsRef.current?.readyState === WebSocket.OPEN && registerSocketClientId(clientId);
+    }
+
+    setWsState("connecting");
+    wsConnectPromiseRef.current = new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+      registeredClientIdRef.current = null;
+      attachWebSocketHandlers(ws);
+
+      const timeout = window.setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          try {
+            ws.close();
+          } catch {
+            //
+          }
+        }
+        setWsState("disconnected");
+        resolve(false);
+      }, 8000);
+
+      ws.onopen = () => {
+        window.clearTimeout(timeout);
+        setWsState("connected");
+        resolve(true);
+      };
+
+      const originalClose = ws.onclose;
+      ws.onclose = (event) => {
+        window.clearTimeout(timeout);
+        originalClose?.call(ws, event);
+        resolve(false);
+      };
+
+      const originalError = ws.onerror;
+      ws.onerror = (event) => {
+        originalError?.call(ws, event);
+        if (ws.readyState !== WebSocket.OPEN) resolve(false);
+      };
+    }).finally(() => {
+      wsConnectPromiseRef.current = null;
+    });
+
+    const connected = await wsConnectPromiseRef.current;
+    return connected && registerSocketClientId(clientId);
   }
 
   function resolveRequestedTtsMode() {
@@ -1996,20 +1999,6 @@ export default function TalkingHeadAI() {
     parsed.requestedMode = mode;
     return parsed;
   }
-
-  useEffect(() => {
-    if (!token) return;
-
-    connectWebSocket();
-
-    return () => {
-      if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
-      wsRef.current?.close();
-      wsRef.current = null;
-      registeredClientIdRef.current = null;
-      setWsState("disconnected");
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function speakWithTalkingHead(
     text: string,
@@ -2182,14 +2171,15 @@ export default function TalkingHeadAI() {
         utterance.lang = DEFAULT_TTS_LANG;
 
         const voices = window.speechSynthesis.getVoices?.() || [];
-        const exactVoice = voices.find((v) => v.name === DEFAULT_TTS_VOICE) || null;
-        const cachedVoice = browserVoiceNameRef.current
-          ? voices.find((v) => v.name === browserVoiceNameRef.current) || null
-          : null;
+        const preferredVoice =
+          voices.find((v) =>
+            /female|zira|aria|samantha|ava|google us english/i.test(
+              `${v.name || ""} ${v.voiceURI || ""} ${v.lang || ""}`
+            )
+          ) || null;
         const englishVoice =
           voices.find((v) => v.lang?.toLowerCase().startsWith("en")) || null;
-
-        const chosenVoice = exactVoice || cachedVoice || englishVoice || null;
+        const chosenVoice = preferredVoice || englishVoice || voices[0] || null;
 
         if (chosenVoice) {
           utterance.voice = chosenVoice;
@@ -2252,8 +2242,7 @@ export default function TalkingHeadAI() {
           }
 
           const idx = Math.max(0, Math.min(event.charIndex, cleanText.length - 1));
-          const ch = cleanText[idx] || " ";
-          const viseme = isPauseChar(ch) ? "sil" : visemeForTextAt(cleanText, idx);
+          const viseme = visemeForTextAt(cleanText, idx);
           applyViseme(viseme);
         };
 
@@ -2354,7 +2343,7 @@ export default function TalkingHeadAI() {
 
   const hasDraft = !!input.trim();
   const smartActionBusy = loading || realtimeState === "connecting" || realtimeState === "connected";
-  const smartActionDisabled = !token || (!smartActionBusy && hasDraft && wsState !== "connected");
+  const smartActionDisabled = !token;
   const smartActionIcon = smartActionBusy ? "stop" : hasDraft ? "north_east" : "mic_none";
   const smartActionTitle = smartActionBusy
     ? "Stop"
@@ -2472,14 +2461,18 @@ export default function TalkingHeadAI() {
     }
 
     const requestClientId = makeRequestClientId(sessionIdRef.current);
-    if (wsState === "connected" && !registerSocketClientId(requestClientId)) {
-      setErrorText("WebSocket registration failed.");
-      return;
-    }
-
     activeRequestClientIdRef.current = requestClientId;
     activeRequestSourceRef.current = source;
     activeRequestQuestionRef.current = trimmed;
+    const wsReady = await ensureWebSocketConnected(requestClientId);
+    if (!wsReady) {
+      setErrorText("WebSocket is not connected yet.");
+      setStatusText("WebSocket disconnected");
+      activeRequestClientIdRef.current = null;
+      activeRequestSourceRef.current = "typed";
+      activeRequestQuestionRef.current = "";
+      return;
+    }
     setErrorText("");
     setLoading(true);
     setStatusText("Thinking…");
@@ -2753,21 +2746,49 @@ export default function TalkingHeadAI() {
   ) {
     const value = polish[key];
     if (typeof value !== "number") return null;
+    const sliderValue = Math.min(max, Math.max(min, value));
+    const updateValue = (next: number) => {
+      if (!Number.isFinite(next)) return;
+      setPolish((prev) => ({
+        ...prev,
+        [key]: next,
+      }));
+    };
 
     return (
       <div key={String(key)} style={{ display: "grid", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <span style={{ fontSize: 12, color: "rgba(226,232,240,0.92)" }}>{label}</span>
-          <span
+          <input
+            type="number"
+            step="any"
+            value={formatSliderValue(value, digits)}
+            onChange={(e) => updateValue(Number(e.target.value))}
             style={{
-              minWidth: 54,
+              width: 82,
               textAlign: "right",
               fontSize: 11,
               fontWeight: 800,
+              color: "#f8fafc",
+              background: "rgba(15,23,42,0.72)",
+              border: "1px solid rgba(148,163,184,0.22)",
+              borderRadius: 8,
+              padding: "5px 7px",
+              outline: "none",
+              fontFamily: "inherit",
+              appearance: "textfield",
+            }}
+            onFocus={(e) => e.currentTarget.select()}
+            title="Type any numeric value, including values beyond the slider range."
+          />
+          <span
+            style={{
+              minWidth: 82,
+              fontSize: 10,
               color: "#d8b4fe",
             }}
           >
-            {formatSliderValue(value, digits)}
+            {min}-{max}
           </span>
         </div>
 
@@ -2776,13 +2797,8 @@ export default function TalkingHeadAI() {
           min={min}
           max={max}
           step={step}
-          value={value}
-          onChange={(e) =>
-            setPolish((prev) => ({
-              ...prev,
-              [key]: Number(e.target.value),
-            }))
-          }
+          value={sliderValue}
+          onChange={(e) => updateValue(Number(e.target.value))}
           style={{
             width: "100%",
             accentColor: "#8b5cf6",
@@ -3134,7 +3150,7 @@ export default function TalkingHeadAI() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onInputKeyDown}
-                placeholder={wsState !== "connected" ? "Connecting..." : "Message Fluke AI..."}
+                placeholder="Message Fluke AI..."
                 rows={1}
                 style={{
                   width: "100%",
@@ -3574,7 +3590,7 @@ export default function TalkingHeadAI() {
                   "Overall mouth open shape and rhythm",
                   <>
                     {renderSlider("Mouth base", "mouthOpenBase", 0, 0.75, 0.01)}
-                    {renderSlider("Mouth wave", "mouthOpenWave", 0, 0.55, 0.01)}
+                    {renderSlider("Mouth wave", "mouthOpenWave", 0, 0.35, 0.01)}
                     {renderSlider("Mouth frequency", "mouthOpenFreq", 1, 35, 0.1)}
                   </>
                 )}
@@ -3585,7 +3601,7 @@ export default function TalkingHeadAI() {
                   "Jaw opening amount and movement phase",
                   <>
                     {renderSlider("Jaw base", "jawOpenBase", 0, 0.75, 0.01)}
-                    {renderSlider("Jaw wave", "jawOpenWave", 0, 0.55, 0.01)}
+                    {renderSlider("Jaw wave", "jawOpenWave", 0, 0.35, 0.01)}
                     {renderSlider("Jaw frequency", "jawOpenFreq", 1, 35, 0.1)}
                     {renderSlider("Jaw phase", "jawOpenPhase", 0, 3.14, 0.01)}
                   </>
@@ -3597,11 +3613,11 @@ export default function TalkingHeadAI() {
                   "Viseme strength, speech entry and smoothing",
                   <>
                     {renderSlider("Viseme base", "visemeStrengthBase", 0.2, 1.5, 0.01)}
-                    {renderSlider("Viseme wave", "visemeStrengthWave", 0, 0.8, 0.01)}
-                    {renderSlider("Viseme frequency", "visemeStrengthFreq", 1, 35, 0.1)}
+                    {renderSlider("Viseme wave", "visemeStrengthWave", 0, 0.4, 0.01)}
+                    {renderSlider("Viseme frequency", "visemeStrengthFreq", 1, 30, 0.1)}
                     {renderSlider("Start strength", "visemeStartStrength", 0.2, 1.5, 0.01)}
                     {renderSlider("Resume strength", "visemeResumeStrength", 0.2, 1.5, 0.01)}
-                    {renderSlider("Smooth lerp", "smoothLerpRate", 4, 80, 0.1)}
+                    {renderSlider("Smooth lerp", "smoothLerpRate", 4, 60, 0.1)}
                   </>
                 )}
 
@@ -3610,10 +3626,10 @@ export default function TalkingHeadAI() {
                   "Timing",
                   "Fallback lipsync pacing and sentence pauses",
                   <>
-                    {renderSlider("Fallback char", "fallbackTickMs", 20, 120, 1, 0)}
-                    {renderSlider("Fallback space", "fallbackSpaceMs", 20, 140, 1, 0)}
-                    {renderSlider("Fallback comma", "fallbackCommaMs", 40, 240, 1, 0)}
-                    {renderSlider("Fallback sentence", "fallbackSentenceMs", 80, 420, 1, 0)}
+                    {renderSlider("Fallback char", "fallbackTickMs", 20, 160, 1, 0)}
+                    {renderSlider("Fallback space", "fallbackSpaceMs", 20, 180, 1, 0)}
+                    {renderSlider("Fallback comma", "fallbackCommaMs", 40, 320, 1, 0)}
+                    {renderSlider("Fallback sentence", "fallbackSentenceMs", 80, 520, 1, 0)}
                     {renderSlider("Boundary kickoff", "fallbackBoundaryKickoffMs", 0, 260, 1, 0)}
                   </>
                 )}
@@ -3697,7 +3713,15 @@ export default function TalkingHeadAI() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                   <button
                     type="button"
-                    onClick={() => setPolish({ ...AVATAR_DEFAULTS })}
+                    onClick={() => {
+                      const defaults = { ...AVATAR_DEFAULTS };
+                      setPolish(defaults);
+                      try {
+                        window.localStorage.setItem(POLISH_PROFILE_STORAGE_KEY, JSON.stringify(defaults));
+                      } catch {
+                        //
+                      }
+                    }}
                     style={{
                       padding: "9px 12px",
                       borderRadius: 12,

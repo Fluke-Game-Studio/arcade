@@ -3029,6 +3029,13 @@ export default function FloatingAIChat() {
                                         </div>
                                         <div>
                                           Workflow: <b>{safeStr(msg.agentDebug?.meta?.workflow?.engine || "none")}</b>
+                                          {msg.agentDebug?.meta?.workflow?.orchestration === true ? (
+                                            <>
+                                              {" "}
+                                              | orchestration: <b>on</b> | steps:{" "}
+                                              <b>{msg.agentDebug?.meta?.workflow?.stepResults?.length || 0}</b>
+                                            </>
+                                          ) : null}
                                         </div>
                                         {safeStr(msg.agentDebug?.meta?.guardrails?.deniedReason) && (
                                           <div>
@@ -3054,6 +3061,26 @@ export default function FloatingAIChat() {
                                             </pre>
                                           </div>
                                         )}
+                                        {Array.isArray(msg.agentDebug?.meta?.workflow?.stepResults) &&
+                                          msg.agentDebug.meta.workflow.stepResults.length > 0 && (
+                                            <div>
+                                              <div style={{ fontWeight: 900, marginBottom: 5 }}>Orchestration Steps</div>
+                                              <pre
+                                                style={{
+                                                  margin: 0,
+                                                  maxHeight: 220,
+                                                  overflow: "auto",
+                                                  whiteSpace: "pre-wrap",
+                                                  color: "#e0f2fe",
+                                                  background: "rgba(15,23,42,0.55)",
+                                                  borderRadius: 8,
+                                                  padding: 9,
+                                                }}
+                                              >
+                                                {prettyJson(msg.agentDebug.meta.workflow.stepResults)}
+                                              </pre>
+                                            </div>
+                                          )}
                                         {Array.isArray(msg.agentDebug?.meta?.workflow?.graphTrace) &&
                                           msg.agentDebug.meta.workflow.graphTrace.length > 0 && (
                                             <div>
