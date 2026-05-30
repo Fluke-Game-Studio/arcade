@@ -118,6 +118,7 @@ const STAGE_BADGE: Record<Stage, BadgeStyle> = {
   NDA: { bg: "#FEF3C7", border: "#FCD34D", fg: "#92400E" },
   Offer: { bg: "#CFFAFE", border: "#67E8F9", fg: "#155E75" },
   Welcome: { bg: "#E9F9EF", border: "#9FE0B5", fg: "#14532D" },
+  "AI Intro": { bg: "#EDE9FE", border: "#C4B5FD", fg: "#4C1D95" },
 };
 
 function StatusPill({ status }: { status: string }) {
@@ -508,7 +509,7 @@ export default function ApplicantDetailsModal({
   onClose: () => void;
   onOpenComposer: (lite: ApplicantRowLite, prefill?: { address?: string; city?: string }) => void;
 }) {
-  const { api, user } = useAuth() as any;
+  const { user } = useAuth() as any;
   const token = String(user?.token || "");
   const modalRef = useRef<HTMLDivElement | null>(null);
   const instRef = useRef<any>(null);

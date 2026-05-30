@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useIntegrations } from "./useIntegrations";
 
 declare const M: any;
@@ -77,16 +77,14 @@ export default function AccountSettingsPanel({
     }
   }
 
+  // Load agents + requests whenever the AI Access section is opened
   useEffect(() => {
-    void loadAvailableAgents();
-    void loadMyRequests();
+    if (section === "ai_access") {
+      void loadAvailableAgents();
+      void loadMyRequests();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const selectedAgentMeta = useMemo(
-    () => agents.find((a: any) => String(a?.agentId || "") === selectedAgent) || null,
-    [agents, selectedAgent]
-  );
+  }, [section]);
 
   async function submitRequest() {
     if (!safeStr(selectedAgent)) {
@@ -271,26 +269,55 @@ export default function AccountSettingsPanel({
 
                     <div style={{ marginTop: 12 }}>
                       <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Available Agents</label>
-                      <select
-                        value={selectedAgent}
-                        onChange={(e) => setSelectedAgent(e.target.value)}
-                        style={{ width: "100%", height: 38, marginTop: 6, borderRadius: 8, border: "1px solid #cbd5e1" }}
-                      >
-                        {!agents.length ? <option value="">{agentsLoading ? "Loading..." : "No agents found"}</option> : null}
-                        {agents.map((a: any) => (
-                          <option key={String(a.agentId)} value={String(a.agentId)}>
-                            {String(a.name || a.agentId)} ({String(a.agentId)})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {selectedAgentMeta ? (
-                      <div style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, background: "#f8fafc" }}>
-                        <div style={{ fontWeight: 800, color: "#0f172a" }}>{String(selectedAgentMeta.name || selectedAgentMeta.agentId)}</div>
-                        <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>{safeStr(selectedAgentMeta.description) || "No description."}</div>
+                      <div style={{ marginTop: 8, display: "grid", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+                        {agentsLoading ? (
+                          <div style={{ fontSize: 13, color: "#607d8b", padding: "8px 0" }}>Loading agents…</div>
+                        ) : agents.length ? agents.map((a: any) => {
+                          const isSelected = String(a.agentId) === selectedAgent;
+                          return (
+                            <div
+                              key={String(a.agentId)}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setSelectedAgent(String(a.agentId))}
+                              onKeyDown={(e) => e.key === "Enter" && setSelectedAgent(String(a.agentId))}
+                              style={{
+                                display: "flex", alignItems: "flex-start", gap: 12,
+                                border: `1.5px solid ${isSelected ? "#3b82f6" : "#e2e8f0"}`,
+                                borderRadius: 10, padding: "12px 14px",
+                                background: isSelected ? "#eff6ff" : "#f8fafc",
+                                cursor: "pointer", transition: "border-color 0.15s, background 0.15s",
+                                outline: "none",
+                              }}
+                            >
+                              <div style={{
+                                width: 18, height: 18, borderRadius: "50%", flexShrink: 0, marginTop: 2,
+                                border: `2px solid ${isSelected ? "#3b82f6" : "#cbd5e1"}`,
+                                background: isSelected ? "#3b82f6" : "transparent",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                transition: "all 0.15s",
+                              }}>
+                                {isSelected && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff" }} />}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 14 }}>
+                                  {String(a.name || a.agentId)}
+                                </div>
+                                {safeStr(a.description) && (
+                                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 3, lineHeight: 1.45 }}>
+                                    {safeStr(a.description)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }) : (
+                          <div style={{ fontSize: 13, color: "#607d8b", padding: "8px 0" }}>
+                            No agents available. Click Refresh to reload.
+                          </div>
+                        )}
                       </div>
-                    ) : null}
+                    </div>
 
                     <div style={{ marginTop: 12 }}>
                       <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Reason (optional)</label>

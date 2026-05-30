@@ -812,7 +812,7 @@ export default function ApplicantComposerModal({
           <>
             {/* AI Intro — job questions status */}
             {richType === "AI_INTRO" && (
-              <div style={{ marginBottom: 10, padding: "10px 14px", borderRadius: 10, background: jobInfoLoading ? "rgba(255,255,255,0.04)" : jobInfo && jobInfo.questionCount > 0 ? "rgba(20,184,166,0.08)" : "rgba(251,146,60,0.08)", border: `1px solid ${jobInfoLoading ? "rgba(255,255,255,0.08)" : jobInfo && jobInfo.questionCount > 0 ? "rgba(20,184,166,0.25)" : "rgba(251,146,60,0.3)"}` }}>
+              <div style={{ marginBottom: 10, padding: "10px 14px", borderRadius: 10, background: jobInfoLoading ? "rgba(255,255,255,0.04)" : jobInfo && jobInfo.roleCount > 0 ? "rgba(20,184,166,0.08)" : "rgba(251,146,60,0.08)", border: `1px solid ${jobInfoLoading ? "rgba(255,255,255,0.08)" : jobInfo && jobInfo.roleCount > 0 ? "rgba(20,184,166,0.25)" : "rgba(251,146,60,0.3)"}` }}>
                 {jobInfoLoading ? (
                   <span style={{ fontSize: 12, color: "rgba(0,0,0,0.5)" }}>Looking up job questions…</span>
                 ) : jobInfo ? (
