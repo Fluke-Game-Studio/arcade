@@ -8,6 +8,8 @@ import type {
   SendApplicantDocEmailBody,
   SendApplicantWelcomeEmailBody,
 } from "../api";
+import { API_BASE, PUBLIC_WEBSITE_BASE } from "../api/config";
+import { useAuth } from "../auth/AuthContext";
 
 declare const M: any;
 
@@ -16,6 +18,7 @@ declare const M: any;
 // ------------------------------------------------------------
 export type Stage =
   | "Introduction"
+  | "AI Intro"
   | "Technical Interview"
   | "Confirmation"
   | "Reject"
@@ -25,6 +28,7 @@ export type Stage =
 
 const STAGES: Stage[] = [
   "Introduction",
+  "AI Intro",
   "Technical Interview",
   "Confirmation",
   "Reject",
@@ -34,11 +38,12 @@ const STAGES: Stage[] = [
 ];
 
 // ✅ Widen local rich type so TS compiles even if ../api isn't updated yet
-type RichType = ApplicantRichEmailType | "CONFIRMATION";
+type RichType = ApplicantRichEmailType | "CONFIRMATION" | "AI_INTRO";
 
 // ✅ Widen body shape for confirmation fields
 type RichBody = Omit<SendApplicantRichEmailBody, "type"> & {
   type: RichType;
+  intakeLink?: string;
   meetingTitle?: string;
   meetingWhen?: string;
   meetingLink?: string;
@@ -48,6 +53,7 @@ type RichBody = Omit<SendApplicantRichEmailBody, "type"> & {
 // Mapping to backend action types
 const STAGE_TO_RICH_TYPE: Record<Stage, RichType | null> = {
   Introduction: "INTRO",
+  "AI Intro": "AI_INTRO",
   "Technical Interview": "TECH",
   Confirmation: "CONFIRMATION",
   Reject: "REJECT",
@@ -58,6 +64,7 @@ const STAGE_TO_RICH_TYPE: Record<Stage, RichType | null> = {
 
 const STAGE_TO_DOC_TYPE: Record<Stage, ApplicantDocEmailType | null> = {
   Introduction: null,
+  "AI Intro": null,
   "Technical Interview": null,
   Confirmation: null,
   Reject: null,
@@ -68,6 +75,7 @@ const STAGE_TO_DOC_TYPE: Record<Stage, ApplicantDocEmailType | null> = {
 
 const DEFAULT_SET_STATUS: Record<Stage, string> = {
   Introduction: "intro_sent",
+  "AI Intro": "intro_sent",
   "Technical Interview": "tech_sent",
   Confirmation: "confirmation_sent",
   Reject: "rejected",
@@ -260,6 +268,8 @@ export default function ApplicantComposerModal({
   prefillAddress?: string;
   prefillCity?: string;
 }) {
+  const { user } = useAuth() as any;
+  const authToken = String(user?.token || "");
   const modalRef = useRef<HTMLDivElement | null>(null);
   const instRef = useRef<any>(null);
   const onCloseRef = useRef(onClose);
@@ -269,6 +279,8 @@ export default function ApplicantComposerModal({
   const [composerApplicantId, setComposerApplicantId] = useState<string>("");
   const [composer, setComposer] = useState<ComposerState>(() => defaultComposer("Introduction"));
   const [previewJson, setPreviewJson] = useState<string>("{}");
+  const [jobInfo, setJobInfo] = useState<{ title: string; generalCount: number; roleCount: number; roleId: string } | null>(null);
+  const [jobInfoLoading, setJobInfoLoading] = useState(false);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -371,6 +383,40 @@ export default function ApplicantComposerModal({
       mounted = false;
     };
   }, [api, applicant?.id]);
+
+  // Pre-fetch job questions (general bank + role-specific) when AI Intro stage is selected
+  useEffect(() => {
+    if (composer.stage !== "AI Intro" || !applicant?.roleId) {
+      setJobInfo(null);
+      return;
+    }
+    let mounted = true;
+    setJobInfoLoading(true);
+    setJobInfo(null);
+    const roleId = applicant.roleId;
+    (async () => {
+      try {
+        const jobs: any[] = await api.listJobsAdmin();
+        if (!mounted) return;
+        const job = jobs.find((j: any) =>
+          j.jobId === roleId ||
+          j.slug === roleId ||
+          String(j.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-") === roleId.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        );
+        const roleCount = job
+          ? (Array.isArray(job.roleQuestions) ? job.roleQuestions : [])
+              .filter((q: any) => String(q.label || q.text || q || "").trim()).length
+          : 0;
+        setJobInfo({ title: String(job?.title || roleId), generalCount: 0, roleCount, roleId });
+      } catch {
+        if (mounted) setJobInfo({ title: "", generalCount: 0, roleCount: 0, roleId });
+      } finally {
+        if (mounted) setJobInfoLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composer.stage, applicant?.roleId]);
 
   function buildPreview(c: ComposerState, email: string, applicantId: string) {
     const stage = c.stage;
@@ -583,10 +629,78 @@ export default function ApplicantComposerModal({
           }
         }
 
+        let intakeLink = "";
+        if (richType === "AI_INTRO") {
+          try {
+            // Fetch general bank + role-specific questions from the applicant's linked job
+            const jobRoleQuestions: string[] = [];
+            let jobTitle = "";
+            const roleId = applicant?.roleId || "";
+            if (roleId) {
+              try {
+                const jobs: any[] = await api.listJobsAdmin();
+                const job = jobs.find((j: any) =>
+                  j.jobId === roleId ||
+                  j.slug === roleId ||
+                  String(j.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-") === roleId.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+                );
+                if (job) {
+                  jobTitle = String(job.title || "");
+                  // Role-specific inline questions only (no general bank, no personal bank)
+                  (Array.isArray(job.roleQuestions) ? job.roleQuestions : []).forEach((q: any) => {
+                    const label = String(q.label || q.text || q || "").trim();
+                    if (label) jobRoleQuestions.push(label);
+                  });
+                  const total = jobRoleQuestions.length;
+                  M?.toast?.({
+                    html: total > 0
+                      ? `✓ ${total} question${total !== 1 ? "s" : ""} for "${jobTitle}" included in interview`
+                      : `⚠ Job "${jobTitle}" found but has no questions — add them in Jobs Admin`,
+                    classes: total > 0 ? "teal" : "orange darken-2",
+                  });
+                } else {
+                  M?.toast?.({ html: `⚠ No job matched roleId "${roleId}" — sending without job questions`, classes: "orange darken-2" });
+                }
+              } catch (e: any) {
+                M?.toast?.({ html: `Job lookup failed: ${e?.message || "unknown"}`, classes: "red" });
+              }
+            }
+
+            const tr = await fetch(`${API_BASE}/admin/ai/intake/temp-session`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+              body: JSON.stringify({
+                contextKey: "interview_intake",
+                ttlHours: 72,
+                oneTimeUse: true,
+                bindEmail: toEmail,
+                bindApplicantId: applicantId,
+                ...(roleId ? { bindJobId: roleId } : {}),
+                ...(jobTitle ? { jobTitle } : {}),
+                ...(jobRoleQuestions.length > 0 ? { jobRoleQuestions } : {}),
+              }),
+            });
+            const td = await tr.json().catch(() => ({}));
+            if (tr.ok && td?.token) {
+              intakeLink = `${PUBLIC_WEBSITE_BASE}/intake?token=${encodeURIComponent(td.token)}&email=${encodeURIComponent(toEmail)}${roleId ? `&jobId=${encodeURIComponent(roleId)}` : ""}`;
+            } else {
+              const errMsg = td?.error || td?.message || `HTTP ${tr.status}`;
+              M?.toast?.({ html: `Failed to create intake link: ${errMsg}`, classes: "red" });
+              setSending(false);
+              return;
+            }
+          } catch (e: any) {
+            M?.toast?.({ html: `Intake link error: ${e?.message || "network error"}`, classes: "red" });
+            setSending(false);
+            return;
+          }
+        }
+
         const body: RichBody = {
           type: richType,
           roleTitle: composer.roleTitle.trim(),
           ...(richType === "INTRO" ? { calendlyUrl: composer.calendlyUrl.trim() } : {}),
+          ...(intakeLink ? { intakeLink } : {}),
           ...(richType === "CONFIRMATION"
             ? {
                 meetingTitle: composer.meetingTitle.trim(),
@@ -597,7 +711,10 @@ export default function ApplicantComposerModal({
                   : undefined,
               }
             : {}),
-          vars: composer.vars_extraInfo.trim() ? { extraInfo: composer.vars_extraInfo.trim() } : undefined,
+          vars: {
+            ...(composer.vars_extraInfo.trim() ? { extraInfo: composer.vars_extraInfo.trim() } : {}),
+            ...(intakeLink ? { intakeLink } : {}),
+          },
           setStatus: composer.setStatus.trim() ? composer.setStatus.trim() : undefined,
         };
 
@@ -693,6 +810,31 @@ export default function ApplicantComposerModal({
         {/* RICH */}
         {richType && (
           <>
+            {/* AI Intro — job questions status */}
+            {richType === "AI_INTRO" && (
+              <div style={{ marginBottom: 10, padding: "10px 14px", borderRadius: 10, background: jobInfoLoading ? "rgba(255,255,255,0.04)" : jobInfo && jobInfo.roleCount > 0 ? "rgba(20,184,166,0.08)" : "rgba(251,146,60,0.08)", border: `1px solid ${jobInfoLoading ? "rgba(255,255,255,0.08)" : jobInfo && jobInfo.roleCount > 0 ? "rgba(20,184,166,0.25)" : "rgba(251,146,60,0.3)"}` }}>
+                {jobInfoLoading ? (
+                  <span style={{ fontSize: 12, color: "rgba(0,0,0,0.5)" }}>Looking up job questions…</span>
+                ) : jobInfo ? (
+                  jobInfo.roleCount > 0 ? (
+                    <span style={{ fontSize: 12, color: "#0f766e", fontWeight: 700 }}>
+                      ✓ <b>{jobInfo.roleCount}</b> role-specific question{jobInfo.roleCount !== 1 ? "s" : ""} from "<b>{jobInfo.title}</b>" will be appended to the interview
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: "#c2410c", fontWeight: 600 }}>
+                      ⚠ Job "<b>{jobInfo.title || jobInfo.roleId}</b>" found but has no role-specific questions — add them in <b>Jobs Admin → Role tab</b>
+                    </span>
+                  )
+                ) : applicant?.roleId ? (
+                  <span style={{ fontSize: 12, color: "#c2410c", fontWeight: 600 }}>
+                    ⚠ No job matched roleId "<code>{applicant.roleId}</code>" — interview will only ask general context questions
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>No roleId on applicant — general context questions only</span>
+                )}
+              </div>
+            )}
+
             {richType === "INTRO" && (
               <div className="input-field" style={{ marginTop: 6 }}>
                 <input value={composer.calendlyUrl} onChange={(e) => updateComposer({ calendlyUrl: e.target.value })} />

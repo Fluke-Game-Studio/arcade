@@ -100,7 +100,9 @@ function statusChipClass(s: JobStatus) {
 }
 
 function safeRoleLower(r: any) {
-  return String(r || "employee").toLowerCase();
+  return String(r || "employee")
+    .toLowerCase()
+    .replace(/_/g, "-");
 }
 
 function safeParseApiGw(text: string) {
@@ -423,7 +425,11 @@ export default function JobsAdmin(): ReactElement {
   const { user } = useAuth();
   const token = user?.token || "";
   const roleLower = safeRoleLower(user?.role);
-  const isAllowed = roleLower === "admin" || roleLower === "super";
+  const isAllowed =
+    roleLower === "admin" ||
+    roleLower === "super" ||
+    roleLower === "admin-readonly" ||
+    roleLower === "super-readonly";
 
   const [loading, setLoading] = useState(false);
 

@@ -23,9 +23,15 @@ export default function Navbar() {
   const location = useLocation();
 
   const isAuthenticated = !!user;
-  const roleLower = (user?.role ? String(user.role) : "employee").toLowerCase();
-  const isAdminish = roleLower === "admin" || roleLower === "super";
-  const isSuper = roleLower === "super";
+  const roleLower = (user?.role ? String(user.role) : "employee")
+    .toLowerCase()
+    .replace(/_/g, "-");
+  const isAdminish =
+    roleLower === "admin" ||
+    roleLower === "super" ||
+    roleLower === "admin-readonly" ||
+    roleLower === "super-readonly";
+  const isSuper = roleLower === "super" || roleLower === "super-readonly";
 
   const sidenavRef = useRef<HTMLUListElement | null>(null);
   const dropdownRootRef = useRef<HTMLDivElement | null>(null);
@@ -92,6 +98,7 @@ export default function Navbar() {
       show: isAdminish,
       items: [
         { to: "/admin", label: "Admin Dashboard" },
+        { to: "/admin/customers", label: "Customers" },
         { to: "/applicants", label: "Applicants" },
         { to: "/admin/jobs", label: "Jobs Admin" },
       ],
@@ -111,7 +118,7 @@ export default function Navbar() {
         { to: "/admin/endpoints", label: "Endpoint Access" },
         { to: "/super/ai-character-training", label: "AI Character Training" },
         { to: "/super/talking-head-page", label: "Talking Head Training" },
-        { to: "/super/manager-agent-builder", label: "Manager Agent Builder" },
+        { to: "/super/manager-agent-builder", label: "Agent Builder" },
       ],
     }),
     [isSuper]
@@ -406,23 +413,25 @@ export default function Navbar() {
     if (!items.length) return null;
 
     return (
-      <li style={{ padding: "8px 0 4px" }}>
-        <div
-          style={{
-            padding: "10px 16px 5px",
-            fontSize: 11,
-            fontWeight: 900,
-            letterSpacing: 1.3,
-            textTransform: "uppercase",
-            color: "rgba(125,211,252,0.86)",
-          }}
-        >
-          {title}
-        </div>
+      <>
+        <li style={{ padding: "8px 0 4px" }}>
+          <div
+            style={{
+              padding: "10px 16px 5px",
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: 1.3,
+              textTransform: "uppercase",
+              color: "rgba(125,211,252,0.86)",
+            }}
+          >
+            {title}
+          </div>
+        </li>
         {items.map((l) => (
-          <MobileLink key={l.to} to={l.to} label={l.label} />
+          <MobileLink key={`${title}:${l.to}`} to={l.to} label={l.label} />
         ))}
-      </li>
+      </>
     );
   };
 

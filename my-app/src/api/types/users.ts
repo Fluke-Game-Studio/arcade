@@ -1,8 +1,15 @@
+export type ApiRole =
+  | "super"
+  | "admin"
+  | "employee"
+  | "admin-readonly"
+  | "super-readonly";
+
 export type ApiLoginResponse = {
   token: string;
   expiresIn: number;
   username: string;
-  role: "super" | "admin" | "employee";
+  role: ApiRole;
   name: string;
   projectStatus?: "ProjectPartialClean" | "ProjectCompleteCleanup" | "none" | string;
   allowed?: boolean;
@@ -28,11 +35,19 @@ export type ApiUser = {
   discord_member_id?: string;
   discord_name?: string;
   discord_email?: string;
+  jira_connected?: boolean;
+  jira_connected_at?: string;
+  jira_account_id?: string;
+  jira_email?: string;
+  jira_cloud_id?: string;
+  jira_cloud_name?: string;
+  jira_cloud_url?: string;
+  jira_scope?: string;
   employee_phonenumber?: string;
   employment_type?: string;
   department?: string;
   location?: string;
-  employee_role?: "super" | "admin" | "employee";
+  employee_role?: ApiRole;
   project_id?: string;
   employee_manager?: string;
   employee_last_update_week?: string;
@@ -65,13 +80,21 @@ export type CreateUserBody = {
   discord_member_id?: string;
   discord_name?: string;
   discord_email?: string;
+  jira_connected?: boolean;
+  jira_connected_at?: string;
+  jira_account_id?: string;
+  jira_email?: string;
+  jira_cloud_id?: string;
+  jira_cloud_name?: string;
+  jira_cloud_url?: string;
+  jira_scope?: string;
   employee_phonenumber?: string;
   employee_email?: string;
   employee_title?: string;
   employment_type?: string;
   department?: string;
   location?: string;
-  employee_role?: "super" | "admin" | "employee";
+  employee_role?: ApiRole;
   project_id?: string;
   employee_manager?: string;
   portal_access?: boolean;
@@ -108,4 +131,29 @@ export type StartDiscordConnectResponse = {
   returnTo?: string;
   joinUrl?: string;
   scopes?: string[];
+};
+
+export type StartJiraConnectBody = {
+  returnTo?: string;
+};
+
+export type StartJiraConnectResponse = {
+  ok: boolean;
+  authorizeUrl: string;
+  returnTo?: string;
+  redirectUri?: string;
+  scopes?: string[];
+};
+
+export type JiraConnectStatusResponse = {
+  ok: boolean;
+  connected: boolean;
+  accountId?: string;
+  email?: string;
+  cloudId?: string;
+  cloudName?: string;
+  cloudUrl?: string;
+  scope?: string;
+  connectedAt?: string;
+  tokenExpiresAt?: string;
 };

@@ -131,8 +131,10 @@ export default function SuperAI() {
     [api?.token, platform]
   );
 
-  const roleLower = String(user?.role || "").toLowerCase();
-  const isSuperUser = roleLower === "super";
+  const roleLower = String(user?.role || "")
+    .toLowerCase()
+    .replace(/_/g, "-");
+  const isSuperUser = roleLower === "super" || roleLower === "super-readonly";
 
   const [docId, setDocId] = useState<string>("context:internal");
   const [loading, setLoading] = useState(false);

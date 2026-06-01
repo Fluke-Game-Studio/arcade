@@ -1,69 +1,56 @@
-# React + TypeScript + Vite
+# Fluke Games Digital Studio Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This README highlights the core platform architecture behind the Fluke Games web experience. The diagrams frame the project as a connected digital studio platform: public discovery, careers, customer access, operations, agentic AI, and governance.
 
-Currently, two official plugins are available:
+## Platform Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+![Fluke Games Digital Studio Platform Overview](public/architecture/0.Cover.png)
 
-## Expanding the ESLint configuration
+## Core Feature Pipelines
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 1. Public Website Experience Pipeline
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+![Public Website Experience Pipeline](public/architecture/1.Public.png)
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+### 2. Careers & Talent Pipeline
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+![Careers and Talent Pipeline](public/architecture/2.Careers.png)
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 3. Customer Portal Pipeline
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+![Customer Portal Pipeline](public/architecture/3.Customer.png)
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 4. Studio Operations Pipeline
+
+![Studio Operations Pipeline](public/architecture/4.Operations.png)
+
+### 5. Agentic AI Pipeline
+
+![Agentic AI Pipeline](public/architecture/5.AgenticAI.png)
+
+### 6. Integration & Governance Pipeline
+
+![Integration and Governance Pipeline](public/architecture/6.Governance.png)
+
+### 7. AWS Deployment + Platform Architecture
+
+![AWS Deployment and Platform Architecture](public/architecture/7.AWSDeployment.png)
+
+## Technology Lens
+
+The platform is designed around a few connected capabilities:
+
+- Public website experiences for games, services, portfolio, team visibility, devlogs, and contact flows.
+- Careers and talent workflows that turn public interest into structured applicant data.
+- Customer portal access for signup, authentication, entitlements, and protected downloads.
+- Studio operations flows for projects, updates, timelogs, analytics, and recognition.
+- Agentic AI workflows using routed context, memory, tool actions, and approval guardrails.
+- Governance and integrations across endpoint policies, RBAC, audit logs, AWS services, and third-party systems.
+- AWS deployment architecture using Lambda, API Gateway, DynamoDB, S3, SQS, SES, Secrets Manager, CloudWatch, IAM/OIDC, and GitHub Actions.
+
+## Local Development
+
+```bash
+npm install
+npm run dev
 ```

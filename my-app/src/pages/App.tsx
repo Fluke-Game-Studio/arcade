@@ -1,14 +1,17 @@
 // src/pages/App.tsx
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import FloatingAIChat from "../components/FloatingAIChat";
 
 export default function App() {
+  const location = useLocation();
+  const hideFloatingAI = location.pathname === "/super/talking-head-page";
+
   return (
     <>
       <Navbar />
       <Outlet />
-      <FloatingAIChat />
+      {!hideFloatingAI && <FloatingAIChat />}
     </>
   );
 }

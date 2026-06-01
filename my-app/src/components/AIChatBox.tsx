@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { API_BASE } from "../api/config";
 import type { AIProvider } from "../api/types/ai";
 
 type ChatRole = "user" | "assistant";
@@ -17,7 +18,7 @@ type ChatMessage = {
   tags?: ChatMetaTag[];
 };
 
-const CHAT_URL = "https://xtipeal88c.execute-api.us-east-1.amazonaws.com/ai/chat/internal";
+const CHAT_URL = `${API_BASE.replace(/\/+$/, "")}/ai/chat/internal`;
 
 const PROVIDER_MODEL: Record<Exclude<AIProvider, "auto">, string> = {
   openai: "gpt-5-mini",

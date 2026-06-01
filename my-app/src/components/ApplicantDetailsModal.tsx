@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { ApiApplicantDetails } from "../api";
+import { API_BASE } from "../api/config";
+import { useAuth } from "../auth/AuthContext";
 import type { ApplicantRowLite, Stage } from "./ApplicantComposerModal";
 
 declare const M: any;
@@ -116,6 +118,7 @@ const STAGE_BADGE: Record<Stage, BadgeStyle> = {
   NDA: { bg: "#FEF3C7", border: "#FCD34D", fg: "#92400E" },
   Offer: { bg: "#CFFAFE", border: "#67E8F9", fg: "#155E75" },
   Welcome: { bg: "#E9F9EF", border: "#9FE0B5", fg: "#14532D" },
+  "AI Intro": { bg: "#EDE9FE", border: "#C4B5FD", fg: "#4C1D95" },
 };
 
 function StatusPill({ status }: { status: string }) {
@@ -506,6 +509,8 @@ export default function ApplicantDetailsModal({
   onClose: () => void;
   onOpenComposer: (lite: ApplicantRowLite, prefill?: { address?: string; city?: string }) => void;
 }) {
+  const { user } = useAuth() as any;
+  const token = String(user?.token || "");
   const modalRef = useRef<HTMLDivElement | null>(null);
   const instRef = useRef<any>(null);
 
@@ -518,9 +523,113 @@ export default function ApplicantDetailsModal({
   const details = useMemo(() => (open && detailsRaw ? normalizeDetails(detailsRaw) : null), [open, detailsRaw]);
   const [avatarFailed, setAvatarFailed] = useState(false);
 
+  const [detailTab, setDetailTab] = useState<"details" | "ai">("details");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+
   useEffect(() => {
     setAvatarFailed(false);
   }, [details?.id, details?.googleImageUrl]);
+
+  useEffect(() => {
+    setAiPrompt("");
+    setAiResponse("");
+    setAiError("");
+    setDetailTab("details");
+  }, [details?.id]);
+
+  useEffect(() => {
+    if (detailTab === "ai" && details) {
+      setAiPrompt((prev) => prev || buildAssessmentPrompt(details));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailTab, details?.id]);
+
+  function buildAssessmentPrompt(d: ApplicantDetailsView): string {
+    const lines: string[] = [
+      `Assess this applicant for the role of "${d.roleTitle || "N/A"}".`,
+      `Name: ${d.fullName || "N/A"}`,
+      `Email: ${d.email || "N/A"}`,
+      `Status: ${d.status || "N/A"}`,
+    ];
+    const qa = d.answersReadable || d.answersRaw;
+    if (qa) {
+      lines.push("Application responses:");
+      for (const [k, v] of Object.entries(qa)) {
+        const val = typeof v === "string" ? v : JSON.stringify(v);
+        if (val.trim()) lines.push(`  ${k}: ${val}`);
+      }
+    }
+    lines.push(
+      "Provide a brief recruiter assessment: key strengths, concerns, recommended next step, and whether to send INTRO / TECH / REJECT email."
+    );
+    return lines.join("\n");
+  }
+
+  async function runAiAssessment() {
+    if (!details || aiBusy) return;
+    setAiBusy(true);
+    setAiError("");
+    setAiResponse("");
+    try {
+      const prompt = aiPrompt.trim() || buildAssessmentPrompt(details);
+      if (!aiPrompt.trim()) setAiPrompt(prompt);
+
+      const runId = `ai_assist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const postRes = await fetch(`${API_BASE}/ai/chat/internal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          clientId: runId,
+          requestId: runId,
+          context: "internal",
+          question: prompt,
+        }),
+      });
+      if (!postRes.ok) {
+        const err = await postRes.json().catch(() => ({}));
+        throw new Error(String(err?.error || err?.message || `HTTP ${postRes.status}`));
+      }
+
+      // Poll until done
+      let attempts = 0;
+      const reply = await new Promise<string>((resolve, reject) => {
+        const tick = async () => {
+          attempts += 1;
+          if (attempts > 60) { reject(new Error("Timed out waiting for AI response.")); return; }
+          try {
+            const r = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(runId)}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (r.status === 404) { window.setTimeout(tick, 2000); return; }
+            const data = await r.json().catch(() => ({}));
+            const run = data?.run || {};
+            const status = String(run?.status || "").toLowerCase();
+            if (status === "done") {
+              const text = String(run?.resultPayload?.reply || run?.reply || run?.replySummary || "No response.");
+              resolve(text);
+            } else if (status === "error") {
+              reject(new Error(String(run?.errorPayload?.error || run?.deniedReason || "AI run failed.")));
+            } else {
+              window.setTimeout(tick, 2000);
+            }
+          } catch (e: any) {
+            if (attempts > 60) reject(e); else window.setTimeout(tick, 2000);
+          }
+        };
+        tick();
+      });
+
+      setAiResponse(reply);
+    } catch (e: any) {
+      setAiError(String(e?.message || e));
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
 
   // init ONCE
   useEffect(() => {
@@ -631,6 +740,10 @@ export default function ApplicantDetailsModal({
         max-width: 980px !important;
       }
       .modal.modal-fixed-footer { height: 85% !important; }
+      .fg-tab-row { display: flex; gap: 0; border-bottom: 1px solid rgba(0,0,0,0.10); margin-bottom: 14px; }
+      .fg-tab { padding: 9px 18px; font-weight: 900; font-size: 13px; cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; color: rgba(0,0,0,0.55); transition: color 0.15s, border-color 0.15s; }
+      .fg-tab.active { color: #1565c0; border-bottom-color: #1565c0; }
+      .fg-ai-resp { background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.08); border-radius: 14px; padding: 14px; white-space: pre-wrap; font-size: 14px; line-height: 1.6; min-height: 80px; }
     `}</style>
   );
 
@@ -646,6 +759,63 @@ export default function ApplicantDetailsModal({
           <p className="grey-text">No applicant selected.</p>
         ) : (
           <>
+            <div className="fg-tab-row">
+              <button className={`fg-tab ${detailTab === "details" ? "active" : ""}`} onClick={() => setDetailTab("details")}>Details</button>
+              <button className={`fg-tab ${detailTab === "ai" ? "active" : ""}`} onClick={() => setDetailTab("ai")}>AI Assist</button>
+            </div>
+
+            {detailTab === "ai" ? (
+              <div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontWeight: 1000, marginBottom: 4 }}>Prompt</div>
+                  <textarea
+                    rows={6}
+                    style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(0,0,0,0.15)", padding: "10px 12px", fontSize: 13, resize: "vertical", fontFamily: "inherit" }}
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder={details ? buildAssessmentPrompt(details) : "Enter a prompt about this applicant…"}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                  <button className="btn fg-btn" onClick={runAiAssessment} disabled={aiBusy}>
+                    {aiBusy ? "Thinking…" : "Run Assessment"}
+                  </button>
+                  <button className="btn-flat fg-btn" onClick={() => { setAiPrompt(""); setAiResponse(""); setAiError(""); }}>
+                    Clear
+                  </button>
+                </div>
+
+                {aiError ? <div style={{ color: "#b91c1c", marginBottom: 10, fontWeight: 700 }}>{aiError}</div> : null}
+
+                {aiResponse ? (
+                  <div className="fg-card" style={{ marginBottom: 14 }}>
+                    <div className="fg-card-h"><div style={{ fontWeight: 1000 }}>AI Assessment</div></div>
+                    <div className="fg-card-b">
+                      <div className="fg-ai-resp">{aiResponse}</div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="fg-card">
+                  <div className="fg-card-h"><div style={{ fontWeight: 1000 }}>Quick Actions</div></div>
+                  <div className="fg-card-b">
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <button
+                        className="btn fg-btn"
+                        onClick={() => {
+                          const lite: ApplicantRowLite = { id: details!.id, name: details!.fullName, email: details!.email, roleTitle: details!.roleTitle, roleId: details!.roleId };
+                          onOpenComposer(lite, { address: details!.address, city: details!.city });
+                        }}
+                      >
+                        Open Composer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+            <>
             <div className="fg-card" style={{ marginTop: 14 }}>
               <div className="fg-card-b">
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -750,6 +920,8 @@ export default function ApplicantDetailsModal({
                 <LazyRawJson value={details.raw} />
               </div>
             </div>
+            </>
+            )}
           </>
         )}
       </div>
