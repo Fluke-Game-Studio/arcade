@@ -303,11 +303,10 @@ function IconBug() {
 }
 
 function DebugPanel({
-  debugLog, appliedInstructions, allQuestions, ctx, appliedSnapshot, onClose,
+  debugLog, appliedInstructions, ctx, appliedSnapshot, onClose,
 }: {
   debugLog: DebugEvent[];
   appliedInstructions: string;
-  allQuestions: string[];
   ctx: StoredIntakeContext;
   appliedSnapshot: { key: string; label: string; qs: string[]; mcpActions: string[]; source: string; ctxMatchesState: boolean } | null;
   onClose: () => void;
@@ -843,7 +842,6 @@ export default function SessionCall({
               <DebugPanel
                 debugLog={debugLog}
                 appliedInstructions={appliedInstructions}
-                allQuestions={allQuestions}
                 ctx={ctx}
                 appliedSnapshot={appliedSnapshot}
                 onClose={() => setDebugOpen(false)}
