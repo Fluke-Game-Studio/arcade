@@ -281,10 +281,27 @@ export default function ApplicantComposerModal({
   const [previewJson, setPreviewJson] = useState<string>("{}");
   const [jobInfo, setJobInfo] = useState<{ title: string; generalCount: number; roleCount: number; roleId: string } | null>(null);
   const [jobInfoLoading, setJobInfoLoading] = useState(false);
+  const [allJobs, setAllJobs] = useState<{ jobId: string; title: string }[]>([]);
 
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  // Fetch all jobs once so roleTitle dropdown is populated
+  useEffect(() => {
+    let mounted = true;
+    api.listJobsAdmin().then((jobs: any[]) => {
+      if (!mounted) return;
+      setAllJobs(
+        jobs
+          .filter((j: any) => String(j.title || "").trim())
+          .map((j: any) => ({ jobId: String(j.jobId || j.slug || ""), title: String(j.title || "") }))
+          .sort((a, b) => a.title.localeCompare(b.title))
+      );
+    }).catch(() => {});
+    return () => { mounted = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // init Materialize modal once
   useEffect(() => {
@@ -790,8 +807,37 @@ export default function ApplicantComposerModal({
       <>
         <div className="row" style={{ marginBottom: 0 }}>
           <div className="input-field col s12 m8">
-            <input value={composer.roleTitle} onChange={(e) => updateComposer({ roleTitle: e.target.value })} />
-            <label className="active">roleTitle</label>
+            {allJobs.length > 0 ? (
+              <>
+                <select
+                  className="browser-default"
+                  value={allJobs.some((j) => j.title === composer.roleTitle) ? composer.roleTitle : "__custom__"}
+                  onChange={(e) => {
+                    if (e.target.value !== "__custom__") updateComposer({ roleTitle: e.target.value });
+                  }}
+                  style={{ borderRadius: 4, border: "1px solid #ccc", padding: "6px 8px", width: "100%", fontSize: 14, marginBottom: 4 }}
+                >
+                  {!allJobs.some((j) => j.title === composer.roleTitle) && (
+                    <option value="__custom__">{composer.roleTitle || "— select a role —"}</option>
+                  )}
+                  {allJobs.map((j) => (
+                    <option key={j.jobId} value={j.title}>{j.title}</option>
+                  ))}
+                </select>
+                <input
+                  value={composer.roleTitle}
+                  onChange={(e) => updateComposer({ roleTitle: e.target.value })}
+                  placeholder="Or type a custom role title…"
+                  style={{ marginTop: 2 }}
+                />
+                <label className="active">roleTitle</label>
+              </>
+            ) : (
+              <>
+                <input value={composer.roleTitle} onChange={(e) => updateComposer({ roleTitle: e.target.value })} />
+                <label className="active">roleTitle</label>
+              </>
+            )}
           </div>
           <div className="input-field col s12 m4">
             <input value={composer.setStatus} onChange={(e) => updateComposer({ setStatus: e.target.value })} />
