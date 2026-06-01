@@ -6,6 +6,13 @@ import { useReleaseProductsData } from "../components/admin/useReleaseProductsDa
 declare const M: any;
 
 type SuperTab = "users" | "projects" | "releases";
+type ProjectSettingsTab = "details" | "jira";
+type AssignableRole =
+  | "employee"
+  | "admin"
+  | "admin-readonly"
+  | "super"
+  | "super-readonly";
 
 type ProjectForm = {
   name: string;
@@ -19,12 +26,27 @@ type ProjectForm = {
   channel: string;
   platform: string;
   promoteFromVersion: string;
+  jiraEnabled: boolean;
+  jiraProjectKey: string;
+  jiraCloudId: string;
+  jiraBoardId: string;
 };
 
 const DEFAULT_PLATFORMS = ["windows", "mac", "linux", "steam", "epic", "ps5", "xbox", "switch"];
+const ASSIGNABLE_ROLES: AssignableRole[] = [
+  "employee",
+  "admin",
+  "admin-readonly",
+  "super",
+  "super-readonly",
+];
 
 function safeStr(v: any) {
   return String(v ?? "").trim();
+}
+
+function normalizeRole(v: any) {
+  return safeStr(v).toLowerCase().replace(/_/g, "-");
 }
 
 function parsePlatformCsv(v: string) {
@@ -50,13 +72,15 @@ export default function SuperUser() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [projectSettingsTab, setProjectSettingsTab] = useState<ProjectSettingsTab>("details");
+  const [jiraConnectStatus, setJiraConnectStatus] = useState<any>(null);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [projectSaving, setProjectSaving] = useState(false);
   const [savingProductKey, setSavingProductKey] = useState("");
   const [savingProjectVisibilityId, setSavingProjectVisibilityId] = useState("");
   const [customPlatform, setCustomPlatform] = useState("");
-  const isSuperUser = String((user as any)?.role || "").toLowerCase() === "super";
+  const isSuperUser = normalizeRole((user as any)?.role) === "super";
   const releaseData = useReleaseProductsData(api as any);
 
   const [projectForm, setProjectForm] = useState<ProjectForm>({
@@ -71,6 +95,10 @@ export default function SuperUser() {
     channel: "v0.0.0",
     platform: "",
     promoteFromVersion: "",
+    jiraEnabled: false,
+    jiraProjectKey: "",
+    jiraCloudId: "",
+    jiraBoardId: "",
   });
 
   async function loadUsers() {
@@ -93,9 +121,19 @@ export default function SuperUser() {
     }
   }
 
+  async function loadJiraConnectStatus() {
+    try {
+      const status = await (api as any).getJiraConnectStatus?.();
+      setJiraConnectStatus(status || null);
+    } catch {
+      setJiraConnectStatus(null);
+    }
+  }
+
   useEffect(() => {
     loadUsers();
     loadProjects();
+    loadJiraConnectStatus();
   }, []);
 
   const filtered = useMemo(() => {
@@ -114,7 +152,7 @@ export default function SuperUser() {
     [rows]
   );
 
-  async function setRole(username: string, role: "employee" | "admin" | "super") {
+  async function setRole(username: string, role: AssignableRole) {
     try {
       await api.updateUser({ username, employee_role: role });
       M.toast({ html: "Role updated", classes: "green" });
@@ -157,8 +195,13 @@ export default function SuperUser() {
       channel: "v0.0.0",
       platform: "",
       promoteFromVersion: "",
+      jiraEnabled: false,
+      jiraProjectKey: "",
+      jiraCloudId: "",
+      jiraBoardId: "",
     });
     setCustomPlatform("");
+    setProjectSettingsTab("details");
   }
 
   async function handleProjectSubmit(e: React.FormEvent) {
@@ -184,6 +227,10 @@ export default function SuperUser() {
         platform: projectForm.platform,
         release_version: projectForm.channel,
         promote_from_version: projectForm.promoteFromVersion || undefined,
+        jira_enabled: projectForm.jiraEnabled,
+        jira_project_key: projectForm.jiraProjectKey || undefined,
+        jira_cloud_id: projectForm.jiraCloudId || undefined,
+        jira_board_id: projectForm.jiraBoardId || undefined,
       } as any);
       M.toast({ html: editingProjectId ? "Project Updated" : "Project Created", classes: "green" });
       resetProjectForm();
@@ -212,6 +259,12 @@ export default function SuperUser() {
       channel: safeStr((p as any).channel || "v0.0.0"),
       platform: selectedPlatform,
       promoteFromVersion: safeStr((p as any).promote_from_version),
+      jiraEnabled:
+        (p as any).jira_enabled === true ||
+        String((p as any).jira_enabled || "").toLowerCase() === "true",
+      jiraProjectKey: safeStr((p as any).jira_project_key).toUpperCase(),
+      jiraCloudId: safeStr((p as any).jira_cloud_id),
+      jiraBoardId: safeStr((p as any).jira_board_id),
     });
     setCustomPlatform("");
     setTab("projects");
@@ -254,6 +307,12 @@ export default function SuperUser() {
         channel: p.channel,
         platform: (p as any).platform,
         status: shouldBeVisible ? "active" : "inactive",
+        jira_enabled:
+          (p as any).jira_enabled === true ||
+          String((p as any).jira_enabled || "").toLowerCase() === "true",
+        jira_project_key: safeStr((p as any).jira_project_key).toUpperCase() || undefined,
+        jira_cloud_id: safeStr((p as any).jira_cloud_id) || undefined,
+        jira_board_id: safeStr((p as any).jira_board_id) || undefined,
       } as any);
       M.toast({ html: shouldBeVisible ? "Project visible on website" : "Project hidden from website", classes: "green" });
       loadProjects();
@@ -341,9 +400,22 @@ export default function SuperUser() {
                         <td><label><input type="checkbox" checked={vcs} disabled={!isSuperUser} onChange={(e) => setUserAccessFlag(u.username, "version_control_access", e.target.checked)} /><span></span></label></td>
                         <td>{revoked ? "Yes" : "No"}</td>
                         <td>
-                          {["employee", "admin", "super"].map((r) => (
-                            <button key={r} className={`btn-small ${r === "admin" ? "blue" : r === "super" ? "teal" : ""}`} disabled={isSelf || u.employee_role === r} onClick={() => setRole(u.username, r as any)}>{r}</button>
-                          ))}
+                          <select
+                            className="browser-default"
+                            disabled={isSelf || !isSuperUser}
+                            value={normalizeRole(u.employee_role || "employee")}
+                            onChange={(e) => {
+                              const nextRole = normalizeRole(e.target.value) as AssignableRole;
+                              if (!nextRole || nextRole === normalizeRole(u.employee_role)) return;
+                              void setRole(u.username, nextRole);
+                            }}
+                          >
+                            {ASSIGNABLE_ROLES.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                       </tr>
                     );
@@ -365,7 +437,7 @@ export default function SuperUser() {
               {!projectsLoading && (projects.length > 0 ? (
                 <table className="highlight responsive-table">
                   <thead>
-                    <tr><th>Name</th><th>Owner</th><th>Producer</th><th>Status</th><th>Release</th><th>Budget</th><th>Actions</th></tr>
+                    <tr><th>Name</th><th>Owner</th><th>Producer</th><th>Status</th><th>Release</th><th>Jira</th><th>Budget</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
                     {projects.map((p) => {
@@ -379,6 +451,18 @@ export default function SuperUser() {
                           <td>{prod ? prod.employee_name : p.project_producer}</td>
                           <td>{safeStr(p.status || "active").toUpperCase()}</td>
                           <td>{safeStr(p.release_status || "dev").toUpperCase()} / {safeStr(p.channel || "v0.0.0")}<div style={{ fontSize: 12, color: "#64748b" }}>{safeStr((p as any).platform || "all")}</div></td>
+                          <td>
+                            {((p as any).jira_enabled === true || String((p as any).jira_enabled || "").toLowerCase() === "true") ? (
+                              <div>
+                                <div style={{ color: "#15803d", fontWeight: 800 }}>Enabled</div>
+                                <div style={{ fontSize: 12, color: "#64748b" }}>
+                                  {safeStr((p as any).jira_project_key) || "-"}
+                                </div>
+                              </div>
+                            ) : (
+                              <span style={{ color: "#64748b" }}>Disabled</span>
+                            )}
+                          </td>
                           <td>{p.project_budget_total ? `${p.project_budget_consumed || 0}/${p.project_budget_total}` : "-"}</td>
                           <td>
                             <button className="btn-small blue" onClick={() => handleProjectEdit(p)}>Edit</button>
@@ -407,7 +491,13 @@ export default function SuperUser() {
           <div className="suCard" id="project-form-card">
             <div className="card-content">
               <span className="card-title" style={{ fontWeight: 1000 }}>{editingProjectId ? "Edit Project" : "Add Project"}</span>
+              <div style={{ display: "inline-flex", gap: 8, border: "1px solid #dbe5ef", borderRadius: 999, padding: 6, marginBottom: 14, background: "#f8fbff" }}>
+                <button type="button" className={`suTabBtn ${projectSettingsTab === "details" ? "active" : ""}`} onClick={() => setProjectSettingsTab("details")}>Project Details</button>
+                <button type="button" className={`suTabBtn ${projectSettingsTab === "jira" ? "active" : ""}`} onClick={() => setProjectSettingsTab("jira")}>Jira Settings</button>
+              </div>
               <form onSubmit={handleProjectSubmit}>
+                {projectSettingsTab === "details" && (
+                <>
                 <div className="row">
                   <div className="col s12 m6"><div className="input-field"><input value={projectForm.name} onChange={(e) => handleProjectChange("name", e.target.value)} /><label className="active">Project Name *</label></div></div>
                   <div className="col s12 m3">
@@ -528,6 +618,80 @@ export default function SuperUser() {
                       </div>
                     </div>
                   </div>
+                )}
+                </>
+                )}
+
+                {projectSettingsTab === "jira" && (
+                  <>
+                    <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, marginBottom: 14, background: "#f8fafc" }}>
+                      <div style={{ fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>Global Jira Connection</div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>
+                        Connected workspace: <b>{safeStr(jiraConnectStatus?.cloudName) || "Not connected"}</b>
+                        {safeStr(jiraConnectStatus?.cloudId) ? ` (${safeStr(jiraConnectStatus?.cloudId)})` : ""}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                        <button type="button" className="btn-flat" onClick={() => loadJiraConnectStatus()}>
+                          Refresh Jira Connection
+                        </button>
+                        {!!safeStr(jiraConnectStatus?.cloudId) && (
+                          <button
+                            type="button"
+                            className="btn-flat"
+                            onClick={() => handleProjectChange("jiraCloudId", safeStr(jiraConnectStatus?.cloudId))}
+                          >
+                            Use Connected Cloud ID
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      <div className="col s12">
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 800, color: "#334155" }}>
+                          <input
+                            type="checkbox"
+                            checked={projectForm.jiraEnabled}
+                            onChange={(e) => handleProjectChange("jiraEnabled", e.target.checked)}
+                          />
+                          <span>Enable Jira for this project</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      <div className="col s12 m4">
+                        <div className="input-field">
+                          <input
+                            value={projectForm.jiraProjectKey}
+                            onChange={(e) => handleProjectChange("jiraProjectKey", safeStr(e.target.value).toUpperCase())}
+                            placeholder="FLWEB"
+                          />
+                          <label className="active">Jira Project Key (Space)</label>
+                        </div>
+                      </div>
+                      <div className="col s12 m4">
+                        <div className="input-field">
+                          <input
+                            value={projectForm.jiraCloudId}
+                            onChange={(e) => handleProjectChange("jiraCloudId", e.target.value)}
+                            placeholder="Cloud ID"
+                          />
+                          <label className="active">Jira Cloud ID</label>
+                        </div>
+                      </div>
+                      <div className="col s12 m4">
+                        <div className="input-field">
+                          <input
+                            value={projectForm.jiraBoardId}
+                            onChange={(e) => handleProjectChange("jiraBoardId", e.target.value)}
+                            placeholder="Board ID (optional)"
+                          />
+                          <label className="active">Jira Board ID (optional)</label>
+                        </div>
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 <button className="btn" type="submit" disabled={projectSaving}>{projectSaving ? "Saving..." : editingProjectId ? "Update Project" : "Save Project"}</button>

@@ -11,6 +11,10 @@ export type ApiProject = {
   release_status?: "dev" | "internal" | "candidate" | "released" | string;
   channel?: "alpha" | "beta" | "stable" | string;
   platform?: string;
+  jira_enabled?: boolean | string;
+  jira_project_key?: string;
+  jira_cloud_id?: string;
+  jira_board_id?: string;
   createdAt?: string;
   updatedAt?: string;
   last_activity_at?: string;
@@ -29,4 +33,8 @@ export type SaveProjectBody = {
   release_status?: "dev" | "internal" | "candidate" | "released" | string;
   channel?: "alpha" | "beta" | "stable" | string;
   platform?: string;
+  jira_enabled?: boolean;
+  jira_project_key?: string;
+  jira_cloud_id?: string;
+  jira_board_id?: string;
 };

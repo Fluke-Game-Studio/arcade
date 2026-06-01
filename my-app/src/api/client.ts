@@ -33,6 +33,9 @@ import type {
     StartLinkedInConnectResponse,
     StartDiscordConnectBody,
     StartDiscordConnectResponse,
+    StartJiraConnectBody,
+    StartJiraConnectResponse,
+    JiraConnectStatusResponse,
     ApiCustomer,
     ApiProduct,
     CreateCustomerBody,
@@ -392,6 +395,138 @@ export class ApiClient {
     };
   }
 
+  async startJiraConnect(
+    body?: StartJiraConnectBody
+  ): Promise<StartJiraConnectResponse> {
+    const r = await fetch(`${API_BASE}/integrations/jira/start`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `startJiraConnect failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      authorizeUrl: String(payload?.authorizeUrl || ""),
+      returnTo: typeof payload?.returnTo === "string" ? payload.returnTo : undefined,
+      redirectUri:
+        typeof payload?.redirectUri === "string" ? payload.redirectUri : undefined,
+      scopes: Array.isArray(payload?.scopes) ? payload.scopes : undefined,
+    };
+  }
+
+  async getJiraConnectStatus(): Promise<JiraConnectStatusResponse> {
+    const r = await fetch(`${API_BASE}/integrations/jira/status`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getJiraConnectStatus failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      connected: Boolean(payload?.connected),
+      accountId: typeof payload?.accountId === "string" ? payload.accountId : undefined,
+      email: typeof payload?.email === "string" ? payload.email : undefined,
+      cloudId: typeof payload?.cloudId === "string" ? payload.cloudId : undefined,
+      cloudName: typeof payload?.cloudName === "string" ? payload.cloudName : undefined,
+      cloudUrl: typeof payload?.cloudUrl === "string" ? payload.cloudUrl : undefined,
+      scope: typeof payload?.scope === "string" ? payload.scope : undefined,
+      connectedAt:
+        typeof payload?.connectedAt === "string" ? payload.connectedAt : undefined,
+      tokenExpiresAt:
+        typeof payload?.tokenExpiresAt === "string"
+          ? payload.tokenExpiresAt
+          : undefined,
+    };
+  }
+
+  async disconnectJira(): Promise<{ ok: boolean }> {
+    const r = await fetch(`${API_BASE}/integrations/jira/disconnect`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `disconnectJira failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return { ok: Boolean(payload?.ok ?? true) };
+  }
+
+  async getAvailableAiAgents(): Promise<{
+    ok: boolean;
+    count: number;
+    agents: Array<{
+      agentId: string;
+      name?: string;
+      description?: string;
+      allowedActions?: string[];
+      approvalPolicy?: { mode?: string };
+    }>;
+  }> {
+    const r = await fetch(`${API_BASE}/ai/agents/available`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getAvailableAiAgents failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      count: Number(payload?.count) || 0,
+      agents: Array.isArray(payload?.agents) ? payload.agents : [],
+    };
+  }
+
+  async requestAiAgentAccess(body: { agentId: string; reason?: string }): Promise<{ ok: boolean; request?: any }> {
+    const r = await fetch(`${API_BASE}/ai/agent-access/request`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `requestAiAgentAccess failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      request: payload?.request,
+    };
+  }
+
+  async getMyAiAgentAccessRequests(): Promise<{ ok: boolean; count: number; requests: any[] }> {
+    const r = await fetch(`${API_BASE}/ai/agent-access/requests?status=all&limit=50`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getMyAiAgentAccessRequests failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      count: Number(payload?.count) || 0,
+      requests: Array.isArray(payload?.requests) ? payload.requests : [],
+    };
+  }
+
   async getProjects(): Promise<ApiProject[]> {
     const r = await fetch(`${API_BASE}/projects`, {
       method: "GET",
@@ -406,6 +541,90 @@ export class ApiClient {
     if (Array.isArray(payload)) return payload as ApiProject[];
     if (Array.isArray(payload?.items)) return payload.items as ApiProject[];
     return [];
+  }
+
+  async getJiraTickets(params?: {
+    projectId?: string;
+    weekStart?: string;
+    assignee?: string;
+    limit?: number;
+  }): Promise<{
+    ok: boolean;
+    projectId?: string;
+    jiraProjectKey?: string;
+    assignee?: string;
+    weekStart?: string;
+    count: number;
+    items: Array<{
+      key: string;
+      id?: string;
+      summary?: string;
+      status?: string;
+      assignee?: string;
+      updated?: string;
+      url?: string;
+    }>;
+  }> {
+    const qs = new URLSearchParams();
+    if (params?.projectId) qs.set("projectId", params.projectId);
+    if (params?.weekStart) qs.set("weekStart", params.weekStart);
+    if (params?.assignee) qs.set("assignee", params.assignee);
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      qs.set("limit", String(Math.max(1, Math.floor(params.limit))));
+    }
+    const r = await fetch(`${API_BASE}/jira/tickets${qs.toString() ? `?${qs.toString()}` : ""}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getJiraTickets failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      projectId: payload?.projectId,
+      jiraProjectKey: payload?.jiraProjectKey,
+      assignee: payload?.assignee,
+      weekStart: payload?.weekStart,
+      count: Number(payload?.count) || 0,
+      items: Array.isArray(payload?.items) ? payload.items : [],
+    };
+  }
+
+  async validateJiraTicket(params: {
+    ticketKey: string;
+    projectId?: string;
+  }): Promise<{
+    ok: boolean;
+    ticket?: {
+      key: string;
+      id?: string;
+      summary?: string;
+      status?: string;
+      assignee?: string;
+      updated?: string;
+      url?: string;
+    };
+  }> {
+    const qs = new URLSearchParams();
+    qs.set("ticketKey", params.ticketKey);
+    if (params?.projectId) qs.set("projectId", params.projectId);
+    const r = await fetch(`${API_BASE}/jira/tickets/validate?${qs.toString()}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `validateJiraTicket failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      ticket: payload?.ticket,
+    };
   }
 
   async saveProject(body: SaveProjectBody): Promise<{ ok: true }> {
@@ -1540,6 +1759,16 @@ export class ApiClient {
     agentEmployeeId?: string;
     agentId?: string;
     perform?: boolean;
+    mcpAction?:
+      | "upsert_job"
+      | "send_email"
+      | "submit_weekly_update"
+      | "search_jira_issues"
+      | "get_issue_details"
+      | "transition_issue"
+      | "add_comment"
+      | string;
+    mcpInput?: Record<string, any>;
   }): Promise<GenerateAwardsNarrativeResponse> {
     const context = body.context || "internal";
     const defaultAgent = this.resolveDefaultAgentEmployee(context);

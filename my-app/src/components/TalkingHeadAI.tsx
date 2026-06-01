@@ -7,7 +7,15 @@ const API_BASE = "https://xtipeal88c.execute-api.us-east-1.amazonaws.com";
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
 const CHAT_URL = `${API_BASE}/ai/chat/internal`;
 const TTS_URL = `${API_BASE}/ai/tts/internal`;
-const GENERATE_URL = `${API_BASE}/api/generate`;
+const REALTIME_SESSION_URL = `${API_BASE}/ai/realtime/session`;
+const REALTIME_IDLE_TIMEOUT_MS = 60_000;
+const REALTIME_SYSTEM_INSTRUCTIONS = [
+  "You are Fluke AI in the Talking Heads Training page.",
+  "This WebRTC session captures live voice. The page routes internal tasks to the Fluke backend agent workflow after transcription.",
+  "Do not tell the user to switch to WebSocket Chat. Do not give generic external instructions for Jira, updates, customers, projects, employees, access, or backend actions.",
+  "When the page asks you to acknowledge a completed backend task, summarize only the status briefly.",
+  "Keep answers concise and natural.",
+].join(" ");
 
 const PROVIDER_MODEL: Record<Exclude<AIProvider, "auto">, string> = {
   openai: "gpt-5-mini",
@@ -15,10 +23,6 @@ const PROVIDER_MODEL: Record<Exclude<AIProvider, "auto">, string> = {
 };
 
 // ─── TalkingHead local module config ──────────────────────────────────────────
-const TALKINGHEAD_MODULE_CANDIDATES = [
-  "./modules/talkinghead.mjs",
-  "./modules/talkingHead.mjs",
-];
 const AVATAR_OPTIONS = [
   { value: "/assets/brunette.glb", label: "Brunette" },
   { value: "/assets/brunette-t.glb", label: "Brunette T" },
@@ -146,29 +150,29 @@ const AVATAR_DEFAULTS: AvatarPolish = {
   browserSpeechPitch: 1.02,
   browserSpeechVolume: 1,
 
-  visemeStrengthBase: 0.92,
-  visemeStrengthWave: 0.28,
-  visemeStrengthFreq: 29,
+  visemeStrengthBase: 0.72,
+  visemeStrengthWave: 0.16,
+  visemeStrengthFreq: 15,
 
-  jawOpenBase: 0.33,
-  jawOpenWave: 0.26,
-  jawOpenFreq: 36,
+  jawOpenBase: 0.18,
+  jawOpenWave: 0.12,
+  jawOpenFreq: 19,
   jawOpenPhase: 0.7,
 
-  mouthOpenBase: 0.31,
-  mouthOpenWave: 0.27,
-  mouthOpenFreq: 39,
+  mouthOpenBase: 0.14,
+  mouthOpenWave: 0.1,
+  mouthOpenFreq: 21,
 
   visemeStartStrength: 0.9,
   visemeResumeStrength: 0.88,
 
-  fallbackTickMs: 36,
-  fallbackSpaceMs: 48,
-  fallbackCommaMs: 95,
-  fallbackSentenceMs: 160,
-  fallbackBoundaryKickoffMs: 60,
+  fallbackTickMs: 58,
+  fallbackSpaceMs: 72,
+  fallbackCommaMs: 160,
+  fallbackSentenceMs: 280,
+  fallbackBoundaryKickoffMs: 120,
 
-  smoothLerpRate: 44,
+  smoothLerpRate: 18,
 
   estimateMsPerWord: 355,
   estimateMinMs: 1800,
@@ -181,46 +185,68 @@ const AVATAR_MOODS = {
 } as const;
 
 const GOOGLE_LIPSYNC_PROFILE: LipProfile = {
-  visemeStrengthBase: 0.95,
-  visemeStrengthWave: 0.24,
-  visemeStrengthFreq: 30,
-  jawOpenBase: 0.3,
-  jawOpenWave: 0.23,
-  jawOpenFreq: 34,
+  visemeStrengthBase: 0.72,
+  visemeStrengthWave: 0.16,
+  visemeStrengthFreq: 15,
+  jawOpenBase: 0.18,
+  jawOpenWave: 0.12,
+  jawOpenFreq: 19,
   jawOpenPhase: 0.7,
-  mouthOpenBase: 0.28,
-  mouthOpenWave: 0.23,
-  mouthOpenFreq: 36,
+  mouthOpenBase: 0.14,
+  mouthOpenWave: 0.1,
+  mouthOpenFreq: 21,
   visemeStartStrength: 0.92,
   visemeResumeStrength: 0.9,
-  fallbackTickMs: 28,
-  fallbackSpaceMs: 40,
-  fallbackCommaMs: 78,
-  fallbackSentenceMs: 130,
-  fallbackBoundaryKickoffMs: 42,
-  smoothLerpRate: 42,
+  fallbackTickMs: 58,
+  fallbackSpaceMs: 72,
+  fallbackCommaMs: 160,
+  fallbackSentenceMs: 280,
+  fallbackBoundaryKickoffMs: 120,
+  smoothLerpRate: 18,
 };
 
 const KOKORO_NATIVE_LIPSYNC_PROFILE: LipProfile = {
-  visemeStrengthBase: 1.14,
+  visemeStrengthBase: 0.72,
   visemeStrengthWave: 0.16,
-  visemeStrengthFreq: 26,
-  jawOpenBase: 0.42,
-  jawOpenWave: 0.28,
-  jawOpenFreq: 33,
+  visemeStrengthFreq: 15,
+  jawOpenBase: 0.18,
+  jawOpenWave: 0.12,
+  jawOpenFreq: 19,
   jawOpenPhase: 0.7,
-  mouthOpenBase: 0.4,
-  mouthOpenWave: 0.28,
-  mouthOpenFreq: 35,
+  mouthOpenBase: 0.14,
+  mouthOpenWave: 0.1,
+  mouthOpenFreq: 21,
   visemeStartStrength: 1.0,
   visemeResumeStrength: 0.96,
-  fallbackTickMs: 30,
-  fallbackSpaceMs: 42,
-  fallbackCommaMs: 80,
-  fallbackSentenceMs: 130,
-  fallbackBoundaryKickoffMs: 45,
-  smoothLerpRate: 40,
+  fallbackTickMs: 58,
+  fallbackSpaceMs: 72,
+  fallbackCommaMs: 160,
+  fallbackSentenceMs: 280,
+  fallbackBoundaryKickoffMs: 120,
+  smoothLerpRate: 18,
 };
+
+const POLISH_PROFILE_STORAGE_KEY = "fluke_talking_head_polish_profile_v1";
+
+function loadStoredPolishProfile() {
+  if (typeof window === "undefined") return { ...AVATAR_DEFAULTS };
+  try {
+    const raw = window.localStorage.getItem(POLISH_PROFILE_STORAGE_KEY);
+    if (!raw) return { ...AVATAR_DEFAULTS };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ...AVATAR_DEFAULTS };
+    }
+    const next = { ...AVATAR_DEFAULTS };
+    (Object.keys(AVATAR_DEFAULTS) as Array<keyof AvatarPolish>).forEach((key) => {
+      const value = Number(parsed[key]);
+      if (Number.isFinite(value)) next[key] = value;
+    });
+    return next;
+  } catch {
+    return { ...AVATAR_DEFAULTS };
+  }
+}
 
 // ─── Witty loading lines ──────────────────────────────────────────────────────
 const CHAT_WITTY_MESSAGES = [
@@ -238,6 +264,7 @@ const CHAT_WITTY_MESSAGES = [
 type FocusMode = "face" | "full";
 type ProviderType = Exclude<AIProvider, "auto">;
 type TtsMode = "auto" | "google" | "kokoro" | "manual";
+type RealtimeState = "disconnected" | "connecting" | "connected";
 type ChatRole = "user" | "assistant";
 
 type ChatMetaTag = { label: string; value: string };
@@ -249,6 +276,8 @@ type ChatMessage = {
   ts: number;
   tags?: ChatMetaTag[];
   requestClientId?: string;
+  agentDebug?: any;
+  approval?: Record<string, any> | null;
   finalized?: boolean;
   stopped?: boolean;
 };
@@ -286,12 +315,17 @@ type TalkingHeadInstance = {
 };
 
 // ─── Viseme tables ────────────────────────────────────────────────────────────
+type RealtimeVisemeStep = {
+  viseme: string;
+  delayMs: number;
+};
+
 const VISEME_GROUPS: Record<string, string[]> = {
-  sil: [" ", ".", ",", "!", "?", ";", ":"],
+  sil: [" ", ".", ",", "!", "?"],
   PP: ["b", "m", "p"],
   FF: ["f", "v"],
-  TH: ["th"],
-  DD: ["t", "d", "l"],
+  TH: ["t", "d", "th"],
+  DD: ["l", "n", "r"],
   kk: ["k", "g", "q", "c"],
   CH: ["j", "ch", "sh"],
   SS: ["s", "z", "x"],
@@ -571,10 +605,17 @@ function formatSliderValue(value: number, digits = 2) {
 
 async function importTalkingHeadCtor(): Promise<TalkingHeadCtor> {
   let lastError: unknown = null;
+  const importExternalModule = (path: string) => import(/* @vite-ignore */ path);
 
-  for (const path of TALKINGHEAD_MODULE_CANDIDATES) {
+  const loaders: Array<() => Promise<any>> = [
+    () => import("./modules/talkinghead.mjs"),
+    () => importExternalModule("/assets/modules/talkinghead.mjs"),
+    () => importExternalModule("/assets/modules/talkingHead.mjs"),
+  ];
+
+  for (const load of loaders) {
     try {
-      const mod = await import(/* @vite-ignore */ path);
+      const mod = await load();
       const Ctor = mod?.TalkingHead || mod?.default?.TalkingHead || mod?.default || null;
       if (typeof Ctor === "function") {
         return Ctor as TalkingHeadCtor;
@@ -584,14 +625,13 @@ async function importTalkingHeadCtor(): Promise<TalkingHeadCtor> {
     }
   }
 
-  throw lastError || new Error("Could not import TalkingHead from /public/modules.");
+  throw lastError || new Error("Could not import TalkingHead module.");
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function TalkingHeadAI() {
   const { api } = useAuth();
   const token = String((api as any)?.token || "").trim();
-  const platform = String((api as any)?.getPlatform?.() || "portal").trim() || "portal";
 
   const sessionIdRef = useRef<string>(getStableSessionId());
   const avatarNodeRef = useRef<HTMLDivElement | null>(null);
@@ -634,20 +674,29 @@ export default function TalkingHeadAI() {
 
   const [provider, setProvider] = useState<ProviderType>("openai");
   const [ttsMode, setTtsMode] = useState<TtsMode>("auto");
+  const [agentMode, setAgentMode] = useState(true);
+  const [realtimeState, setRealtimeState] = useState<RealtimeState>("disconnected");
+  const [realtimeError, setRealtimeError] = useState("");
   const [selectedAvatarUrl, setSelectedAvatarUrl] = useState(DEFAULT_AVATAR_URL);
   const [googleVoiceName, setGoogleVoiceName] = useState(DEFAULT_TTS_VOICE);
   const [kokoroVoiceName, setKokoroVoiceName] = useState(DEFAULT_KOKORO_VOICE);
   const providerRef = useRef<ProviderType>("openai");
   const resolvedAiProviderRef = useRef<ProviderType>("openai");
   const ttsModeRef = useRef<TtsMode>("auto");
+  const agentModeRef = useRef(true);
   const googleVoiceNameRef = useRef(DEFAULT_TTS_VOICE);
   const kokoroVoiceNameRef = useRef(DEFAULT_KOKORO_VOICE);
   const [focusMode, setFocusMode] = useState<FocusMode>("face");
   const [activeAnim, setActiveAnim] = useState<AnimName | null>(null);
-  const [polish, setPolish] = useState<AvatarPolish>({ ...AVATAR_DEFAULTS });
+  const [polish, setPolish] = useState<AvatarPolish>(() => loadStoredPolishProfile());
 
   const [polishOpen, setPolishOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState({
+    route: true,
+    animation: true,
+    voice: false,
+    avatar: false,
+    samples: false,
     mouth: true,
     jaw: true,
     viseme: true,
@@ -657,12 +706,125 @@ export default function TalkingHeadAI() {
     ttsdebug: false,
   });
 
+  const voiceControls = (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {(["auto", "google", "kokoro", "manual"] as TtsMode[]).map((m) => (
+          <React.Fragment key={`tts_${m}`}>
+            {renderIconButton({
+              title:
+                m === "auto"
+                  ? "TTS Auto"
+                  : m === "google"
+                  ? "TTS Google"
+                  : m === "kokoro"
+                  ? "TTS Kokoro"
+                  : "TTS Manual",
+              icon:
+                m === "auto"
+                  ? "auto_mode"
+                  : m === "google"
+                  ? "record_voice_over"
+                  : m === "kokoro"
+                  ? "graphic_eq"
+                  : "volume_off",
+              active: ttsMode === m,
+              tone: "amber",
+              onClick: () => setTtsMode(m),
+            })}
+          </React.Fragment>
+        ))}
+      </div>
+      <select
+        className="browser-default"
+        value={googleVoiceName}
+        onChange={(e) => setGoogleVoiceName(e.target.value)}
+        style={{
+          width: "100%",
+          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(255,255,255,0.05)",
+          color: "#f8fafc",
+          height: 38,
+          padding: "0 10px",
+        }}
+        title="Google voice name used by backend TTS route"
+      >
+        {GOOGLE_VOICE_OPTIONS.map((v) => (
+          <option key={v.value} value={v.value}>
+            {v.label}
+          </option>
+        ))}
+      </select>
+      <select
+        className="browser-default"
+        value={kokoroVoiceName}
+        onChange={(e) => setKokoroVoiceName(e.target.value)}
+        style={{
+          width: "100%",
+          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(255,255,255,0.05)",
+          color: "#f8fafc",
+          height: 38,
+          padding: "0 10px",
+        }}
+        title="Kokoro/HeadTTS voice used by backend TTS route"
+      >
+        {KOKORO_VOICE_OPTIONS.map((v) => (
+          <option key={v.value} value={v.value}>
+            {v.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  const avatarControls = (
+    <select
+      className="browser-default"
+      value={selectedAvatarUrl}
+      onChange={(e) => setSelectedAvatarUrl(e.target.value)}
+      style={{
+        width: "100%",
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.05)",
+        color: "#f8fafc",
+        height: 38,
+        padding: "0 10px",
+      }}
+      title="Select avatar from /public/assets"
+    >
+      {AVATAR_OPTIONS.map((a) => (
+        <option key={a.value} value={a.value}>
+          {a.label}
+        </option>
+      ))}
+    </select>
+  );
+
+  const sampleControls = (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {SAMPLE_DIALOGS.map((line) => (
+        <React.Fragment key={line}>
+          {renderIconButton({
+            title: line,
+            icon: "play_arrow",
+            tone: "plain",
+            onClick: () => playSampleDialogue(line),
+          })}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState("");
   const [ttsDebug, setTtsDebug] = useState<Record<string, any> | null>(null);
   const [statusText, setStatusText] = useState("Loading avatar...");
-  const [wsState, setWsState] = useState<"disconnected" | "connecting" | "connected">(
+  const [, setWsState] = useState<"disconnected" | "connecting" | "connected">(
     "disconnected"
   );
   const [avatarReady, setAvatarReady] = useState(false);
@@ -676,6 +838,10 @@ export default function TalkingHeadAI() {
   useEffect(() => {
     ttsModeRef.current = ttsMode;
   }, [ttsMode]);
+
+  useEffect(() => {
+    agentModeRef.current = agentMode;
+  }, [agentMode]);
 
   useEffect(() => {
     googleVoiceNameRef.current = googleVoiceName;
@@ -703,9 +869,26 @@ export default function TalkingHeadAI() {
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimePcRef = useRef<RTCPeerConnection | null>(null);
+  const realtimeDcRef = useRef<RTCDataChannel | null>(null);
+  const realtimeMicStreamRef = useRef<MediaStream | null>(null);
+  const realtimeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const realtimeAudioCtxRef = useRef<AudioContext | null>(null);
+  const realtimeAnalyserRef = useRef<AnalyserNode | null>(null);
+  const realtimeMeterFrameRef = useRef<number | null>(null);
+  const realtimeIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimeSpeakingRef = useRef(false);
+  const realtimeAssistantTextRef = useRef("");
+  const realtimeVisemeQueueRef = useRef<RealtimeVisemeStep[]>([]);
+  const realtimeNextVisemeAtRef = useRef(0);
+  const realtimeHasTranscriptVisemesRef = useRef(false);
+  const activeRequestSourceRef = useRef<"typed" | "webrtc">("typed");
+  const activeRequestQuestionRef = useRef("");
+  const loadingRef = useRef(false);
   const activeRequestClientIdRef = useRef<string | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
   const registeredClientIdRef = useRef<string | null>(null);
+  const wsConnectPromiseRef = useRef<Promise<boolean> | null>(null);
   const speechDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speakSeqRef = useRef(0);
 
@@ -721,11 +904,23 @@ export default function TalkingHeadAI() {
   }, [messages, loading]);
 
   useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(POLISH_PROFILE_STORAGE_KEY, JSON.stringify(polish));
+    } catch {
+      //
+    }
+  }, [polish]);
+
+  useEffect(() => {
     if (!textareaRef.current) return;
     textareaRef.current.style.height = "0px";
     textareaRef.current.style.height = `${Math.min(
-      Math.max(textareaRef.current.scrollHeight, 56),
-      160
+      Math.max(textareaRef.current.scrollHeight, 38),
+      92
     )}px`;
   }, [input]);
 
@@ -784,27 +979,19 @@ export default function TalkingHeadAI() {
       const start = speechAnimStartTsRef.current ?? now;
       const t = (now - start) / 1000;
       speechAnimLastTsRef.current = now;
+      const activeViseme = activeVisemeRef.current;
+      const isSilent = !activeViseme || activeViseme === "sil";
       const lip = activeLipProfileRef.current;
-      const isNativeServerVisemeMode = nativeServerVisemeModeRef.current;
-
       const alpha = 1 - Math.exp(-delta * lip.smoothLerpRate);
 
       const targetVisemeStrength =
-        activeVisemeRef.current && activeVisemeRef.current !== "sil"
-          ? isNativeServerVisemeMode
-            ? lip.visemeStrengthBase
-            : lip.visemeStrengthBase + lip.visemeStrengthWave * Math.sin(t * lip.visemeStrengthFreq)
-          : 0;
-
-      const targetJawOpen =
-        lip.jawOpenBase +
-        (isNativeServerVisemeMode ? lip.jawOpenWave * 0.35 : lip.jawOpenWave) *
-          Math.sin(t * lip.jawOpenFreq + lip.jawOpenPhase);
-
-      const targetMouthOpen =
-        lip.mouthOpenBase +
-        (isNativeServerVisemeMode ? lip.mouthOpenWave * 0.35 : lip.mouthOpenWave) *
-          Math.sin(t * lip.mouthOpenFreq);
+        isSilent ? 0 : lip.visemeStrengthBase + lip.visemeStrengthWave * Math.sin(t * lip.visemeStrengthFreq);
+      const targetJawOpen = isSilent
+        ? 0
+        : lip.jawOpenBase + lip.jawOpenWave * Math.sin(t * lip.jawOpenFreq + lip.jawOpenPhase);
+      const targetMouthOpen = isSilent
+        ? 0
+        : lip.mouthOpenBase + lip.mouthOpenWave * Math.sin(t * lip.mouthOpenFreq);
 
       currentVisemeStrengthRef.current +=
         (targetVisemeStrength - currentVisemeStrengthRef.current) * alpha;
@@ -813,9 +1000,9 @@ export default function TalkingHeadAI() {
       currentMouthOpenRef.current +=
         (targetMouthOpen - currentMouthOpenRef.current) * alpha;
 
-      if (activeVisemeRef.current && activeVisemeRef.current !== "sil") {
+      if (!isSilent && activeViseme) {
         head.setFixedValue?.(
-          `viseme_${activeVisemeRef.current}`,
+          `viseme_${activeViseme}`,
           Math.max(0, currentVisemeStrengthRef.current)
         );
       }
@@ -847,6 +1034,11 @@ export default function TalkingHeadAI() {
 
     if (viseme !== "sil") {
       head.setFixedValue?.(`viseme_${viseme}`, strength);
+    } else {
+      currentJawOpenRef.current = 0;
+      currentMouthOpenRef.current = 0;
+      head.setFixedValue?.("jawOpen", 0);
+      head.setFixedValue?.("mouthOpen", 0);
     }
   }
 
@@ -867,8 +1059,8 @@ export default function TalkingHeadAI() {
       const ch = normalized[charIndex] || " ";
       const viseme = isPauseChar(ch) ? "sil" : visemeForTextAt(normalized, charIndex);
       applyViseme(viseme);
-      const lip = activeLipProfileRef.current;
 
+      const lip = activeLipProfileRef.current;
       let delay = lip.fallbackTickMs;
       if (ch === " ") delay = lip.fallbackSpaceMs;
       if (/[,;:]/.test(ch)) delay = lip.fallbackCommaMs;
@@ -977,14 +1169,471 @@ export default function TalkingHeadAI() {
     }
   }
 
+  function stopRealtimeAudioMeter() {
+    if (realtimeMeterFrameRef.current !== null) {
+      window.cancelAnimationFrame(realtimeMeterFrameRef.current);
+      realtimeMeterFrameRef.current = null;
+    }
+    try {
+      void realtimeAudioCtxRef.current?.close();
+    } catch {
+      //
+    }
+    realtimeAudioCtxRef.current = null;
+    realtimeAnalyserRef.current = null;
+    realtimeSpeakingRef.current = false;
+    realtimeVisemeQueueRef.current = [];
+    realtimeNextVisemeAtRef.current = 0;
+    realtimeHasTranscriptVisemesRef.current = false;
+    setSpeaking(false);
+    clearAllVisemes();
+  }
+
+  function clearRealtimeIdleTimer() {
+    if (realtimeIdleTimerRef.current !== null) {
+      window.clearTimeout(realtimeIdleTimerRef.current);
+      realtimeIdleTimerRef.current = null;
+    }
+  }
+
+  function armRealtimeIdleTimer() {
+    clearRealtimeIdleTimer();
+    realtimeIdleTimerRef.current = window.setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          role: "assistant",
+          content: "WebRTC mic disconnected after idle time to avoid unnecessary realtime usage.",
+          ts: Date.now(),
+          finalized: true,
+          tags: [
+            { label: "Mode", value: "WebRTC Mic" },
+            { label: "Realtime", value: "idle stopped" },
+          ],
+        },
+      ]);
+      stopRealtimeSession();
+    }, REALTIME_IDLE_TIMEOUT_MS);
+  }
+
+  function startRealtimeAudioMeter(stream: MediaStream) {
+    stopRealtimeAudioMeter();
+
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    const ctx = new AudioCtx();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.72;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+
+    realtimeAudioCtxRef.current = ctx;
+    realtimeAnalyserRef.current = analyser;
+
+    const samples = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      const activeAnalyser = realtimeAnalyserRef.current;
+      const pc = realtimePcRef.current;
+      if (!activeAnalyser || !pc || pc.connectionState === "closed") {
+        realtimeMeterFrameRef.current = null;
+        return;
+      }
+
+      activeAnalyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (let i = 0; i < samples.length; i += 1) {
+        const centered = (samples[i] - 128) / 128;
+        sum += centered * centered;
+      }
+
+      const rms = Math.sqrt(sum / Math.max(1, samples.length));
+      const gatedRms = rms < 0.026 ? 0 : rms;
+      const level = Math.max(0, Math.min(1, gatedRms * 7.2));
+      const isSpeakingNow = level > 0.035;
+
+      driveRealtimeVisemeFromAudio(level, isSpeakingNow);
+
+      if (isSpeakingNow !== realtimeSpeakingRef.current) {
+        realtimeSpeakingRef.current = isSpeakingNow;
+        setSpeaking(isSpeakingNow);
+        if (isSpeakingNow) setStatusText("Realtime voice speaking");
+      }
+
+      realtimeMeterFrameRef.current = window.requestAnimationFrame(tick);
+    };
+
+    realtimeMeterFrameRef.current = window.requestAnimationFrame(tick);
+  }
+
+  function queueRealtimeTranscriptVisemes(deltaText: string) {
+    const clean = normalizeSpeechText(deltaText);
+    if (!clean) return;
+
+    const lip = activeLipProfileRef.current;
+    const steps: RealtimeVisemeStep[] = [];
+    let i = 0;
+
+    while (i < clean.length) {
+      const ch = clean[i] || " ";
+      const lower = clean.slice(i, i + 2).toLowerCase();
+      const viseme = isPauseChar(ch) ? "sil" : visemeForTextAt(clean, i);
+      let delayMs = lip.fallbackTickMs;
+
+      if (ch === " ") delayMs = lip.fallbackSpaceMs;
+      if (/[,;:]/.test(ch)) delayMs = lip.fallbackCommaMs;
+      if (/[.!?]/.test(ch)) delayMs = lip.fallbackSentenceMs;
+
+      const previous = steps[steps.length - 1];
+      if (previous && previous.viseme === viseme) {
+        previous.delayMs = Math.min(previous.delayMs + delayMs, 140);
+      } else {
+        steps.push({ viseme, delayMs });
+      }
+
+      i += ["th", "ch", "sh"].includes(lower) ? 2 : 1;
+    }
+
+    if (!steps.length) return;
+    realtimeHasTranscriptVisemesRef.current = true;
+    realtimeVisemeQueueRef.current = [...realtimeVisemeQueueRef.current, ...steps].slice(-220);
+  }
+
+  function driveRealtimeVisemeFromAudio(level: number, isSpeakingNow: boolean) {
+    const head = headRef.current;
+    if (!head?.setFixedValue) return;
+
+    if (!isSpeakingNow) {
+      realtimeNextVisemeAtRef.current = 0;
+      applyViseme("sil", 0, true);
+      head.setFixedValue("jawOpen", 0);
+      head.setFixedValue("mouthOpen", 0);
+      return;
+    }
+
+    const now = performance.now();
+    const lip = activeLipProfileRef.current;
+    const queue = realtimeVisemeQueueRef.current;
+
+    if (queue.length && now >= realtimeNextVisemeAtRef.current) {
+      const step = queue.shift();
+      if (step) {
+        const strength = Math.min(
+          1.12,
+          Math.max(0.3, lip.visemeStrengthBase * (0.55 + level * 0.55))
+        );
+        applyViseme(step.viseme, step.viseme === "sil" ? 0 : strength, true);
+        const energyScale = level > 0.22 ? 0.38 : level > 0.11 ? 0.52 : 0.66;
+        realtimeNextVisemeAtRef.current = now + Math.max(12, step.delayMs * energyScale);
+      }
+    } else if (!queue.length && now >= realtimeNextVisemeAtRef.current) {
+      const fallbackViseme = level > 0.24 ? "aa" : level > 0.14 ? "O" : "sil";
+      const strength = realtimeHasTranscriptVisemesRef.current
+        ? Math.min(0.48, level * 1.05)
+        : Math.min(0.62, level * 1.45);
+      applyViseme(fallbackViseme, fallbackViseme === "sil" ? 0 : strength, true);
+      realtimeNextVisemeAtRef.current = now + 18;
+    }
+
+    const isOpenViseme = !!activeVisemeRef.current;
+    head.setFixedValue("jawOpen", isOpenViseme ? Math.min(0.32, 0.18 + level * 0.24) : 0);
+    head.setFixedValue("mouthOpen", isOpenViseme ? Math.min(0.24, 0.14 + level * 0.18) : 0);
+  }
+
+  function stopRealtimeSession() {
+    clearRealtimeIdleTimer();
+    stopRealtimeAudioMeter();
+    try {
+      realtimeDcRef.current?.close();
+    } catch {
+      //
+    }
+    try {
+      realtimePcRef.current?.close();
+    } catch {
+      //
+    }
+    realtimeMicStreamRef.current?.getTracks().forEach((track) => track.stop());
+    if (realtimeAudioRef.current) {
+      realtimeAudioRef.current.pause();
+      realtimeAudioRef.current.srcObject = null;
+    }
+    realtimeDcRef.current = null;
+    realtimePcRef.current = null;
+    realtimeMicStreamRef.current = null;
+    realtimeAudioRef.current = null;
+    realtimeAssistantTextRef.current = "";
+    setRealtimeState("disconnected");
+    setStatusText("Ready");
+  }
+
+  function extractRealtimeClientSecret(payload: any) {
+    return (
+      payload?.client_secret?.value ||
+      payload?.client_secret?.secret ||
+      payload?.client_secret ||
+      payload?.value ||
+      payload?.session?.client_secret?.value ||
+      payload?.session?.client_secret?.secret ||
+      payload?.session?.client_secret ||
+      payload?.session?.value ||
+      ""
+    );
+  }
+
+  function buildRealtimeTaskFollowupInstruction(question: string, backendReply: string) {
+    const cleanQuestion = polishAssistantReply(question).slice(0, 500);
+    const cleanReply = polishAssistantReply(backendReply).slice(0, 1600);
+    return [
+      "A Fluke backend agent task just completed after the user's voice request.",
+      `User request: ${cleanQuestion || "(voice request)"}`,
+      `Backend result shown on screen: ${cleanReply || "(no text result)"}`,
+      "Speak only a short conversational acknowledgement or status, one or two sentences.",
+      "Do not read long lists, ticket titles, logs, JSON, ids, or the full backend result aloud.",
+      "Mention if the task completed, needs approval, was denied, or failed. Then invite a follow-up question.",
+    ].join("\n");
+  }
+
+  async function reconnectRealtimeForFollowup(question: string, backendReply: string) {
+    if (!token) return;
+    window.setTimeout(() => {
+      void connectRealtimeMini({
+        initialPrompt: buildRealtimeTaskFollowupInstruction(question, backendReply),
+        suppressWelcome: true,
+      });
+    }, 300);
+  }
+
+  function handleRealtimeEvent(event: any) {
+    const type = String(event?.type || "");
+    if (!type) return;
+    armRealtimeIdleTimer();
+
+    if (type === "response.output_audio_transcript.delta" || type === "response.output_text.delta") {
+      const delta = String(event?.delta || "");
+      realtimeAssistantTextRef.current += delta;
+      queueRealtimeTranscriptVisemes(delta);
+      return;
+    }
+
+    if (type === "response.output_audio_transcript.done" || type === "response.output_text.done") {
+      const text = polishAssistantReply(
+        String(event?.transcript || event?.text || realtimeAssistantTextRef.current)
+      );
+      realtimeAssistantTextRef.current = "";
+      if (!text) return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          role: "assistant",
+          content: text,
+          ts: Date.now(),
+          finalized: true,
+          tags: [
+            { label: "Mode", value: "Realtime" },
+            { label: "Provider", value: "openai" },
+            { label: "Model", value: "gpt-realtime-mini" },
+          ],
+        },
+      ]);
+      return;
+    }
+
+    if (
+      type === "response.output_audio.done" ||
+      type === "response.audio.done" ||
+      type === "output_audio_buffer.stopped"
+    ) {
+      realtimeVisemeQueueRef.current = [];
+      realtimeNextVisemeAtRef.current = 0;
+      applyViseme("sil", 0, true);
+      return;
+    }
+
+    if (type === "conversation.item.input_audio_transcription.completed") {
+      const transcript = polishAssistantReply(String(event?.transcript || ""));
+      if (!transcript) return;
+      stopRealtimeSession();
+      void runBackendAgentText(transcript, {
+        source: "webrtc",
+        clearInput: false,
+        pauseRealtime: false,
+        forceAgent: true,
+      });
+      return;
+    }
+
+    if (type === "error") {
+      const msg = String(event?.error?.message || event?.message || "Realtime error");
+      setRealtimeError(msg);
+      setStatusText("Realtime error");
+    }
+  }
+
+  async function connectRealtimeMini(options?: { initialPrompt?: string; suppressWelcome?: boolean }) {
+    if (realtimeState !== "disconnected") {
+      stopRealtimeSession();
+      return;
+    }
+    if (!token) {
+      setRealtimeError("Auth token is missing.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRealtimeError("This browser does not expose microphone capture.");
+      return;
+    }
+
+    setRealtimeError("");
+    setRealtimeState("connecting");
+    setStatusText("Connecting realtime voice...");
+
+    try {
+      const sessionRes = await fetch(REALTIME_SESSION_URL, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-realtime-mini",
+          voice: "marin",
+          instructions: REALTIME_SYSTEM_INSTRUCTIONS,
+        }),
+      });
+      const sessionRaw = await sessionRes.text();
+      let sessionData: any = {};
+      try {
+        sessionData = sessionRaw ? JSON.parse(sessionRaw) : {};
+      } catch {
+        sessionData = { message: sessionRaw };
+      }
+      if (!sessionRes.ok) {
+        throw new Error(sessionData?.error || sessionData?.message || `Realtime session ${sessionRes.status}`);
+      }
+
+      const clientSecret = extractRealtimeClientSecret(sessionData);
+      if (!clientSecret) throw new Error("Realtime client secret was not returned.");
+
+      const pc = new RTCPeerConnection();
+      realtimePcRef.current = pc;
+
+      const audioEl = new Audio();
+      audioEl.autoplay = true;
+      audioEl.setAttribute("playsinline", "true");
+      realtimeAudioRef.current = audioEl;
+
+      pc.ontrack = (event) => {
+        const stream = event.streams?.[0] || new MediaStream([event.track]);
+        audioEl.srcObject = stream;
+        void audioEl.play().catch(() => {});
+        startRealtimeAudioMeter(stream);
+      };
+      pc.onconnectionstatechange = () => {
+        if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+          stopRealtimeSession();
+        }
+      };
+
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      realtimeMicStreamRef.current = micStream;
+      micStream.getAudioTracks().forEach((track) => pc.addTrack(track, micStream));
+      micStream.getAudioTracks().forEach((track) => {
+        track.onended = () => stopRealtimeSession();
+      });
+
+      const dc = pc.createDataChannel("oai-events");
+      realtimeDcRef.current = dc;
+      dc.onopen = () => {
+        const instructions =
+          options?.initialPrompt ||
+          (!options?.suppressWelcome
+            ? "Briefly confirm realtime voice is connected. For Fluke internal tasks, capture the request and hand it to the WebSocket Chat agent workflow."
+            : "");
+        if (instructions) {
+          dc.send(
+            JSON.stringify({
+              type: "response.create",
+              response: { instructions },
+            })
+          );
+        }
+      };
+      dc.onmessage = (event) => {
+        try {
+          handleRealtimeEvent(JSON.parse(String(event.data || "{}")));
+        } catch {
+          //
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${clientSecret}`,
+          "Content-Type": "application/sdp",
+        },
+        body: offer.sdp || "",
+      });
+      const answerSdp = await sdpRes.text();
+      if (!sdpRes.ok) {
+        throw new Error(answerSdp || `Realtime SDP ${sdpRes.status}`);
+      }
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+      setRealtimeState("connected");
+      armRealtimeIdleTimer();
+      setStatusText("Realtime voice connected");
+      if (!options?.suppressWelcome) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid(),
+            role: "assistant",
+            content: "Realtime voice is connected with gpt-realtime-mini.",
+            ts: Date.now(),
+            finalized: true,
+            tags: [
+              { label: "Mode", value: "Realtime" },
+              { label: "Provider", value: "openai" },
+              { label: "Model", value: "gpt-realtime-mini" },
+            ],
+          },
+        ]);
+      }
+    } catch (err: any) {
+      stopRealtimeSession();
+      const msg = err?.message || "Realtime connection failed.";
+      setRealtimeError(msg);
+      setStatusText("Realtime error");
+    }
+  }
+
   useEffect(() => {
     return () => {
       submitAbortRef.current?.abort();
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+      stopRealtimeSession();
       clearSpeechTimer();
       clearFallbackVisemeTimer();
       stopSpeechAnimationLoop();
-      wsRef.current?.close();
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
 
       try {
         headRef.current?.stopAnimation?.();
@@ -1126,13 +1775,6 @@ export default function TalkingHeadAI() {
     setActiveAnim((prev) => (prev === name ? null : name));
   }
 
-  function registerSocketClientId(clientId: string): boolean {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
-    wsRef.current.send(JSON.stringify({ action: "register", clientId }));
-    registeredClientIdRef.current = clientId;
-    return true;
-  }
-
   function updateLatestForRequest(
     requestClientId: string,
     updater: (msg: ChatMessage) => ChatMessage
@@ -1149,36 +1791,28 @@ export default function TalkingHeadAI() {
     });
   }
 
-  function connectWebSocket() {
-    if (!token) return;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-    if (wsRef.current?.readyState === WebSocket.CONNECTING) return;
+  function registerSocketClientId(clientId: string): boolean {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
+    wsRef.current.send(JSON.stringify({ action: "register", clientId }));
+    registeredClientIdRef.current = clientId;
+    return true;
+  }
 
-    setWsState("connecting");
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-    registeredClientIdRef.current = null;
-
-    ws.onopen = () => {
-      setWsState("connected");
-      registerSocketClientId(activeRequestClientIdRef.current || `${sessionIdRef.current}__idle`);
-    };
-
+  function attachWebSocketHandlers(ws: WebSocket) {
     ws.onmessage = (event) => {
       let data: any = {};
       try {
-        data = JSON.parse(event.data);
+        data = JSON.parse(String(event.data || "{}"));
       } catch {
         return;
       }
 
       if (data?.type === "registered" || data?.type === "ack") return;
-      const reqId = activeRequestClientIdRef.current;
+      const reqId = String(data?.clientId || activeRequestClientIdRef.current || "");
       if (!reqId) return;
-      if (data?.clientId && String(data.clientId) !== reqId) return;
+      if (activeRequestClientIdRef.current && reqId !== activeRequestClientIdRef.current) return;
 
       if (data?.type === "ai-status") {
-        const activeProvider = providerRef.current;
         updateLatestForRequest(reqId, (m) =>
           m.finalized || m.stopped
             ? m
@@ -1186,8 +1820,9 @@ export default function TalkingHeadAI() {
                 ...m,
                 tags: [
                   { label: "Status", value: String(data?.status || "running") },
-                  { label: "Provider", value: activeProvider },
-                  { label: "Model", value: PROVIDER_MODEL[activeProvider] },
+                  { label: "Mode", value: agentModeRef.current ? "Agent" : "Chat" },
+                  { label: "Provider", value: providerRef.current },
+                  { label: "Model", value: PROVIDER_MODEL[providerRef.current] },
                   { label: "Request", value: reqId },
                 ],
               }
@@ -1197,96 +1832,57 @@ export default function TalkingHeadAI() {
 
       if (data?.type === "ai-result") {
         const reply = polishAssistantReply(String(data?.reply || "No response received."));
-        const reportedProvider = String(data?.provider || "").toLowerCase();
-        if (reportedProvider === "ollama" || reportedProvider === "openai") {
-          resolvedAiProviderRef.current = reportedProvider as ProviderType;
-          setProvider(reportedProvider as ProviderType);
-        }
-        const activeProvider = providerRef.current;
-        const resolvedTtsMode = resolveRequestedTtsMode();
-        const delayReplyForVoice = resolvedTtsMode !== "manual";
-
-        if (delayReplyForVoice) {
-          updateLatestForRequest(reqId, (m) =>
-            m.stopped
-              ? m
-              : {
-                  ...m,
-                  content: "Synthesizing voice...",
-                  finalized: false,
-                    tags: [
-                      { label: "Status", value: "tts" },
-                      { label: "Provider", value: String(data?.provider || activeProvider) },
-                      { label: "Model", value: PROVIDER_MODEL[activeProvider] },
-                      { label: "Request", value: reqId },
-                    ],
-                }
-          );
-          setStatusText("Synthesizing voice...");
-          void speakWithTalkingHead(reply, {
-            onReadyToRevealText: () => {
-              if (activeRequestClientIdRef.current !== reqId) return;
-              updateLatestForRequest(reqId, (m) =>
-                m.stopped
-                  ? m
-                  : {
-                      ...m,
-                      content: reply,
-                      finalized: true,
-                      tags: [
-                        { label: "Status", value: "done" },
-                        { label: "Provider", value: String(data?.provider || activeProvider) },
-                        { label: "Model", value: PROVIDER_MODEL[activeProvider] },
-                        { label: "Request", value: reqId },
-                      ],
-                    }
-              );
-              setLoading(false);
-              activeRequestClientIdRef.current = null;
-            },
-          });
-        } else {
-          updateLatestForRequest(reqId, (m) =>
-            m.stopped
-              ? m
-              : {
-                  ...m,
-                  content: reply,
-                  finalized: true,
-                  tags: [
-                    { label: "Status", value: "done" },
-                    { label: "Provider", value: String(data?.provider || activeProvider) },
-                    { label: "Model", value: PROVIDER_MODEL[activeProvider] },
-                    { label: "Request", value: reqId },
-                  ],
-                }
-          );
-          setLoading(false);
-          activeRequestClientIdRef.current = null;
-          void speakWithTalkingHead(reply);
-        }
-        return;
-      }
-
-      if (data?.type === "ai-error") {
-        const errMsg = String(data?.error || "Unknown websocket error");
+        const requestSource = activeRequestSourceRef.current;
+        const requestQuestion = activeRequestQuestionRef.current;
         updateLatestForRequest(reqId, (m) =>
           m.stopped
             ? m
             : {
                 ...m,
-                content: `Error: ${errMsg}`,
+                content: reply,
                 finalized: true,
+                agentDebug: data,
+                approval:
+                  data?.meta?.approval && typeof data.meta.approval === "object"
+                    ? data.meta.approval
+                    : null,
                 tags: [
-                  { label: "Status", value: "Error" },
+                  { label: "Status", value: "done" },
+                  { label: "Mode", value: agentModeRef.current ? "Agent" : "Chat" },
+                  ...(requestSource === "webrtc" ? [{ label: "Input", value: "Voice" }] : []),
+                  { label: "Provider", value: String(data?.provider || providerRef.current) },
+                  { label: "Model", value: String(data?.model || PROVIDER_MODEL[providerRef.current]) },
                   { label: "Request", value: reqId },
                 ],
               }
         );
-        setErrorText(errMsg);
+        setLoading(false);
+        activeRequestClientIdRef.current = null;
+        activeRequestSourceRef.current = "typed";
+        activeRequestQuestionRef.current = "";
+        if (requestSource === "webrtc") {
+          void reconnectRealtimeForFollowup(requestQuestion, reply);
+        }
+        return;
+      }
+
+      if (data?.type === "ai-error") {
+        const msg = String(data?.error || "Unknown websocket error");
+        updateLatestForRequest(reqId, (m) => ({
+          ...m,
+          content: `Error: ${msg}`,
+          finalized: true,
+          tags: [
+            { label: "Status", value: "Error" },
+            { label: "Request", value: reqId },
+          ],
+        }));
+        setErrorText(msg);
         setStatusText("Error");
         setLoading(false);
         activeRequestClientIdRef.current = null;
+        activeRequestSourceRef.current = "typed";
+        activeRequestQuestionRef.current = "";
       }
     };
 
@@ -1294,14 +1890,68 @@ export default function TalkingHeadAI() {
       setWsState("disconnected");
       wsRef.current = null;
       registeredClientIdRef.current = null;
-
-      if (token) {
-        if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = window.setTimeout(connectWebSocket, 1200);
-      }
     };
 
-    ws.onerror = () => setWsState("disconnected");
+    ws.onerror = () => {
+      setWsState("disconnected");
+    };
+  }
+
+  async function ensureWebSocketConnected(clientId: string): Promise<boolean> {
+    if (!token) return false;
+
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      return registeredClientIdRef.current === clientId || registerSocketClientId(clientId);
+    }
+
+    if (wsConnectPromiseRef.current) {
+      await wsConnectPromiseRef.current;
+      return wsRef.current?.readyState === WebSocket.OPEN && registerSocketClientId(clientId);
+    }
+
+    setWsState("connecting");
+    wsConnectPromiseRef.current = new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+      registeredClientIdRef.current = null;
+      attachWebSocketHandlers(ws);
+
+      const timeout = window.setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          try {
+            ws.close();
+          } catch {
+            //
+          }
+        }
+        setWsState("disconnected");
+        resolve(false);
+      }, 8000);
+
+      ws.onopen = () => {
+        window.clearTimeout(timeout);
+        setWsState("connected");
+        resolve(true);
+      };
+
+      const originalClose = ws.onclose;
+      ws.onclose = (event) => {
+        window.clearTimeout(timeout);
+        originalClose?.call(ws, event);
+        resolve(false);
+      };
+
+      const originalError = ws.onerror;
+      ws.onerror = (event) => {
+        originalError?.call(ws, event);
+        if (ws.readyState !== WebSocket.OPEN) resolve(false);
+      };
+    }).finally(() => {
+      wsConnectPromiseRef.current = null;
+    });
+
+    const connected = await wsConnectPromiseRef.current;
+    return connected && registerSocketClientId(clientId);
   }
 
   function resolveRequestedTtsMode() {
@@ -1349,20 +1999,6 @@ export default function TalkingHeadAI() {
     parsed.requestedMode = mode;
     return parsed;
   }
-
-  useEffect(() => {
-    if (!token) return;
-
-    connectWebSocket();
-
-    return () => {
-      if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
-      wsRef.current?.close();
-      wsRef.current = null;
-      registeredClientIdRef.current = null;
-      setWsState("disconnected");
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function speakWithTalkingHead(
     text: string,
@@ -1535,14 +2171,15 @@ export default function TalkingHeadAI() {
         utterance.lang = DEFAULT_TTS_LANG;
 
         const voices = window.speechSynthesis.getVoices?.() || [];
-        const exactVoice = voices.find((v) => v.name === DEFAULT_TTS_VOICE) || null;
-        const cachedVoice = browserVoiceNameRef.current
-          ? voices.find((v) => v.name === browserVoiceNameRef.current) || null
-          : null;
+        const preferredVoice =
+          voices.find((v) =>
+            /female|zira|aria|samantha|ava|google us english/i.test(
+              `${v.name || ""} ${v.voiceURI || ""} ${v.lang || ""}`
+            )
+          ) || null;
         const englishVoice =
           voices.find((v) => v.lang?.toLowerCase().startsWith("en")) || null;
-
-        const chosenVoice = exactVoice || cachedVoice || englishVoice || null;
+        const chosenVoice = preferredVoice || englishVoice || voices[0] || null;
 
         if (chosenVoice) {
           utterance.voice = chosenVoice;
@@ -1605,8 +2242,7 @@ export default function TalkingHeadAI() {
           }
 
           const idx = Math.max(0, Math.min(event.charIndex, cleanText.length - 1));
-          const ch = cleanText[idx] || " ";
-          const viseme = isPauseChar(ch) ? "sil" : visemeForTextAt(cleanText, idx);
+          const viseme = visemeForTextAt(cleanText, idx);
           applyViseme(viseme);
         };
 
@@ -1705,10 +2341,31 @@ export default function TalkingHeadAI() {
     void speakWithTalkingHead(text);
   }
 
-  const canSend = !!input.trim() && !!token && wsState === "connected";
+  const hasDraft = !!input.trim();
+  const smartActionBusy = loading || realtimeState === "connecting" || realtimeState === "connected";
+  const smartActionDisabled = !token;
+  const smartActionIcon = smartActionBusy ? "stop" : hasDraft ? "north_east" : "mic_none";
+  const smartActionTitle = smartActionBusy
+    ? "Stop"
+    : hasDraft
+    ? "Send message"
+    : "Start WebRTC mic";
+
+  async function handleSmartAction() {
+    if (smartActionBusy) {
+      if (loading) stopCurrentGeneration();
+      if (realtimeState !== "disconnected") stopRealtimeSession();
+      return;
+    }
+    if (hasDraft) {
+      await sendMessage();
+      return;
+    }
+    await connectRealtimeMini();
+  }
 
   const topMetaTags = useMemo(() => {
-    const preferredOrder = ["Status", "Provider", "TTS", "Model", "Request"];
+    const preferredOrder = ["Status", "Mode", "Provider", "TTS", "Voice", "Model", "Realtime", "Request"];
     const latestTaggedAssistant = [...messages]
       .reverse()
       .find((m) => m.role === "assistant" && Array.isArray(m.tags) && m.tags.length > 0);
@@ -1723,7 +2380,9 @@ export default function TalkingHeadAI() {
       }
     }
 
-    if (!byLabel.has("Status")) byLabel.set("Status", loading ? "running" : errorText ? "error" : "ready");
+    if (!byLabel.has("Status")) {
+      byLabel.set("Status", loading ? "running" : errorText ? "error" : statusText || "ready");
+    }
     if (!byLabel.has("Provider")) byLabel.set("Provider", provider);
     if (!byLabel.has("TTS")) {
       byLabel.set(
@@ -1738,14 +2397,38 @@ export default function TalkingHeadAI() {
       );
     }
     if (!byLabel.has("Model")) byLabel.set("Model", PROVIDER_MODEL[provider]);
+    if (realtimeState !== "disconnected" && !byLabel.has("Realtime")) {
+      byLabel.set("Realtime", realtimeState === "connected" ? "mini connected" : realtimeState);
+    }
 
     return preferredOrder
       .filter((label) => byLabel.has(label))
       .map((label) => ({ label, value: String(byLabel.get(label) || "") }));
-  }, [messages, loading, errorText, provider, ttsMode, googleVoiceName, kokoroVoiceName]);
+  }, [
+    messages,
+    loading,
+    errorText,
+    statusText,
+    provider,
+    ttsMode,
+    googleVoiceName,
+    kokoroVoiceName,
+    agentMode,
+    realtimeState,
+  ]);
 
-  async function sendMessage() {
-    const trimmed = input.trim();
+  async function runBackendAgentText(
+    rawText: string,
+    options?: {
+      source?: "typed" | "webrtc";
+      clearInput?: boolean;
+      pauseRealtime?: boolean;
+      forceAgent?: boolean;
+    }
+  ) {
+    const trimmed = rawText.trim();
+    const source = options?.source || "typed";
+    const shouldExecuteAgent = options?.forceAgent ?? agentMode;
     if (!trimmed) return;
     if (loading) {
       stopCurrentGeneration();
@@ -1756,13 +2439,40 @@ export default function TalkingHeadAI() {
       return;
     }
 
-    const requestClientId = makeRequestClientId(sessionIdRef.current);
-    if (wsState === "connected" && !registerSocketClientId(requestClientId)) {
-      setErrorText("WebSocket registration failed.");
-      return;
+    if (options?.pauseRealtime !== false && realtimeState !== "disconnected") {
+      stopRealtimeSession();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          role: "assistant",
+          content:
+            source === "webrtc"
+              ? "Voice captured. WebRTC mic paused while the backend agent workflow runs."
+              : "WebRTC mic paused. Sending this through the backend agent workflow.",
+          ts: Date.now(),
+          finalized: true,
+          tags: [
+            { label: "Mode", value: "WebSocket Chat" },
+            { label: "Realtime", value: "paused" },
+          ],
+        },
+      ]);
     }
 
+    const requestClientId = makeRequestClientId(sessionIdRef.current);
     activeRequestClientIdRef.current = requestClientId;
+    activeRequestSourceRef.current = source;
+    activeRequestQuestionRef.current = trimmed;
+    const wsReady = await ensureWebSocketConnected(requestClientId);
+    if (!wsReady) {
+      setErrorText("WebSocket is not connected yet.");
+      setStatusText("WebSocket disconnected");
+      activeRequestClientIdRef.current = null;
+      activeRequestSourceRef.current = "typed";
+      activeRequestQuestionRef.current = "";
+      return;
+    }
     setErrorText("");
     setLoading(true);
     setStatusText("Thinking…");
@@ -1784,6 +2494,8 @@ export default function TalkingHeadAI() {
       finalized: false,
       tags: [
         { label: "Status", value: "Queued" },
+        { label: "Mode", value: shouldExecuteAgent ? "Agent" : "Chat" },
+        ...(source === "webrtc" ? [{ label: "Input", value: "Voice" }] : []),
         { label: "Provider", value: provider },
         { label: "Model", value: PROVIDER_MODEL[provider] },
         { label: "Request", value: requestClientId },
@@ -1791,21 +2503,29 @@ export default function TalkingHeadAI() {
     };
 
     setMessages((prev) => [...prev, userMsg, placeholder]);
-    setInput("");
+    if (options?.clearInput !== false) setInput("");
 
     const controller = new AbortController();
     submitAbortRef.current = controller;
 
     try {
-      const generatePayload = {
+      const agentChatPayload = {
         turnId: requestClientId,
         clientId: requestClientId,
+        requestClientId,
+        threadId: sessionIdRef.current,
         question: trimmed,
         message: trimmed,
         context: "internal",
-        provider: "auto",
-        agentEmployeeId: "project_manager_core",
+        provider,
+        model: PROVIDER_MODEL[provider],
+        agentEmployeeId: shouldExecuteAgent ? "auto" : "project_manager_core",
         agentRole: "project_manager",
+        perform: shouldExecuteAgent,
+        mode: shouldExecuteAgent ? "execute" : "chat",
+        inputMode: source,
+        memoryEnabled: true,
+        includeHistory: true,
       };
 
       const parseJson = async (res: Response) => {
@@ -1822,49 +2542,54 @@ export default function TalkingHeadAI() {
         return data;
       };
 
-      let parsed: any = {};
-      let immediateReply = "";
-
-      try {
-        parsed = await fetch(GENERATE_URL, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(generatePayload),
-          signal: controller.signal,
-        }).then(parseJson);
-
-        immediateReply = String(
-          parsed?.replyText ?? parsed?.reply ?? parsed?.answer ?? parsed?.content ?? ""
-        ).trim();
-        const resolvedProvider = String(parsed?.provider || "").toLowerCase();
-        if (resolvedProvider === "ollama" || resolvedProvider === "openai") {
-          resolvedAiProviderRef.current = resolvedProvider as ProviderType;
-          setProvider(resolvedProvider as ProviderType);
-        }
-      } catch {
-        immediateReply = "";
-      }
-
-      // Legacy async path still supported.
-      if (!immediateReply) {
-        parsed = await fetch(CHAT_URL, {
+      const parsed = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(generatePayload),
+        body: JSON.stringify(agentChatPayload),
         signal: controller.signal,
-        }).then(parseJson);
+      }).then(parseJson);
+
+      const immediateReply = String(
+        parsed?.replyText ?? parsed?.reply ?? parsed?.answer ?? parsed?.content ?? ""
+      ).trim();
+      const resolvedProvider = String(parsed?.provider || "").toLowerCase();
+      if (resolvedProvider === "ollama" || resolvedProvider === "openai") {
+        resolvedAiProviderRef.current = resolvedProvider as ProviderType;
+        setProvider(resolvedProvider as ProviderType);
       }
 
       if (immediateReply) {
         const reply = polishAssistantReply(immediateReply);
+        if (source === "webrtc") {
+          updateLatestForRequest(requestClientId, (m) =>
+            m.finalized || m.stopped
+              ? m
+              : {
+                  ...m,
+                  content: reply,
+                  finalized: true,
+                  tags: [
+                    { label: "Status", value: "done" },
+                    { label: "Mode", value: shouldExecuteAgent ? "Agent" : "Chat" },
+                    { label: "Input", value: "Voice" },
+                    { label: "Provider", value: String(parsed?.provider || provider) },
+                    { label: "Model", value: String(parsed?.model || PROVIDER_MODEL[provider]) },
+                    { label: "Request", value: String(parsed?.turnId || parsed?.clientId || requestClientId) },
+                  ],
+                }
+          );
+          setLoading(false);
+          activeRequestClientIdRef.current = null;
+          activeRequestSourceRef.current = "typed";
+          activeRequestQuestionRef.current = "";
+          void reconnectRealtimeForFollowup(trimmed, reply);
+          return;
+        }
+
         const delayReplyForVoice = resolveRequestedTtsMode() !== "manual";
 
         if (delayReplyForVoice) {
@@ -1877,6 +2602,7 @@ export default function TalkingHeadAI() {
                   finalized: false,
                   tags: [
                     { label: "Status", value: "tts" },
+                    { label: "Mode", value: shouldExecuteAgent ? "Agent" : "Chat" },
                     { label: "Provider", value: String(parsed?.provider || provider) },
                     { label: "Model", value: String(parsed?.model || PROVIDER_MODEL[provider]) },
                     { label: "Request", value: String(parsed?.turnId || parsed?.clientId || requestClientId) },
@@ -1896,6 +2622,7 @@ export default function TalkingHeadAI() {
                       finalized: true,
                       tags: [
                         { label: "Status", value: "done" },
+                        { label: "Mode", value: shouldExecuteAgent ? "Agent" : "Chat" },
                         { label: "Provider", value: String(parsed?.provider || provider) },
                         { label: "Model", value: String(parsed?.model || PROVIDER_MODEL[provider]) },
                         { label: "Request", value: String(parsed?.turnId || parsed?.clientId || requestClientId) },
@@ -1916,6 +2643,7 @@ export default function TalkingHeadAI() {
                   finalized: true,
                   tags: [
                     { label: "Status", value: "done" },
+                    { label: "Mode", value: shouldExecuteAgent ? "Agent" : "Chat" },
                     { label: "Provider", value: String(parsed?.provider || provider) },
                     { label: "Model", value: String(parsed?.model || PROVIDER_MODEL[provider]) },
                     { label: "Request", value: String(parsed?.turnId || parsed?.clientId || requestClientId) },
@@ -1936,6 +2664,8 @@ export default function TalkingHeadAI() {
               ...m,
               tags: [
                 { label: "Status", value: String(parsed?.status || "Submitted") },
+                { label: "Mode", value: shouldExecuteAgent ? "Agent" : "Chat" },
+                ...(source === "webrtc" ? [{ label: "Input", value: "Voice" }] : []),
                 { label: "Provider", value: String(parsed?.provider || provider) },
                 { label: "Model", value: String(parsed?.model || PROVIDER_MODEL[provider]) },
                 { label: "Request", value: String(parsed?.clientId || requestClientId) },
@@ -1962,9 +2692,22 @@ export default function TalkingHeadAI() {
       if (activeRequestClientIdRef.current === requestClientId) {
         activeRequestClientIdRef.current = null;
       }
+      activeRequestSourceRef.current = "typed";
+      activeRequestQuestionRef.current = "";
+      if (source === "webrtc") {
+        void reconnectRealtimeForFollowup(trimmed, `Error: ${msg}`);
+      }
     } finally {
       if (submitAbortRef.current === controller) submitAbortRef.current = null;
     }
+  }
+
+  async function sendMessage() {
+    await runBackendAgentText(input, {
+      source: "typed",
+      clearInput: true,
+      pauseRealtime: true,
+    });
   }
 
   async function onInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -1984,6 +2727,15 @@ export default function TalkingHeadAI() {
     }
   }
 
+  function setMood(mood: string) {
+    try {
+      headRef.current?.setMood?.(mood);
+      setStatusText(`Mood: ${mood}`);
+    } catch (err: any) {
+      setErrorText(err?.message || `Failed to set mood ${mood}.`);
+    }
+  }
+
   function renderSlider(
     label: string,
     key: keyof AvatarPolish,
@@ -1994,21 +2746,49 @@ export default function TalkingHeadAI() {
   ) {
     const value = polish[key];
     if (typeof value !== "number") return null;
+    const sliderValue = Math.min(max, Math.max(min, value));
+    const updateValue = (next: number) => {
+      if (!Number.isFinite(next)) return;
+      setPolish((prev) => ({
+        ...prev,
+        [key]: next,
+      }));
+    };
 
     return (
       <div key={String(key)} style={{ display: "grid", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <span style={{ fontSize: 12, color: "rgba(226,232,240,0.92)" }}>{label}</span>
-          <span
+          <input
+            type="number"
+            step="any"
+            value={formatSliderValue(value, digits)}
+            onChange={(e) => updateValue(Number(e.target.value))}
             style={{
-              minWidth: 54,
+              width: 82,
               textAlign: "right",
               fontSize: 11,
               fontWeight: 800,
+              color: "#f8fafc",
+              background: "rgba(15,23,42,0.72)",
+              border: "1px solid rgba(148,163,184,0.22)",
+              borderRadius: 8,
+              padding: "5px 7px",
+              outline: "none",
+              fontFamily: "inherit",
+              appearance: "textfield",
+            }}
+            onFocus={(e) => e.currentTarget.select()}
+            title="Type any numeric value, including values beyond the slider range."
+          />
+          <span
+            style={{
+              minWidth: 82,
+              fontSize: 10,
               color: "#d8b4fe",
             }}
           >
-            {formatSliderValue(value, digits)}
+            {min}-{max}
           </span>
         </div>
 
@@ -2017,13 +2797,8 @@ export default function TalkingHeadAI() {
           min={min}
           max={max}
           step={step}
-          value={value}
-          onChange={(e) =>
-            setPolish((prev) => ({
-              ...prev,
-              [key]: Number(e.target.value),
-            }))
-          }
+          value={sliderValue}
+          onChange={(e) => updateValue(Number(e.target.value))}
           style={{
             width: "100%",
             accentColor: "#8b5cf6",
@@ -2038,7 +2813,8 @@ export default function TalkingHeadAI() {
     id: keyof typeof groupOpen,
     title: string,
     subtitle: string,
-    children: React.ReactNode
+    children: React.ReactNode,
+    options?: { headerAction?: React.ReactNode; compactWidth?: boolean }
   ) {
     const open = groupOpen[id];
     return (
@@ -2048,6 +2824,7 @@ export default function TalkingHeadAI() {
           border: "1px solid rgba(255,255,255,0.08)",
           background: "rgba(255,255,255,0.03)",
           overflow: "hidden",
+          ...(options?.compactWidth ? { width: 380, maxWidth: "min(380px, 100%)" } : {}),
         }}
       >
         <button
@@ -2072,22 +2849,24 @@ export default function TalkingHeadAI() {
             <span style={{ fontSize: 11, color: "rgba(226,232,240,0.64)" }}>{subtitle}</span>
           </div>
 
-          <span
-            style={{
-              width: 26,
-              height: 26,
-              display: "grid",
-              placeItems: "center",
-              borderRadius: 999,
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              fontSize: 13,
-              transform: open ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 180ms ease",
-              flexShrink: 0,
-            }}
-          >
-            ˅
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {options?.headerAction}
+            <span
+              style={{
+                width: 26,
+                height: 26,
+                display: "grid",
+                placeItems: "center",
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                fontSize: 13,
+                transform: open ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 180ms ease",
+              }}
+            >
+              ^
+            </span>
           </span>
         </button>
 
@@ -2104,6 +2883,65 @@ export default function TalkingHeadAI() {
           </div>
         )}
       </div>
+    );
+  }
+  function renderIconButton({
+    title,
+    icon,
+    active,
+    disabled,
+    onClick,
+    tone = "blue",
+  }: {
+    title: string;
+    icon: string;
+    active?: boolean;
+    disabled?: boolean;
+    onClick: () => void;
+    tone?: "blue" | "green" | "amber" | "red" | "plain";
+  }) {
+    const activeBorder =
+      tone === "green"
+        ? "rgba(16,185,129,0.52)"
+        : tone === "amber"
+        ? "rgba(251,191,36,0.52)"
+        : tone === "red"
+        ? "rgba(248,113,113,0.48)"
+        : "rgba(34,211,238,0.46)";
+    const activeBg =
+      tone === "green"
+        ? "linear-gradient(135deg, rgba(16,185,129,0.22), rgba(34,211,238,0.13))"
+        : tone === "amber"
+        ? "linear-gradient(135deg, rgba(251,191,36,0.2), rgba(244,114,182,0.12))"
+        : tone === "red"
+        ? "linear-gradient(135deg, rgba(248,113,113,0.18), rgba(127,29,29,0.22))"
+        : "linear-gradient(135deg, rgba(34,211,238,0.2), rgba(139,92,246,0.14))";
+
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={title}
+        aria-label={title}
+        style={{
+          width: 42,
+          height: 38,
+          borderRadius: 13,
+          border: active ? `1px solid ${activeBorder}` : "1px solid rgba(255,255,255,0.08)",
+          background: active ? activeBg : "rgba(255,255,255,0.035)",
+          color: "#f8fafc",
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.55 : 1,
+          display: "grid",
+          placeItems: "center",
+          boxShadow: active ? "0 8px 22px rgba(34,211,238,0.10)" : "none",
+        }}
+      >
+        <i className="material-icons" style={{ fontSize: 20 }}>
+          {icon}
+        </i>
+      </button>
     );
   }
 
@@ -2137,10 +2975,10 @@ export default function TalkingHeadAI() {
             "0 18px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)",
           backdropFilter: "blur(18px)",
           display: "grid",
-          gridTemplateRows: "auto auto auto auto minmax(0,1fr) auto",
+          gridTemplateRows: "auto minmax(0,1fr) auto",
           minHeight: 0,
           height: "100%",
-          gap: 0,
+          gap: 10,
           position: "relative",
           overflow: "hidden",
         }}
@@ -2158,241 +2996,77 @@ export default function TalkingHeadAI() {
 
         <div
           style={{
+            marginBottom: 10,
             position: "relative",
-            display: "inline-flex",
-            padding: "7px 11px",
-            borderRadius: 999,
-            fontSize: 11,
-            fontWeight: 900,
-            letterSpacing: 0.7,
-            background: "linear-gradient(135deg, rgba(34,211,238,0.18), rgba(139,92,246,0.18))",
-            border: "1px solid rgba(255,255,255,0.10)",
-            marginBottom: 12,
-            width: "fit-content",
-            boxShadow: "0 8px 20px rgba(0,0,0,0.18)",
-          }}
-        >
-          TALKINGHEAD · CHAT · WS
-        </div>
-
-        <div style={{ marginBottom: 14, position: "relative" }}>
-          <h1 style={{ margin: "0 0 6px", fontSize: 28, lineHeight: 1.08 }}>
-            Brunette Talking Head Chat
-          </h1>
-          <p
-            style={{
-              margin: 0,
-              color: "rgba(226,232,240,0.78)",
-              lineHeight: 1.6,
-              fontSize: 14,
-            }}
-          >
-            Test sample lines first, tune the mouth and jaw, then hit the AI route.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", position: "relative" }}>
-          {(["openai", "ollama"] as ProviderType[]).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setProvider(p)}
-              style={{
-                padding: "9px 13px",
-                borderRadius: 14,
-                border:
-                  provider === p
-                    ? "1px solid rgba(34,211,238,0.42)"
-                    : "1px solid rgba(255,255,255,0.08)",
-                background:
-                  provider === p
-                    ? "linear-gradient(135deg, rgba(34,211,238,0.18), rgba(139,92,246,0.18))"
-                    : "rgba(255,255,255,0.035)",
-                color: "#f8fafc",
-                cursor: "pointer",
-                textTransform: "capitalize",
-                boxShadow: provider === p ? "0 8px 24px rgba(34,211,238,0.10)" : "none",
-              }}
-            >
-              {p === "openai" ? "OpenAI" : "Ollama"}
-            </button>
-          ))}
-          {(["auto", "google", "kokoro", "manual"] as TtsMode[]).map((m) => (
-            <button
-              key={`tts_${m}`}
-              type="button"
-              onClick={() => setTtsMode(m)}
-              style={{
-                padding: "9px 13px",
-                borderRadius: 14,
-                border:
-                  ttsMode === m
-                    ? "1px solid rgba(251,191,36,0.45)"
-                    : "1px solid rgba(255,255,255,0.08)",
-                background:
-                  ttsMode === m
-                    ? "linear-gradient(135deg, rgba(251,191,36,0.18), rgba(244,114,182,0.15))"
-                    : "rgba(255,255,255,0.035)",
-                color: "#f8fafc",
-                cursor: "pointer",
-                textTransform: "capitalize",
-                boxShadow: ttsMode === m ? "0 8px 24px rgba(251,191,36,0.12)" : "none",
-              }}
-              title={
-                m === "auto"
-                  ? "Auto: OpenAI -> Google, Ollama -> Kokoro"
-                  : m === "google"
-                  ? "Force Google TTS via backend"
-                  : m === "kokoro"
-                  ? "Force Kokoro/HeadTTS via backend"
-                  : "Force manual/browser fallback mode"
-              }
-            >
-              {m === "auto"
-                ? "TTS Auto"
-                : m === "google"
-                ? "TTS Google"
-                : m === "kokoro"
-                ? "TTS Kokoro"
-                : "TTS Manual"}
-            </button>
-          ))}
-          <select
-            className="browser-default"
-            value={selectedAvatarUrl}
-            onChange={(e) => setSelectedAvatarUrl(e.target.value)}
-            style={{
-              maxWidth: 220,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.05)",
-              color: "#f8fafc",
-              height: 38,
-              padding: "0 10px",
-            }}
-            title="Select avatar from /public/assets"
-          >
-            {AVATAR_OPTIONS.map((a) => (
-              <option key={a.value} value={a.value}>
-                {a.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="browser-default"
-            value={googleVoiceName}
-            onChange={(e) => setGoogleVoiceName(e.target.value)}
-            style={{
-              maxWidth: 230,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.05)",
-              color: "#f8fafc",
-              height: 38,
-              padding: "0 10px",
-            }}
-            title="Google voice name used by backend TTS route"
-          >
-            {GOOGLE_VOICE_OPTIONS.map((v) => (
-              <option key={v.value} value={v.value}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="browser-default"
-            value={kokoroVoiceName}
-            onChange={(e) => setKokoroVoiceName(e.target.value)}
-            style={{
-              maxWidth: 220,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.05)",
-              color: "#f8fafc",
-              height: 38,
-              padding: "0 10px",
-            }}
-            title="Kokoro/HeadTTS voice used by backend TTS route"
-          >
-            {KOKORO_VOICE_OPTIONS.map((v) => (
-              <option key={v.value} value={v.value}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            onClick={stopCurrentGeneration}
-            style={{
-              padding: "9px 13px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(255,255,255,0.035)",
-              color: "#f8fafc",
-              cursor: "pointer",
-            }}
-          >
-            Stop
-          </button>
-        </div>
-
-        {/* sample dialogs */}
-        <div
-          style={{
-            position: "relative",
-            marginBottom: 14,
-            padding: 12,
-            borderRadius: 18,
-            background:
-              ttsDebug?.engine === "server-tts-fallback"
-                ? "linear-gradient(180deg, rgba(60,15,20,0.72), rgba(25,8,12,0.72))"
-                : "linear-gradient(180deg, rgba(8,13,24,0.82), rgba(8,13,24,0.64))",
-            border:
-              ttsDebug?.engine === "server-tts-fallback"
-                ? "1px solid rgba(248,113,113,0.45)"
-                : "1px solid rgba(34,211,238,0.25)",
-            boxShadow: "0 12px 28px rgba(0,0,0,0.22)",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
           }}
         >
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 900,
-              letterSpacing: 0.7,
-              textTransform: "uppercase",
-              color: "rgba(191,219,254,0.92)",
-              marginBottom: 8,
+              display: "inline-grid",
+              gridTemplateColumns: "1fr 1fr",
+              padding: 3,
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.045)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              minWidth: 188,
             }}
           >
-            Sample Dialogs
-          </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {SAMPLE_DIALOGS.map((line, index) => (
+            {(["openai", "ollama"] as ProviderType[]).map((p) => (
               <button
-                key={`${index}_${line.slice(0, 12)}`}
+                key={p}
                 type="button"
-                onClick={() => playSampleDialogue(line)}
+                onClick={() => setProvider(p)}
+                title={p === "openai" ? "OpenAI provider" : "Ollama provider"}
                 style={{
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  background: "rgba(255,255,255,0.04)",
-                  color: "#e2e8f0",
+                  border: "none",
+                  borderRadius: 999,
+                  padding: "8px 12px",
+                  background:
+                    provider === p
+                      ? "linear-gradient(135deg, rgba(34,211,238,0.22), rgba(139,92,246,0.18))"
+                      : "transparent",
+                  color: "#f8fafc",
                   cursor: "pointer",
                   fontSize: 12,
-                  lineHeight: 1.3,
-                  textAlign: "left",
+                  fontWeight: 900,
                 }}
-                title={line}
               >
-                Sample {index + 1}
+                {p === "openai" ? "OpenAI" : "Ollama"}
               </button>
             ))}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setAgentMode((v) => !v)}
+            title={agentMode ? "Agent Mode On" : "Enable Agent Mode"}
+            style={{
+              height: 39,
+              padding: "0 13px",
+              borderRadius: 999,
+              border: agentMode
+                ? "1px solid rgba(16,185,129,0.48)"
+                : "1px solid rgba(255,255,255,0.08)",
+              background: agentMode
+                ? "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(34,211,238,0.12))"
+                : "rgba(255,255,255,0.035)",
+              color: "#f8fafc",
+              cursor: "pointer",
+              fontWeight: 900,
+              display: "inline-flex",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            <i className="material-icons" style={{ fontSize: 18 }}>
+              {agentMode ? "smart_toy" : "chat"}
+            </i>
+            {agentMode ? "Agent On" : "Agent"}
+          </button>
         </div>
 
         <div
@@ -2411,12 +3085,6 @@ export default function TalkingHeadAI() {
             boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
           }}
         >
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {topMetaTags.map((tag, i) => (
-              <MetaChip key={`top_meta_${tag.label}_${i}`} label={tag.label} value={tag.value} />
-            ))}
-          </div>
-
           {messages.map((msg) => {
             const isUser = msg.role === "user";
             return (
@@ -2466,86 +3134,87 @@ export default function TalkingHeadAI() {
           })}
         </div>
 
-        <div style={{ marginTop: 14, position: "relative" }}>
+        <div style={{ position: "relative", alignSelf: "end" }}>
           <div
             style={{
-              borderRadius: 24,
+              borderRadius: 18,
               border: "1px solid rgba(255,255,255,0.08)",
               background: "linear-gradient(180deg, rgba(9,14,24,0.98), rgba(7,11,20,0.98))",
               overflow: "hidden",
-              boxShadow: "0 12px 30px rgba(0,0,0,0.24)",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 12, padding: "12px 12px 10px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px 8px 12px" }}>
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onInputKeyDown}
-                placeholder={wsState !== "connected" ? "Connecting..." : "Message Fluke AI..."}
+                placeholder="Message Fluke AI..."
                 rows={1}
                 style={{
                   width: "100%",
-                  minHeight: 56,
-                  maxHeight: 160,
+                  minHeight: 38,
+                  maxHeight: 92,
                   boxSizing: "border-box",
                   resize: "none",
                   border: "none",
                   background: "transparent",
                   color: "#f8fafc",
-                  padding: "4px 2px",
+                  padding: "3px 2px",
                   fontSize: 14,
-                  lineHeight: 1.7,
+                  lineHeight: 1.45,
                   outline: "none",
                 }}
               />
 
               <button
                 type="button"
-                onClick={sendMessage}
-                disabled={!loading && !canSend}
+                onClick={handleSmartAction}
+                disabled={smartActionDisabled}
                 style={{
-                  width: 50,
-                  height: 50,
-                  borderRadius: 18,
-                  border: loading
+                  width: 42,
+                  height: 42,
+                  borderRadius: 15,
+                  border: smartActionBusy
                     ? "1px solid rgba(248,113,113,0.32)"
                     : "1px solid rgba(34,211,238,0.24)",
-                  background: loading
+                  background: smartActionBusy
                     ? "linear-gradient(135deg, #ef4444, #7f1d1d)"
-                    : !canSend
+                    : smartActionDisabled
                     ? "rgba(255,255,255,0.06)"
                     : "linear-gradient(135deg, #06b6d4, #7c3aed)",
                   color: "white",
-                  cursor: !loading && !canSend ? "not-allowed" : "pointer",
-                  opacity: !loading && !canSend ? 0.68 : 1,
+                  cursor: smartActionDisabled ? "not-allowed" : "pointer",
+                  opacity: smartActionDisabled ? 0.68 : 1,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
                   fontSize: 18,
-                  boxShadow: !loading && canSend ? "0 10px 24px rgba(124,58,237,0.24)" : "none",
+                  boxShadow: !smartActionDisabled ? "0 10px 24px rgba(124,58,237,0.24)" : "none",
                 }}
-                title={loading ? "Stop generation" : "Send message"}
+                title={smartActionTitle}
               >
                 <i className="material-icons" style={{ fontSize: 20 }}>
-                  {loading ? "stop" : "north_east"}
+                  {smartActionIcon}
                 </i>
               </button>
             </div>
 
-            <div
-              style={{
-                padding: "10px 14px 12px",
-                borderTop: "1px solid rgba(255,255,255,0.08)",
-                color: errorText ? "#fca5a5" : "rgba(226,232,240,0.62)",
-                fontSize: 12,
-                minHeight: 18,
-              }}
-            >
-              {errorText ||
-                `${statusText} | ${provider} | ws ${wsState} | ${token ? "auth ok" : "no token"}`}
-            </div>
+            {(errorText || realtimeError) && (
+              <div
+                style={{
+                  padding: "8px 12px 10px",
+                  borderTop: "1px solid rgba(255,255,255,0.08)",
+                  color: "#fca5a5",
+                  fontSize: 12,
+                  minHeight: 18,
+                }}
+              >
+                {errorText || realtimeError}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2586,11 +3255,21 @@ export default function TalkingHeadAI() {
             zIndex: 30,
             display: "grid",
             gap: 10,
-            width: 380,
+            width: "calc(100% - 32px)",
             maxWidth: "calc(100% - 32px)",
           }}
         >
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "nowrap",
+              alignItems: "center",
+              overflowX: "auto",
+              whiteSpace: "nowrap",
+              paddingBottom: 2,
+            }}
+          >
             <span
               style={{
                 padding: "8px 12px",
@@ -2638,44 +3317,92 @@ export default function TalkingHeadAI() {
             >
               Avatar {avatarReady ? "ready" : `loading ${avatarProgress}%`}
             </span>
+
+            {topMetaTags.map((tag, i) => (
+              <MetaChip key={`hud_meta_${tag.label}_${i}`} label={tag.label} value={tag.value} />
+            ))}
           </div>
 
           <div
             style={{
-              padding: 12,
-              borderRadius: 18,
-              background: "rgba(10,16,30,0.72)",
-              border: "1px solid rgba(255,255,255,0.10)",
-              backdropFilter: "blur(16px)",
-              boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
+              width: 360,
+              maxWidth: "min(360px, 100%)",
+              padding: "10px 12px",
+              borderRadius: 16,
+              background: "linear-gradient(135deg, rgba(34,211,238,0.10), rgba(99,102,241,0.10))",
+              border: "1px solid rgba(34,211,238,0.18)",
+              backdropFilter: "blur(14px)",
+              boxShadow: "0 12px 28px rgba(0,0,0,0.18)",
             }}
           >
+            <div style={{ fontSize: 17, lineHeight: 1.15, fontWeight: 800 }}>
+              Brunette Talking Head Chat
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.35, color: "rgba(226,232,240,0.72)" }}>
+              Test sample lines, tune speech, then use the AI route.
+            </div>
+          </div>
+
+          {renderSection(
+            "animation",
+            "Animations",
+            "View, facial mood and body motion",
+            <>
+
             <div
               style={{
-                fontSize: 11,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 4,
+                padding: 3,
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.045)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              {(["face", "full"] as FocusMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setFocusMode(mode)}
+                  title={mode === "face" ? "Focus Face" : "Focus Full"}
+                  style={{
+                    border: "none",
+                    borderRadius: 999,
+                    padding: "8px 10px",
+                    background:
+                      focusMode === mode
+                        ? "linear-gradient(135deg, rgba(6,182,212,0.9), rgba(124,58,237,0.86))"
+                        : "transparent",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 900,
+                  }}
+                >
+                  {mode === "face" ? "Face" : "Full"}
+                </button>
+              ))}
+            </div>
+
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 10,
                 fontWeight: 900,
                 letterSpacing: 0.7,
                 textTransform: "uppercase",
-                color: "rgba(191,219,254,0.92)",
-                marginBottom: 8,
+                color: "rgba(191,219,254,0.78)",
               }}
             >
-              Mood
+              Facial
             </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               {["neutral", "happy", "angry", "sad", "love"].map((mood) => (
                 <button
                   key={mood}
                   type="button"
-                  onClick={() => {
-                    try {
-                      headRef.current?.setMood?.(mood);
-                      setStatusText(`Mood: ${mood}`);
-                    } catch (err: any) {
-                      setErrorText(err?.message || `Failed to set mood ${mood}.`);
-                    }
-                  }}
+                  onClick={() => setMood(mood)}
                   style={{
                     padding: "8px 10px",
                     borderRadius: 12,
@@ -2691,32 +3418,20 @@ export default function TalkingHeadAI() {
                 </button>
               ))}
             </div>
-          </div>
 
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 18,
-              background: "rgba(10,16,30,0.72)",
-              border: "1px solid rgba(255,255,255,0.10)",
-              backdropFilter: "blur(16px)",
-              boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
-            }}
-          >
             <div
               style={{
-                fontSize: 11,
+                marginTop: 10,
+                fontSize: 10,
                 fontWeight: 900,
                 letterSpacing: 0.7,
                 textTransform: "uppercase",
-                color: "rgba(191,219,254,0.92)",
-                marginBottom: 8,
+                color: "rgba(191,219,254,0.78)",
               }}
             >
-              Animations
+              Body
             </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               {(Object.keys(ANIM_FILES) as AnimName[]).map((name) => (
                 <button
                   key={name}
@@ -2746,25 +3461,47 @@ export default function TalkingHeadAI() {
                 </button>
               ))}
 
-              <button
-                type="button"
-                onClick={stopAnimationNow}
-                style={{
-                  minWidth: 88,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(255,255,255,0.04)",
-                  color: "#f8fafc",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  cursor: "pointer",
-                }}
-              >
-                Stop
-              </button>
             </div>
-          </div>
+            </>
+            ,
+            {
+              compactWidth: true,
+              headerAction: (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title="Stop body animation"
+                  aria-label="Stop body animation"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    stopAnimationNow();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      stopAnimationNow();
+                    }
+                  }}
+                  style={{
+                    width: 26,
+                    height: 26,
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    color: "#f8fafc",
+                    cursor: "pointer",
+                  }}
+                >
+                  <i className="material-icons" style={{ fontSize: 16 }}>
+                    stop
+                  </i>
+                </span>
+              ),
+            }
+          )}
 
           {/* grouped collapsible polish panel */}
           <div
@@ -2775,6 +3512,8 @@ export default function TalkingHeadAI() {
               backdropFilter: "blur(16px)",
               boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
               overflow: "hidden",
+              width: 380,
+              maxWidth: "min(380px, 100%)",
             }}
           >
             <button
@@ -2839,13 +3578,19 @@ export default function TalkingHeadAI() {
                   overflowY: "auto",
                 }}
               >
+                {renderSection("voice", "Voice", "TTS engine and voice selection", voiceControls)}
+
+                {renderSection("avatar", "Avatar", "Model selection", avatarControls)}
+
+                {renderSection("samples", "Samples", "Quick speech previews", sampleControls)}
+
                 {renderSection(
                   "mouth",
                   "Mouth",
                   "Overall mouth open shape and rhythm",
                   <>
                     {renderSlider("Mouth base", "mouthOpenBase", 0, 0.75, 0.01)}
-                    {renderSlider("Mouth wave", "mouthOpenWave", 0, 0.55, 0.01)}
+                    {renderSlider("Mouth wave", "mouthOpenWave", 0, 0.35, 0.01)}
                     {renderSlider("Mouth frequency", "mouthOpenFreq", 1, 35, 0.1)}
                   </>
                 )}
@@ -2856,7 +3601,7 @@ export default function TalkingHeadAI() {
                   "Jaw opening amount and movement phase",
                   <>
                     {renderSlider("Jaw base", "jawOpenBase", 0, 0.75, 0.01)}
-                    {renderSlider("Jaw wave", "jawOpenWave", 0, 0.55, 0.01)}
+                    {renderSlider("Jaw wave", "jawOpenWave", 0, 0.35, 0.01)}
                     {renderSlider("Jaw frequency", "jawOpenFreq", 1, 35, 0.1)}
                     {renderSlider("Jaw phase", "jawOpenPhase", 0, 3.14, 0.01)}
                   </>
@@ -2868,11 +3613,11 @@ export default function TalkingHeadAI() {
                   "Viseme strength, speech entry and smoothing",
                   <>
                     {renderSlider("Viseme base", "visemeStrengthBase", 0.2, 1.5, 0.01)}
-                    {renderSlider("Viseme wave", "visemeStrengthWave", 0, 0.8, 0.01)}
-                    {renderSlider("Viseme frequency", "visemeStrengthFreq", 1, 35, 0.1)}
+                    {renderSlider("Viseme wave", "visemeStrengthWave", 0, 0.4, 0.01)}
+                    {renderSlider("Viseme frequency", "visemeStrengthFreq", 1, 30, 0.1)}
                     {renderSlider("Start strength", "visemeStartStrength", 0.2, 1.5, 0.01)}
                     {renderSlider("Resume strength", "visemeResumeStrength", 0.2, 1.5, 0.01)}
-                    {renderSlider("Smooth lerp", "smoothLerpRate", 4, 80, 0.1)}
+                    {renderSlider("Smooth lerp", "smoothLerpRate", 4, 60, 0.1)}
                   </>
                 )}
 
@@ -2881,10 +3626,10 @@ export default function TalkingHeadAI() {
                   "Timing",
                   "Fallback lipsync pacing and sentence pauses",
                   <>
-                    {renderSlider("Fallback char", "fallbackTickMs", 20, 120, 1, 0)}
-                    {renderSlider("Fallback space", "fallbackSpaceMs", 20, 140, 1, 0)}
-                    {renderSlider("Fallback comma", "fallbackCommaMs", 40, 240, 1, 0)}
-                    {renderSlider("Fallback sentence", "fallbackSentenceMs", 80, 420, 1, 0)}
+                    {renderSlider("Fallback char", "fallbackTickMs", 20, 160, 1, 0)}
+                    {renderSlider("Fallback space", "fallbackSpaceMs", 20, 180, 1, 0)}
+                    {renderSlider("Fallback comma", "fallbackCommaMs", 40, 320, 1, 0)}
+                    {renderSlider("Fallback sentence", "fallbackSentenceMs", 80, 520, 1, 0)}
                     {renderSlider("Boundary kickoff", "fallbackBoundaryKickoffMs", 0, 260, 1, 0)}
                   </>
                 )}
@@ -2968,7 +3713,15 @@ export default function TalkingHeadAI() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                   <button
                     type="button"
-                    onClick={() => setPolish({ ...AVATAR_DEFAULTS })}
+                    onClick={() => {
+                      const defaults = { ...AVATAR_DEFAULTS };
+                      setPolish(defaults);
+                      try {
+                        window.localStorage.setItem(POLISH_PROFILE_STORAGE_KEY, JSON.stringify(defaults));
+                      } catch {
+                        //
+                      }
+                    }}
                     style={{
                       padding: "9px 12px",
                       borderRadius: 12,
@@ -2986,47 +3739,6 @@ export default function TalkingHeadAI() {
               </div>
             )}
           </div>
-        </div>
-
-        {/* Focus mode */}
-        <div
-          style={{
-            position: "absolute",
-            right: 16,
-            top: "50%",
-            transform: "translateY(-50%)",
-            zIndex: 20,
-            display: "grid",
-            gap: 10,
-          }}
-        >
-          {(["face", "full"] as FocusMode[]).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => setFocusMode(mode)}
-              style={{
-                width: 114,
-                height: 46,
-                borderRadius: 14,
-                border:
-                  focusMode === mode
-                    ? "1px solid rgba(34,211,238,0.85)"
-                    : "1px solid rgba(255,255,255,0.10)",
-                background:
-                  focusMode === mode
-                    ? "linear-gradient(135deg, rgba(6,182,212,0.95), rgba(124,58,237,0.92))"
-                    : "rgba(10,16,30,0.72)",
-                color: "#fff",
-                fontWeight: 800,
-                cursor: "pointer",
-                boxShadow:
-                  focusMode === mode ? "0 12px 28px rgba(124,58,237,0.24)" : "0 8px 18px rgba(0,0,0,0.14)",
-                backdropFilter: "blur(14px)",
-              }}
-            >
-              {mode === "face" ? "Focus Face" : "Focus Full"}
-            </button>
-          ))}
         </div>
 
         {/* TalkingHead mount */}

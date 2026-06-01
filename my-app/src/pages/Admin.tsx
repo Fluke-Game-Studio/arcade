@@ -17,6 +17,7 @@ type AdminTab = "activity" | "employees";
 type AdminForm = CreateUserBody & {
   employee_manager?: string;
   project_id?: string;
+  project_ids?: string[];
 
   employee_id?: string;
   employee_date_started?: string;
@@ -39,6 +40,7 @@ const EMPTY: AdminForm = {
   location: "",
   employee_manager: "",
   project_id: "",
+  project_ids: [],
   employee_id: "",
   employee_date_started: "",
   employee_address: "",
@@ -48,6 +50,17 @@ const EMPTY: AdminForm = {
 function safeStr(v: any) {
   if (v === null || v === undefined) return "";
   return String(v).trim();
+}
+
+function parseProjectIds(value: any): string[] {
+  if (Array.isArray(value)) return Array.from(new Set(value.map((x) => safeStr(x)).filter(Boolean)));
+  const s = safeStr(value);
+  if (!s) return [];
+  try {
+    const parsed = JSON.parse(s);
+    if (Array.isArray(parsed)) return Array.from(new Set(parsed.map((x) => safeStr(x)).filter(Boolean)));
+  } catch {}
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
 function getRoleLower(anyUser: any) {
@@ -435,6 +448,7 @@ export default function Admin({
       location: safeStr((u as any).location),
       employee_manager: safeStr((u as any).employee_manager),
       project_id: safeStr((u as any).project_id),
+      project_ids: parseProjectIds((u as any).project_ids || safeStr((u as any).project_id)),
       employee_id: safeStr((u as any).employee_id),
       employee_date_started: safeStr((u as any).employee_date_started),
       employee_address: safeStr((u as any).employee_address),
@@ -483,6 +497,7 @@ export default function Admin({
           employee_date_started: form.employee_date_started || undefined,
           employee_manager: form.employee_manager || undefined,
           project_id: form.project_id || undefined,
+          project_ids: Array.isArray(form.project_ids) ? form.project_ids : undefined,
           revoked: form.revoked ?? false,
         };
 
@@ -520,6 +535,7 @@ export default function Admin({
           employee_date_started: form.employee_date_started || undefined,
           employee_manager: form.employee_manager || undefined,
           project_id: form.project_id || undefined,
+          project_ids: Array.isArray(form.project_ids) ? form.project_ids : undefined,
           employee_id: form.employee_id || undefined,
         };
 
@@ -1643,7 +1659,7 @@ export default function Admin({
 
                 <div className="adm-span-6">
                   <div className="adm-selectWrap">
-                    <label>Assigned Project</label>
+                    <label>Primary Project</label>
                     <select
                       className="browser-default"
                       value={form.project_id || ""}
@@ -1668,6 +1684,34 @@ export default function Admin({
                         {projectsLoadError}
                       </div>
                     ) : null}
+                  </div>
+                </div>
+
+                <div className="adm-span-6">
+                  <div className="adm-selectWrap">
+                    <label>Assigned Projects (Multi)</label>
+                    <select
+                      className="browser-default"
+                      multiple
+                      value={Array.isArray(form.project_ids) ? form.project_ids : []}
+                      onChange={(e) => {
+                        const values = Array.from(e.target.selectedOptions).map((o) => o.value).filter(Boolean);
+                        setForm((f) => ({
+                          ...f,
+                          project_ids: values,
+                          project_id: values[0] || f.project_id || "",
+                        }));
+                      }}
+                      style={{ minHeight: 120 }}
+                    >
+                      {projects.map((p) => (
+                        <option key={p.projectId} value={p.projectId}>
+                          {safeStr((p as any).name) || safeStr((p as any).project_name)
+                            ? `${safeStr((p as any).name) || safeStr((p as any).project_name)} (${safeStr((p as any).projectId)})`
+                            : safeStr((p as any).projectId)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
