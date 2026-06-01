@@ -136,6 +136,14 @@ const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Ga
 5. ENGLISH ONLY: Respond only in English, regardless of what language the candidate uses.
 6. BREVITY: Keep your own responses short — one or two sentences maximum before asking or repeating the question.`;
 
+const DEFAULT_BACKGROUND_INFO = `This is an internal intake session for Fluke Games. The purpose is to collect structured updates or information from employees or applicants. Responses are reviewed by the relevant team lead or hiring manager.`;
+
+const DEFAULT_CUSTOM_INSTRUCTIONS = `Speak in a warm, professional tone. Keep your own responses to 1–2 sentences before asking or moving on. Do not repeat the question word-for-word before asking it — just ask it directly. Do not use filler phrases like "Great!" or "Awesome!" more than once.`;
+
+const DEFAULT_FOLLOW_UP_INSTRUCTIONS = `If the user's answer is vague, very short (under 15 words), or does not clearly address the question, ask one targeted follow-up before moving on. Do not ask more than one follow-up per question. If the second answer is still vague, accept it and advance.`;
+
+const DEFAULT_END_NOTE = `Thank you for completing this session. Your responses have been recorded and will be reviewed shortly. Have a great rest of your day!`;
+
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
 const FALLBACK_ROLES = ["employee", "admin", "super", "admin-readonly", "super-readonly"] as const;
 const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
@@ -2633,9 +2641,21 @@ function parseMcpInput(text: string) {
               </div>
 
               <div style={{ marginTop: 14 }}>
-                <label className="mgr-label">Background Info</label>
-                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
-                  Context that helps the AI understand the purpose of this session (company info, role context, what answers are used for, etc.).
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div>
+                    <label className="mgr-label" style={{ margin: 0 }}>Background Info</label>
+                    <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginTop: 2 }}>
+                      Context that helps the AI understand the purpose of this session (company info, role context, what answers are used for, etc.).
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="mgr-btn secondary"
+                    style={{ flexShrink: 0, marginLeft: 12 }}
+                    onClick={() => setIntakeForm((s) => ({ ...s, backgroundInfo: DEFAULT_BACKGROUND_INFO }))}
+                  >
+                    Load Default
+                  </button>
                 </div>
                 <textarea
                   className="mgr-textarea"
@@ -2646,9 +2666,21 @@ function parseMcpInput(text: string) {
               </div>
 
               <div style={{ marginTop: 10 }}>
-                <label className="mgr-label">Custom Instructions</label>
-                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
-                  Specific behavior the AI should follow — tone, language, response length, format, dos and don'ts.
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div>
+                    <label className="mgr-label" style={{ margin: 0 }}>Custom Instructions</label>
+                    <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginTop: 2 }}>
+                      Specific behavior the AI should follow — tone, language, response length, format, dos and don'ts.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="mgr-btn secondary"
+                    style={{ flexShrink: 0, marginLeft: 12 }}
+                    onClick={() => setIntakeForm((s) => ({ ...s, customInstructions: DEFAULT_CUSTOM_INSTRUCTIONS }))}
+                  >
+                    Load Default
+                  </button>
                 </div>
                 <textarea
                   className="mgr-textarea"
@@ -2659,9 +2691,21 @@ function parseMcpInput(text: string) {
               </div>
 
               <div style={{ marginTop: 10 }}>
-                <label className="mgr-label">Follow-up Instructions</label>
-                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
-                  Tell the AI when and how to probe deeper before moving to the next question.
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div>
+                    <label className="mgr-label" style={{ margin: 0 }}>Follow-up Instructions</label>
+                    <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginTop: 2 }}>
+                      Tell the AI when and how to probe deeper before moving to the next question.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="mgr-btn secondary"
+                    style={{ flexShrink: 0, marginLeft: 12 }}
+                    onClick={() => setIntakeForm((s) => ({ ...s, followUpInstructions: DEFAULT_FOLLOW_UP_INSTRUCTIONS }))}
+                  >
+                    Load Default
+                  </button>
                 </div>
                 <textarea
                   className="mgr-textarea"
@@ -2672,9 +2716,21 @@ function parseMcpInput(text: string) {
               </div>
 
               <div style={{ marginTop: 10 }}>
-                <label className="mgr-label">End Note</label>
-                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginBottom: 6 }}>
-                  What the AI says after all questions are answered. Leave blank for a default closing message.
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div>
+                    <label className="mgr-label" style={{ margin: 0 }}>End Note</label>
+                    <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginTop: 2 }}>
+                      What the AI says after all questions are answered. Leave blank for a default closing message.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="mgr-btn secondary"
+                    style={{ flexShrink: 0, marginLeft: 12 }}
+                    onClick={() => setIntakeForm((s) => ({ ...s, endNote: DEFAULT_END_NOTE }))}
+                  >
+                    Load Default
+                  </button>
                 </div>
                 <textarea
                   className="mgr-textarea"
