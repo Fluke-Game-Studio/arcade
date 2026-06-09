@@ -287,8 +287,9 @@ export default function ApplicantComposerModal({
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  // Fetch all jobs once so roleTitle dropdown is populated
+  // Fetch all jobs when modal opens so roleTitle dropdown is populated
   useEffect(() => {
+    if (!applicant?.id) return;
     let mounted = true;
     api.listJobsAdmin().then((jobs: any[]) => {
       if (!mounted) return;
@@ -301,7 +302,7 @@ export default function ApplicantComposerModal({
     }).catch(() => {});
     return () => { mounted = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [applicant?.id]);
 
   // init Materialize modal once
   useEffect(() => {
