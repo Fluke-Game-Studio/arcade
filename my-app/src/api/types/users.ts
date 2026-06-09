@@ -10,6 +10,8 @@ export type ApiLoginResponse = {
   expiresIn: number;
   username: string;
   role: ApiRole;
+  employee_role?: ApiRole;
+  read_only_scope?: "employee" | "admin" | "super" | string;
   name: string;
   projectStatus?: "ProjectPartialClean" | "ProjectCompleteCleanup" | "none" | string;
   allowed?: boolean;
@@ -48,6 +50,7 @@ export type ApiUser = {
   department?: string;
   location?: string;
   employee_role?: ApiRole;
+  read_only_scope?: "employee" | "admin" | "super" | string;
   project_id?: string;
   employee_manager?: string;
   employee_last_update_week?: string;
@@ -95,6 +98,7 @@ export type CreateUserBody = {
   department?: string;
   location?: string;
   employee_role?: ApiRole;
+  read_only_scope?: "employee" | "admin" | "super" | string;
   project_id?: string;
   employee_manager?: string;
   portal_access?: boolean;

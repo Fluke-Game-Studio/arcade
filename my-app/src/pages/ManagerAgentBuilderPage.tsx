@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { API_BASE } from "../api/config";
+import { API_BASE, PUBLIC_WEBSITE_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
 import BotAvatar, { type BotStatus } from "../components/BotAvatar2DBit";
 import { useAgentAdminData } from "../hooks/useAgentAdminData";
@@ -124,6 +124,7 @@ type StoredIntakeContext = {
   endNote: string;
   mcpActions: string[];
   includeJobQuestions: boolean;
+  intakeLinkMode?: "public" | "arcade";
 };
 
 const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Games. You have ONE job: conduct this interview by asking the listed questions in order.
@@ -145,7 +146,7 @@ const DEFAULT_FOLLOW_UP_INSTRUCTIONS = `If the user's answer is vague, very shor
 const DEFAULT_END_NOTE = `Thank you for completing this session. Your responses have been recorded and will be reviewed shortly. Have a great rest of your day!`;
 
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
-const FALLBACK_ROLES = ["employee", "admin", "super", "admin-readonly", "super-readonly"] as const;
+const FALLBACK_ROLES = ["employee", "admin", "super"] as const;
 const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
 
 const DEFAULT_INTAKE_CONTEXTS: StoredIntakeContext[] = [
@@ -165,6 +166,7 @@ const DEFAULT_INTAKE_CONTEXTS: StoredIntakeContext[] = [
     endNote: "",
     mcpActions: ["submit_weekly_update"],
     includeJobQuestions: false,
+    intakeLinkMode: "arcade",
     sessionPrompt: DEFAULT_SESSION_PROMPT,
   },
   {
@@ -183,6 +185,7 @@ const DEFAULT_INTAKE_CONTEXTS: StoredIntakeContext[] = [
     endNote: "",
     mcpActions: ["applicant_send_email"],
     includeJobQuestions: true,
+    intakeLinkMode: "public",
     sessionPrompt: DEFAULT_SESSION_PROMPT,
   },
 ];
@@ -204,6 +207,7 @@ function migrateIntakeContext(raw: any): StoredIntakeContext {
       ? [safeStr(raw.mcpAction)]
       : [],
     includeJobQuestions: Boolean(raw?.includeJobQuestions),
+    intakeLinkMode: raw?.intakeLinkMode === "public" ? "public" : "arcade",
   };
 }
 
@@ -221,6 +225,32 @@ function saveIntakeContexts(contexts: StoredIntakeContext[]) {
   try {
     localStorage.setItem(INTAKE_CONTEXTS_KEY, JSON.stringify(contexts));
   } catch {}
+}
+
+async function createIntakeTempLink(ctx: StoredIntakeContext, token: string) {
+  const response = await fetch(`${API_BASE}/admin/ai/intake/temp-session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      contextKey: ctx.key,
+      ttlHours: 72,
+      oneTimeUse: true,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.token) {
+    throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
+  }
+
+  return {
+    token: String(data.token),
+    publicLink: `${PUBLIC_WEBSITE_BASE}/intake?token=${encodeURIComponent(data.token)}&context=${encodeURIComponent(ctx.key)}`,
+  };
+}
+
+function getIntakeTryLink(ctx: StoredIntakeContext, publicTokenLink: string) {
+  if ((ctx.intakeLinkMode || "arcade") === "public") return publicTokenLink;
+  return `${window.location.origin}/updates/ai-intake?ctx=${encodeURIComponent(ctx.key)}`;
 }
 
 function isReadCapability(capability: string) {
@@ -386,10 +416,11 @@ export default function ManagerAgentBuilderPage() {
   const [selectedIntakeKey, setSelectedIntakeKey] = useState(() => loadIntakeContexts()[0]?.key || "");
   const [intakeForm, setIntakeForm] = useState<StoredIntakeContext>(() => {
     const ctxs = loadIntakeContexts();
-    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false };
+    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade" };
   });
   const [intakeJobs, setIntakeJobs] = useState<{ jobId: string; title: string }[]>([]);
   const [intakeJobsLoaded, setIntakeJobsLoaded] = useState(false);
+  const [intakeLinkBusyKey, setIntakeLinkBusyKey] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
   const activeRequestClientIdRef = useRef<string | null>(null);
@@ -399,7 +430,7 @@ export default function ManagerAgentBuilderPage() {
   const speakTimer = useRef<number | null>(null);
   const sessionIdRef = useRef(`mgr_${uid()}`);
 
-  const roleLower = safeStr((user as any)?.role || "").toLowerCase();
+  const roleLower = safeStr((user as any)?.employee_role || (user as any)?.role || "").toLowerCase();
   const canExecute = roleLower === "admin" || roleLower === "super";
   const isBusy = !!loadingMode;
   const adminData = useAgentAdminData(token, safeStr((user as any)?.username || ""));
@@ -2397,14 +2428,21 @@ function parseMcpInput(text: string) {
                         endNote: "",
                         mcpActions: [],
                         includeJobQuestions: false,
+                        intakeLinkMode: "arcade",
                       };
                       const next = [...intakeContexts, newCtx];
                       setIntakeContexts(next);
                       setSelectedIntakeKey(newCtx.key);
                       setIntakeForm(newCtx);
+                      saveIntakeContexts(next);
+                      fetch(`${API_BASE}/admin/ai/intake-contexts`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ contexts: next }),
+                      }).catch(() => {});
                     }}
                   >
-                    + New
+                    + Add Context
                   </button>
                   <button
                     type="button"
@@ -2423,7 +2461,7 @@ function parseMcpInput(text: string) {
                       }).catch(() => {});
                       const first = next[0];
                       setSelectedIntakeKey(first?.key || "");
-                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false });
+                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade" });
                     }}
                   >
                     Delete
@@ -2452,17 +2490,65 @@ function parseMcpInput(text: string) {
 
               <div className="mgr-segment" style={{ marginBottom: 14 }}>
                 {intakeContexts.map((ctx) => (
-                  <button
+                  <div
                     key={ctx.key}
-                    type="button"
                     className={`mgr-seg-btn ${selectedIntakeKey === ctx.key ? "active" : ""}`}
-                    onClick={() => {
-                      setSelectedIntakeKey(ctx.key);
-                      setIntakeForm({ ...ctx });
-                    }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between", paddingRight: 10 }}
                   >
-                    {ctx.label || ctx.key}
-                  </button>
+                    <button
+                      type="button"
+                      className="mgr-btn"
+                      style={{ flex: 1, background: "transparent", border: "none", padding: 0, textAlign: "left" }}
+                      onClick={() => {
+                        setSelectedIntakeKey(ctx.key);
+                        setIntakeForm({ ...ctx });
+                      }}
+                    >
+                      {ctx.label || ctx.key}
+                    </button>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        className="mgr-btn secondary"
+                        disabled={intakeLinkBusyKey === ctx.key}
+                        onClick={async () => {
+                          try {
+                            setIntakeLinkBusyKey(ctx.key);
+                            const publicLink = (await createIntakeTempLink(ctx, token)).publicLink;
+                            const tryLink = getIntakeTryLink(ctx, publicLink);
+                            window.open(tryLink, "_blank", "noopener,noreferrer");
+                            notify("ok", `Opened test link for ${ctx.label || ctx.key}`);
+                          } catch (err: any) {
+                            notify("err", err?.message || "Failed to create test link");
+                          } finally {
+                            setIntakeLinkBusyKey("");
+                          }
+                        }}
+                      >
+                        Try
+                      </button>
+                    <button
+                      type="button"
+                      className="mgr-btn secondary"
+                      disabled={intakeLinkBusyKey === ctx.key}
+                      onClick={async () => {
+                          try {
+                            setIntakeLinkBusyKey(ctx.key);
+                            const publicLink = (await createIntakeTempLink(ctx, token)).publicLink;
+                            const linkToCopy = getIntakeTryLink(ctx, publicLink);
+                            await navigator.clipboard.writeText(linkToCopy);
+                            notify("ok", `Copied link for ${ctx.label || ctx.key}`);
+                          } catch (err: any) {
+                            notify("err", err?.message || "Failed to create link");
+                          } finally {
+                            setIntakeLinkBusyKey("");
+                          }
+                        }}
+                      >
+                        Generate Link
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
 
@@ -2495,6 +2581,29 @@ function parseMcpInput(text: string) {
                   onChange={(e) => setIntakeForm((s) => ({ ...s, description: e.target.value }))}
                   placeholder="Short description shown on the intake page"
                 />
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <label className="mgr-label">Intake Link Mode</label>
+                <div className="mgr-segment">
+                  <button
+                    type="button"
+                    className={`mgr-seg-btn ${(intakeForm.intakeLinkMode || "arcade") === "arcade" ? "active" : ""}`}
+                    onClick={() => setIntakeForm((s) => ({ ...s, intakeLinkMode: "arcade" }))}
+                  >
+                    Arcade Internal Session
+                  </button>
+                  <button
+                    type="button"
+                    className={`mgr-seg-btn ${intakeForm.intakeLinkMode === "public" ? "active" : ""}`}
+                    onClick={() => setIntakeForm((s) => ({ ...s, intakeLinkMode: "public" }))}
+                  >
+                    Public Token Link
+                  </button>
+                </div>
+                <div style={{ color: "rgba(191,219,254,0.55)", fontSize: 11, marginTop: 6, lineHeight: 1.45 }}>
+                  Arcade Internal Session opens the local `/updates/ai-intake` flow. Public Token Link copies the public `/intake` URL that can be emailed or shared.
+                </div>
               </div>
 
               <div style={{ marginTop: 12 }}>

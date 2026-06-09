@@ -7,9 +7,7 @@ import { useAuth } from "./AuthContext";
 type LowerRole =
   | "super"
   | "admin"
-  | "employee"
-  | "admin-readonly"
-  | "super-readonly";
+  | "employee";
 
 type Props = {
   children: React.ReactNode;
@@ -35,7 +33,8 @@ function ProtectedComp({ children, roles }: Props) {
   // Normalize whatever we get (e.g. "EMPLOYEE" → "employee")
   const currentRole = String(user.role)
     .toLowerCase()
-    .replace(/_/g, "-") as LowerRole;
+    .replace(/_/g, "-")
+    .replace(/-readonly$/, "") as LowerRole;
 
   if (roles && !roles.includes(currentRole)) {
     return <Navigate to="/" replace />;
