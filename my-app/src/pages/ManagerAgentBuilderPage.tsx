@@ -221,10 +221,20 @@ function loadIntakeContexts(): StoredIntakeContext[] {
   return DEFAULT_INTAKE_CONTEXTS.map((x) => ({ ...x }));
 }
 
-function saveIntakeContexts(contexts: StoredIntakeContext[]) {
+async function saveIntakeContexts(contexts: StoredIntakeContext[], token?: string) {
   try {
     localStorage.setItem(INTAKE_CONTEXTS_KEY, JSON.stringify(contexts));
   } catch {}
+  if (!token) return;
+  const response = await fetch(`${API_BASE}/admin/ai/intake-contexts`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ contexts }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || `Failed to save intake contexts (${response.status})`);
+  }
 }
 
 async function createIntakeTempLink(ctx: StoredIntakeContext, token: string) {
@@ -741,7 +751,7 @@ export default function ManagerAgentBuilderPage() {
           setIntakeContexts(items);
           setSelectedIntakeKey(items[0].key || "");
           setIntakeForm(items[0]);
-          saveIntakeContexts(items);
+          saveIntakeContexts(items, token).catch(() => {});
         }
       } catch {}
     })();
@@ -2434,12 +2444,7 @@ function parseMcpInput(text: string) {
                       setIntakeContexts(next);
                       setSelectedIntakeKey(newCtx.key);
                       setIntakeForm(newCtx);
-                      saveIntakeContexts(next);
-                      fetch(`${API_BASE}/admin/ai/intake-contexts`, {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ contexts: next }),
-                      }).catch(() => {});
+                      saveIntakeContexts(next, token).catch(() => {});
                     }}
                   >
                     + Add Context
@@ -2453,12 +2458,7 @@ function parseMcpInput(text: string) {
                       if (!ok) return;
                       const next = intakeContexts.filter((x) => x.key !== selectedIntakeKey);
                       setIntakeContexts(next);
-                      saveIntakeContexts(next);
-                      fetch(`${API_BASE}/admin/ai/intake-contexts`, {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ contexts: next }),
-                      }).catch(() => {});
+                      saveIntakeContexts(next, token).catch(() => {});
                       const first = next[0];
                       setSelectedIntakeKey(first?.key || "");
                       setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade" });
@@ -2474,12 +2474,7 @@ function parseMcpInput(text: string) {
                         x.key === selectedIntakeKey ? { ...intakeForm } : x
                       );
                       setIntakeContexts(next);
-                      saveIntakeContexts(next);
-                      fetch(`${API_BASE}/admin/ai/intake-contexts`, {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ contexts: next }),
-                      }).catch(() => {});
+                      saveIntakeContexts(next, token).catch(() => {});
                       notify("ok", "Intake context saved — intake page will use this config.");
                     }}
                   >

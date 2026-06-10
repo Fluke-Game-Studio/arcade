@@ -332,6 +332,7 @@ function DebugPanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 340 }}>
+
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -494,6 +495,27 @@ export default function SessionCall({
       color: "#fff",
       overflow: "hidden",
     }}>
+      {err && (
+        <div style={{
+          position: "fixed",
+          top: 72,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 9999,
+          maxWidth: "min(900px, calc(100vw - 24px))",
+          padding: "10px 16px",
+          borderRadius: 12,
+          background: "rgba(220,38,38,0.95)",
+          color: "#fff",
+          boxShadow: "0 14px 32px rgba(0,0,0,0.35)",
+          textAlign: "center",
+          fontSize: 13,
+          lineHeight: 1.4,
+          whiteSpace: "pre-wrap",
+        }}>
+          {err}
+        </div>
+      )}
 
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
       <div style={{
