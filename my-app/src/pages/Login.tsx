@@ -1,7 +1,7 @@
 // src/pages/Login.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../auth/AuthContext";
 import M from "materialize-css";
@@ -11,6 +11,7 @@ export default function Login() {
   const { login, status, user, bootReason } = useAuth();
   const navigate = useNavigate();
   const location = useLocation() as any;
+  const [searchParams] = useSearchParams();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -38,9 +39,11 @@ export default function Login() {
   );
 
   const nextPath = useMemo(() => {
-    const next = String(location?.state?.next || "/");
+    const fromState = String(location?.state?.next || "");
+    const fromQuery = String(searchParams.get("next") || searchParams.get("returnTo") || "");
+    const next = fromState || fromQuery || "/";
     return next && next.startsWith("/") ? next : "/";
-  }, [location?.state?.next]);
+  }, [location?.state?.next, searchParams]);
 
   useEffect(() => {
     if (status === "authenticated" && user) {
@@ -313,7 +316,7 @@ export default function Login() {
       }
       M.toast({ html: "Welcome back!", classes: "green darken-2" });
       setLoading(false);
-      navigate("/");
+      navigate(nextPath, { replace: true });
     } catch (err: any) {
       const msg = err?.message || "Login failed. Please try again.";
       setErrMsg(msg);

@@ -28,7 +28,14 @@ function ProtectedComp({ children, roles }: Props) {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    return (
+      <Navigate
+        to={`/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`}
+        replace
+      />
+    );
+  }
 
   // Normalize whatever we get (e.g. "EMPLOYEE" → "employee")
   const currentRole = String(user.role)

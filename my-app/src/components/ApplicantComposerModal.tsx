@@ -84,6 +84,29 @@ const DEFAULT_SET_STATUS: Record<Stage, string> = {
   Welcome: "welcome_sent",
 };
 
+const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
+
+function getStoredIntakeContextMode(contextKey: string): "public" | "arcade" {
+  try {
+    const raw = window.localStorage.getItem(INTAKE_CONTEXTS_KEY);
+    if (!raw) return "arcade";
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return "arcade";
+    const match = parsed.find((ctx: any) => String(ctx?.key || "").trim() === String(contextKey || "").trim());
+    return match?.intakeLinkMode === "public" ? "public" : "arcade";
+  } catch {
+    return "arcade";
+  }
+}
+
+function buildIntakeEmailLink(contextKey: string, token: string, email: string, jobId: string) {
+  const mode = getStoredIntakeContextMode(contextKey);
+  if (mode === "public") {
+    return `${PUBLIC_WEBSITE_BASE}/intake?token=${encodeURIComponent(token)}&context=${encodeURIComponent(contextKey)}${email ? `&email=${encodeURIComponent(email)}` : ""}${jobId ? `&jobId=${encodeURIComponent(jobId)}` : ""}`;
+  }
+  return `https://arcade.flukegamestudio.com/updates/ai-intake?ctx=${encodeURIComponent(contextKey)}${jobId ? `&jobId=${encodeURIComponent(jobId)}` : ""}`;
+}
+
 // ------------------------------------------------------------
 // Types
 // ------------------------------------------------------------
@@ -105,6 +128,9 @@ type ComposerState = {
 
   // INTRO
   calendlyUrl: string;
+
+  // AI INTRO
+  intakeLinkOverride: string;
 
   // CONFIRMATION
   meetingTitle: string;
@@ -142,6 +168,8 @@ function defaultComposer(stage: Stage): ComposerState {
     vars_extraInfo: "",
 
     calendlyUrl: "https://calendly.com/flukegames/talent-intro",
+
+    intakeLinkOverride: "",
 
     meetingTitle: "Fluke Games — Interview",
     meetingWhen: "",
@@ -650,62 +678,67 @@ export default function ApplicantComposerModal({
         let intakeLink = "";
         if (richType === "AI_INTRO") {
           try {
-            // Fetch general bank + role-specific questions from the applicant's linked job
-            const jobRoleQuestions: string[] = [];
-            let jobTitle = "";
-            const roleId = applicant?.roleId || "";
-            if (roleId) {
-              try {
-                const jobs: any[] = await api.listJobsAdmin();
-                const job = jobs.find((j: any) =>
-                  j.jobId === roleId ||
-                  j.slug === roleId ||
-                  String(j.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-") === roleId.toLowerCase().replace(/[^a-z0-9]+/g, "-")
-                );
-                if (job) {
-                  jobTitle = String(job.title || "");
-                  // Role-specific inline questions only (no general bank, no personal bank)
-                  (Array.isArray(job.roleQuestions) ? job.roleQuestions : []).forEach((q: any) => {
-                    const label = String(q.label || q.text || q || "").trim();
-                    if (label) jobRoleQuestions.push(label);
-                  });
-                  const total = jobRoleQuestions.length;
-                  M?.toast?.({
-                    html: total > 0
-                      ? `✓ ${total} question${total !== 1 ? "s" : ""} for "${jobTitle}" included in interview`
-                      : `⚠ Job "${jobTitle}" found but has no questions — add them in Jobs Admin`,
-                    classes: total > 0 ? "teal" : "orange darken-2",
-                  });
-                } else {
-                  M?.toast?.({ html: `⚠ No job matched roleId "${roleId}" — sending without job questions`, classes: "orange darken-2" });
-                }
-              } catch (e: any) {
-                M?.toast?.({ html: `Job lookup failed: ${e?.message || "unknown"}`, classes: "red" });
-              }
-            }
-
-            const tr = await fetch(`${API_BASE}/admin/ai/intake/temp-session`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-              body: JSON.stringify({
-                contextKey: "interview_intake",
-                ttlHours: 72,
-                oneTimeUse: true,
-                bindEmail: toEmail,
-                bindApplicantId: applicantId,
-                ...(roleId ? { bindJobId: roleId } : {}),
-                ...(jobTitle ? { jobTitle } : {}),
-                ...(jobRoleQuestions.length > 0 ? { jobRoleQuestions } : {}),
-              }),
-            });
-            const td = await tr.json().catch(() => ({}));
-            if (tr.ok && td?.token) {
-              intakeLink = `${PUBLIC_WEBSITE_BASE}/intake?token=${encodeURIComponent(td.token)}&email=${encodeURIComponent(toEmail)}${roleId ? `&jobId=${encodeURIComponent(roleId)}` : ""}`;
+            const overrideLink = String(composer.intakeLinkOverride || "").trim();
+            if (overrideLink) {
+              intakeLink = overrideLink;
             } else {
-              const errMsg = td?.error || td?.message || `HTTP ${tr.status}`;
-              M?.toast?.({ html: `Failed to create intake link: ${errMsg}`, classes: "red" });
-              setSending(false);
-              return;
+              // Fetch general bank + role-specific questions from the applicant's linked job
+              const jobRoleQuestions: string[] = [];
+              let jobTitle = "";
+              const roleId = applicant?.roleId || "";
+              if (roleId) {
+                try {
+                  const jobs: any[] = await api.listJobsAdmin();
+                  const job = jobs.find((j: any) =>
+                    j.jobId === roleId ||
+                    j.slug === roleId ||
+                    String(j.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-") === roleId.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+                  );
+                  if (job) {
+                    jobTitle = String(job.title || "");
+                    // Role-specific inline questions only (no general bank, no personal bank)
+                    (Array.isArray(job.roleQuestions) ? job.roleQuestions : []).forEach((q: any) => {
+                      const label = String(q.label || q.text || q || "").trim();
+                      if (label) jobRoleQuestions.push(label);
+                    });
+                    const total = jobRoleQuestions.length;
+                    M?.toast?.({
+                      html: total > 0
+                        ? `✓ ${total} question${total !== 1 ? "s" : ""} for "${jobTitle}" included in interview`
+                        : `⚠ Job "${jobTitle}" found but has no questions — add them in Jobs Admin`,
+                      classes: total > 0 ? "teal" : "orange darken-2",
+                    });
+                  } else {
+                    M?.toast?.({ html: `⚠ No job matched roleId "${roleId}" — sending without job questions`, classes: "orange darken-2" });
+                  }
+                } catch (e: any) {
+                  M?.toast?.({ html: `Job lookup failed: ${e?.message || "unknown"}`, classes: "red" });
+                }
+              }
+
+              const tr = await fetch(`${API_BASE}/admin/ai/intake/temp-session`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                body: JSON.stringify({
+                  contextKey: "interview_intake",
+                  ttlHours: 72,
+                  oneTimeUse: true,
+                  bindEmail: toEmail,
+                  bindApplicantId: applicantId,
+                  ...(roleId ? { bindJobId: roleId } : {}),
+                  ...(jobTitle ? { jobTitle } : {}),
+                  ...(jobRoleQuestions.length > 0 ? { jobRoleQuestions } : {}),
+                }),
+              });
+              const td = await tr.json().catch(() => ({}));
+              if (tr.ok && td?.token) {
+                intakeLink = buildIntakeEmailLink("interview_intake", String(td.token), toEmail, roleId);
+              } else {
+                const errMsg = td?.error || td?.message || `HTTP ${tr.status}`;
+                M?.toast?.({ html: `Failed to create intake link: ${errMsg}`, classes: "red" });
+                setSending(false);
+                return;
+              }
             }
           } catch (e: any) {
             M?.toast?.({ html: `Intake link error: ${e?.message || "network error"}`, classes: "red" });
@@ -886,6 +919,20 @@ export default function ApplicantComposerModal({
               <div className="input-field" style={{ marginTop: 6 }}>
                 <input value={composer.calendlyUrl} onChange={(e) => updateComposer({ calendlyUrl: e.target.value })} />
                 <label className="active">calendlyUrl</label>
+              </div>
+            )}
+
+            {richType === "AI_INTRO" && (
+              <div className="input-field" style={{ marginTop: 6 }}>
+                <input
+                  value={composer.intakeLinkOverride}
+                  onChange={(e) => updateComposer({ intakeLinkOverride: e.target.value })}
+                  placeholder="Optional custom intake link override"
+                />
+                <label className="active">intakeLinkOverride (optional)</label>
+                <div style={{ marginTop: 6, fontSize: 12, color: "rgba(0,0,0,0.55)" }}>
+                  Leave blank to use the automatically generated intake link.
+                </div>
               </div>
             )}
 
@@ -1183,3 +1230,4 @@ export default function ApplicantComposerModal({
     </div>
   );
 }
+
