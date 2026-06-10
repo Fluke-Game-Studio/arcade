@@ -25,13 +25,10 @@ export default function Navbar() {
   const isAuthenticated = !!user;
   const roleLower = (user?.role ? String(user.role) : "employee")
     .toLowerCase()
-    .replace(/_/g, "-");
-  const isAdminish =
-    roleLower === "admin" ||
-    roleLower === "super" ||
-    roleLower === "admin-readonly" ||
-    roleLower === "super-readonly";
-  const isSuper = roleLower === "super" || roleLower === "super-readonly";
+    .replace(/_/g, "-")
+    .replace(/-readonly$/, "");
+  const isAdminish = roleLower === "admin" || roleLower === "super";
+  const isSuper = roleLower === "super";
 
   const sidenavRef = useRef<HTMLUListElement | null>(null);
   const dropdownRootRef = useRef<HTMLDivElement | null>(null);

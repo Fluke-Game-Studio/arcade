@@ -10,6 +10,7 @@ export type StoredIntakeContext = {
   endNote: string;
   mcpActions: string[];
   includeJobQuestions?: boolean;
+  intakeLinkMode?: "public" | "arcade";
 };
 
 export type FeedbackState = {

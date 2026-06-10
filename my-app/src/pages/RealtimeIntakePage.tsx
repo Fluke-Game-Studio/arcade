@@ -227,6 +227,21 @@ export default function RealtimeIntakePage() {
     );
   }
 
+  function formatMediaError(err: any) {
+    const name = String(err?.name || "");
+    const message = String(err?.message || err || "Unknown microphone error");
+    if (name === "NotFoundError" || /requested device not found/i.test(message)) {
+      return "No microphone was found. Please connect or enable a microphone, then try again.";
+    }
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      return "Microphone access was blocked. Please allow mic permissions for this site and try again.";
+    }
+    if (name === "NotReadableError") {
+      return "Your microphone is already in use by another app or tab. Close other audio apps and try again.";
+    }
+    return message;
+  }
+
   function startMicAnalysis(stream: MediaStream) {
     try {
       const actx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -256,7 +271,7 @@ export default function RealtimeIntakePage() {
     setUserSpeaking(false);
   }
 
-  async function connect() {
+  async function connect(audioDeviceId = "", videoDeviceId = "") {
     const seq = ++connectSeqRef.current;
     qIdxRef.current = 0;
     setQIdx(0);
@@ -273,10 +288,16 @@ export default function RealtimeIntakePage() {
         body: JSON.stringify({ model: "gpt-realtime-mini", voice: "alloy" }),
       });
       const session = await sessionRes.json().catch(() => ({}));
-      if (!sessionRes.ok) throw new Error(session?.error || `Session ${sessionRes.status}`);
+      if (!sessionRes.ok) {
+        throw new Error(
+          `Session ${sessionRes.status}: ${session?.error || session?.message || JSON.stringify(session || {}) || "unknown"}`
+        );
+      }
 
       const ephemeralKey = extractEphemeralKey(session);
-      if (!ephemeralKey) throw new Error("Missing ephemeral key from server.");
+      if (!ephemeralKey) {
+        throw new Error(`Missing ephemeral key from server: ${JSON.stringify(session || {})}`);
+      }
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
@@ -294,7 +315,10 @@ export default function RealtimeIntakePage() {
         if (["failed", "closed", "disconnected"].includes(pc.connectionState)) disconnect();
       };
 
-      const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ms = await navigator.mediaDevices.getUserMedia({
+        audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true,
+        video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : false,
+      });
       if (seq !== connectSeqRef.current) { ms.getTracks().forEach((t) => t.stop()); pc.close(); return; }
       micRef.current = ms;
       ms.getTracks().forEach((t) => { if (pc.signalingState !== "closed") pc.addTrack(t, ms); });
@@ -476,7 +500,7 @@ export default function RealtimeIntakePage() {
       if (!sdpRes.ok) throw new Error(`OpenAI SDP error ${sdpRes.status}`);
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     } catch (e: any) {
-      setErr(String(e?.message || e));
+      setErr(formatMediaError(e));
       setStatus("idle");
     }
   }
@@ -562,7 +586,10 @@ export default function RealtimeIntakePage() {
         ctx={ctx}
         jobTitle={jobTitle}
         jobQuestions={jobQuestions}
-        onConnect={connect}
+        err={err}
+        onConnect={(audioDeviceId, videoDeviceId) => {
+          connect(audioDeviceId, videoDeviceId);
+        }}
         onBack={() => navigate(-1)}
       />
     );

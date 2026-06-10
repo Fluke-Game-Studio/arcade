@@ -13,6 +13,8 @@ export type SessionUser = {
   username: string;
   name: string;
   role: Role;
+  employee_role?: Role;
+  read_only_scope?: Role;
   linkedin_connected?: boolean;
   linkedin_connected_at?: string;
   linkedin_member_id?: string;
@@ -46,14 +48,49 @@ type AuthCtx = {
 const LS_AUTH = "auth_user";
 const AuthContext = createContext<AuthCtx | null>(null);
 
-function mapRole(
-  r: "super" | "admin" | "employee" | "admin-readonly" | "super-readonly"
-): Role {
-  if (r === "super") return "SUPER";
-  if (r === "admin") return "ADMIN";
-  if (r === "super-readonly") return "SUPER_READONLY";
-  if (r === "admin-readonly") return "ADMIN_READONLY";
+type LowerRole = "employee" | "admin" | "super";
+
+function normalizeBaseRole(raw: unknown): LowerRole {
+  const role = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+  if (role === "super" || role === "super-readonly") return "super";
+  if (role === "admin" || role === "admin-readonly") return "admin";
+  return "employee";
+}
+
+function normalizeReadScope(raw: unknown): LowerRole {
+  return normalizeBaseRole(raw);
+}
+
+function toUiRole(role: LowerRole): Role {
+  if (role === "super") return "SUPER";
+  if (role === "admin") return "ADMIN";
   return "EMPLOYEE";
+}
+
+function higherRole(a: LowerRole, b: LowerRole): LowerRole {
+  if (a === "super" || b === "super") return "super";
+  if (a === "admin" || b === "admin") return "admin";
+  return "employee";
+}
+
+function buildSessionFromApi(user: any, fallback?: Partial<SessionUser>): SessionUser {
+  const baseRole = normalizeBaseRole(user?.employee_role || user?.role || fallback?.employee_role || fallback?.role);
+  const readOnlyScope = normalizeReadScope(user?.read_only_scope || fallback?.read_only_scope);
+  const effectiveRole = higherRole(baseRole, readOnlyScope);
+
+  return {
+    ...(user || {}),
+    ...(fallback || {}),
+    token: String(user?.token || fallback?.token || ""),
+    username: String(user?.username || fallback?.username || ""),
+    name: String(user?.name || user?.employee_name || fallback?.name || fallback?.username || ""),
+    role: toUiRole(effectiveRole),
+    employee_role: toUiRole(baseRole),
+    read_only_scope: toUiRole(readOnlyScope),
+  } as SessionUser;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -72,8 +109,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const raw = localStorage.getItem(LS_AUTH);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SessionUser;
-    api.setToken(parsed.token);
-    return parsed;
+    const session = buildSessionFromApi(parsed, parsed);
+    api.setToken(session.token);
+    return session;
   });
 
   const [status, setStatus] = useState<AuthStatus>(() => (user ? "checking" : "unauthenticated"));
@@ -97,12 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function login(username: string, password: string) {
     try {
       const res = await api.login(username, password, "portal");
-      const session: SessionUser = {
-        token: res.token,
-        username: res.username,
-        name: res.name,
-        role: mapRole(res.role),
-      };
+      const session = buildSessionFromApi(res, { token: res.token, username: res.username, name: res.name });
       setSession(session, "authenticated");
       return true;
     } catch (e) {
@@ -120,13 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const me: any = await api.getMe();
-      const refreshed: SessionUser = {
-        token: user.token,
-        username: String(me?.username || user.username),
-        name: String(me?.employee_name || me?.name || user.name),
-        role: mapRole(String(me?.employee_role || me?.role || "employee").toLowerCase() as any),
-        ...(me || {}),
-      } as SessionUser;
+      const refreshed = buildSessionFromApi(me, user);
       setSession(refreshed, "authenticated");
     } catch {}
   }
@@ -152,13 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const me: any = await api.getMe();
         if (cancelled) return;
 
-        const refreshed: SessionUser = {
-          token: user.token,
-          username: String(me?.username || user.username),
-          name: String(me?.employee_name || me?.name || user.name),
-          role: mapRole(String(me?.employee_role || me?.role || "employee").toLowerCase() as any),
-          ...(me || {}),
-        };
+        const refreshed = buildSessionFromApi(me, user);
 
         setSession(refreshed, "authenticated");
         setBootReason("ok");

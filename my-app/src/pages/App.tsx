@@ -5,7 +5,7 @@ import FloatingAIChat from "../components/FloatingAIChat";
 
 export default function App() {
   const location = useLocation();
-  const hideFloatingAI = location.pathname === "/super/talking-head-page";
+  const hideFloatingAI = location.pathname === "/super/talking-head-page" || location.pathname === "/updates/ai-intake";
 
   return (
     <>
