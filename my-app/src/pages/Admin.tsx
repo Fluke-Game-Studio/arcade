@@ -18,6 +18,7 @@ type AdminForm = CreateUserBody & {
   employee_manager?: string;
   project_id?: string;
   project_ids?: string[];
+  read_only_scope?: "employee" | "admin" | "super";
 
   employee_id?: string;
   employee_date_started?: string;
@@ -41,6 +42,7 @@ const EMPTY: AdminForm = {
   employee_manager: "",
   project_id: "",
   project_ids: [],
+  read_only_scope: "employee",
   employee_id: "",
   employee_date_started: "",
   employee_address: "",
@@ -69,7 +71,10 @@ function getRoleLower(anyUser: any) {
     safeStr(anyUser?.role) ||
     safeStr(anyUser?.employeeRole) ||
     safeStr(anyUser?.claims?.role);
-  return (r || "employee").toLowerCase();
+  const role = (r || "employee").toLowerCase();
+  if (role === "admin-readonly") return "admin";
+  if (role === "super-readonly") return "super";
+  return role;
 }
 
 function initials(nameOrUser: string) {
@@ -429,8 +434,14 @@ export default function Admin({
     }
 
     const tRole = getRoleLower(u);
-    setEditingUsername(u.username);
-    setEditingTargetRole(tRole);
+    const rawRole = safeStr(u.employee_role || u.role || u.employeeRole || u.claims?.role)
+      .toLowerCase()
+      .replace(/_/g, "-");
+    const legacyReadScope =
+      safeStr((u as any).read_only_scope) ||
+      (rawRole === "admin-readonly" ? "admin" : rawRole === "super-readonly" ? "super" : "employee");
+  setEditingUsername(u.username);
+  setEditingTargetRole(tRole);
 
     setForm({
       ...EMPTY,
@@ -438,7 +449,9 @@ export default function Admin({
       password: "",
       employee_name: safeStr(u.employee_name),
       employee_email: safeStr(u.employee_email),
-      employee_role: (u.employee_role as any) || "employee",
+      employee_role:
+        tRole === "admin-readonly" ? "admin" : tRole === "super-readonly" ? "super" : ((u.employee_role as any) || "employee"),
+      read_only_scope: legacyReadScope as any,
       employee_dob: safeStr((u as any).employee_dob),
       employee_profilepicture: safeStr((u as any).employee_profilepicture),
       employee_phonenumber: safeStr((u as any).employee_phonenumber),
@@ -503,7 +516,10 @@ export default function Admin({
 
         if (safeStr(form.password)) update.password = form.password;
 
-        if (isSuper) update.employee_role = form.employee_role || undefined;
+        if (isSuper) {
+          update.employee_role = form.employee_role || undefined;
+          update.read_only_scope = form.read_only_scope || undefined;
+        }
 
         if (isSuper) {
           update.username = safeStr(form.username) || editingUsername;
@@ -523,7 +539,8 @@ export default function Admin({
           password: safeStr(form.password),
           employee_name: safeStr(form.employee_name),
           employee_email: safeStr(form.employee_email),
-          employee_role: "employee",
+          employee_role: isSuper ? form.employee_role || "employee" : "employee",
+          read_only_scope: isSuper ? form.read_only_scope || "employee" : "employee",
           employee_title: form.employee_title || undefined,
           employee_profilepicture: form.employee_profilepicture || undefined,
           employee_phonenumber: form.employee_phonenumber || undefined,
@@ -1439,6 +1456,28 @@ export default function Admin({
                     </div>
                   </div>
                 )}
+
+                {isSuper ? (
+                  <div className="adm-span-4">
+                    <div className="adm-selectWrap">
+                      <label>Read Scope (SUPER only)</label>
+                      <select
+                        className="browser-default"
+                        value={form.read_only_scope || "employee"}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            read_only_scope: e.target.value as any,
+                          }))
+                        }
+                      >
+                        <option value="employee">employee</option>
+                        <option value="admin">admin</option>
+                        <option value="super">super</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </ModalSection>
 

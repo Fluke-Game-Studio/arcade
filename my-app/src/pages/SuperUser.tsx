@@ -10,9 +10,8 @@ type ProjectSettingsTab = "details" | "jira";
 type AssignableRole =
   | "employee"
   | "admin"
-  | "admin-readonly"
-  | "super"
-  | "super-readonly";
+  | "super";
+type ReadScope = "employee" | "admin" | "super";
 
 type ProjectForm = {
   name: string;
@@ -36,9 +35,7 @@ const DEFAULT_PLATFORMS = ["windows", "mac", "linux", "steam", "epic", "ps5", "x
 const ASSIGNABLE_ROLES: AssignableRole[] = [
   "employee",
   "admin",
-  "admin-readonly",
   "super",
-  "super-readonly",
 ];
 
 function safeStr(v: any) {
@@ -46,7 +43,10 @@ function safeStr(v: any) {
 }
 
 function normalizeRole(v: any) {
-  return safeStr(v).toLowerCase().replace(/_/g, "-");
+  const role = safeStr(v).toLowerCase().replace(/_/g, "-");
+  if (role === "super-readonly") return "super";
+  if (role === "admin-readonly") return "admin";
+  return role;
 }
 
 function parsePlatformCsv(v: string) {
@@ -80,7 +80,7 @@ export default function SuperUser() {
   const [savingProductKey, setSavingProductKey] = useState("");
   const [savingProjectVisibilityId, setSavingProjectVisibilityId] = useState("");
   const [customPlatform, setCustomPlatform] = useState("");
-  const isSuperUser = normalizeRole((user as any)?.role) === "super";
+  const isSuperUser = normalizeRole((user as any)?.employee_role || (user as any)?.role) === "super";
   const releaseData = useReleaseProductsData(api as any);
 
   const [projectForm, setProjectForm] = useState<ProjectForm>({
@@ -143,12 +143,12 @@ export default function SuperUser() {
       (u) =>
         (u.employee_name || "").toLowerCase().includes(q) ||
         (u.employee_email || "").toLowerCase().includes(q) ||
-        (u.employee_role || "").toLowerCase().includes(q)
+        normalizeRole(u.employee_role || "").includes(q)
     );
   }, [rows, query]);
 
   const adminAndSupers = useMemo(
-    () => rows.filter((u) => u.employee_role === "admin" || u.employee_role === "super"),
+    () => rows.filter((u) => normalizeRole(u.employee_role) === "admin" || normalizeRole(u.employee_role) === "super"),
     [rows]
   );
 
@@ -156,6 +156,16 @@ export default function SuperUser() {
     try {
       await api.updateUser({ username, employee_role: role });
       M.toast({ html: "Role updated", classes: "green" });
+      loadUsers();
+    } catch (e: any) {
+      M.toast({ html: e?.message || "Failed", classes: "red" });
+    }
+  }
+
+  async function setReadScope(username: string, read_only_scope: ReadScope) {
+    try {
+      await api.updateUser({ username, read_only_scope } as any);
+      M.toast({ html: "Read scope updated", classes: "green" });
       loadUsers();
     } catch (e: any) {
       M.toast({ html: e?.message || "Failed", classes: "red" });
@@ -347,63 +357,142 @@ export default function SuperUser() {
   return (
     <main className="container" style={{ paddingTop: 24, maxWidth: 1200 }}>
       <style>{`
-        .suCard { border: 1px solid #e6edf2; border-radius: 16px; background: #fff; overflow: hidden; }
+        .suShell { display: flex; flex-direction: column; gap: 14px; }
+        .suHero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .suHeader { font-size: 26px; font-weight: 1000; color: #0f172a; letter-spacing: -.02em; }
+        .suSub { color: #475569; margin-top: 6px; max-width: 72ch; }
+        .suCard { border: 1px solid #e6edf2; border-radius: 18px; background: #fff; overflow: hidden; box-shadow: 0 10px 30px rgba(15, 23, 42, .05); }
         .suCard .card-content { padding: 16px; }
-        .suTabs { display: inline-flex; gap: 8px; border: 1px solid #dbe5ef; border-radius: 999px; padding: 6px; margin: 0 0 14px; background: #f8fbff; }
-        .suTabBtn { border: 0; border-radius: 999px; padding: 9px 14px; font-weight: 900; font-size: 13px; cursor: pointer; color: #334155; background: transparent; }
-        .suTabBtn.active { background: rgba(59,130,246,.16); color: #1d4ed8; }
-        .suHeader { font-size: 22px; font-weight: 1000; color: #0f172a; }
-        .suSub { color: #475569; margin: 6px 0 14px; }
+        .suTabs { display: inline-flex; gap: 8px; border: 1px solid #dbe5ef; border-radius: 999px; padding: 6px; background: #f8fbff; flex-wrap: wrap; }
+        .suTabBtn { border: 0; border-radius: 999px; padding: 9px 14px; font-weight: 900; font-size: 13px; cursor: pointer; color: #334155; background: transparent; transition: all .15s ease; }
+        .suTabBtn.active { background: rgba(59,130,246,.16); color: #1d4ed8; box-shadow: inset 0 0 0 1px rgba(59,130,246,.12); }
+        .suToolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 12px; }
+        .suSearch { min-width: 280px; flex: 1 1 320px; }
+        .suTableWrap { overflow: auto; border: 1px solid #edf2f7; border-radius: 14px; }
+        .suTableWrap table { margin-bottom: 0; min-width: 980px; }
+        .suTableWrap thead th { position: sticky; top: 0; z-index: 1; background: #f8fbff; white-space: nowrap; }
+        .suMiniSelect { height: 34px !important; border: 1px solid #dbe5ef !important; border-radius: 10px !important; background: #fff !important; padding: 0 10px !important; font-size: 13px; min-width: 92px; }
+        .suChip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 999px; font-size: 11px; font-weight: 900; letter-spacing: .03em; border: 1px solid transparent; white-space: nowrap; }
+        .suChip.employee { background: rgba(34,197,94,.10); color: #15803d; border-color: rgba(34,197,94,.18); }
+        .suChip.admin { background: rgba(59,130,246,.10); color: #1d4ed8; border-color: rgba(59,130,246,.18); }
+        .suChip.super { background: rgba(168,85,247,.10); color: #7e22ce; border-color: rgba(168,85,247,.18); }
+        .suCellMuted { color: #64748b; font-size: 12px; }
+        .suToggleRow { display: flex; align-items: center; justify-content: center; min-height: 34px; }
+        .suUserList { display: flex; flex-direction: column; gap: 12px; }
+        .suUserRow { display: grid; grid-template-columns: minmax(320px, 1.1fr) minmax(0, 1.9fr); gap: 14px; border: 1px solid #e6edf2; border-radius: 18px; background: linear-gradient(180deg, #fff, #fafcff); padding: 14px; box-shadow: 0 8px 24px rgba(15,23,42,.04); }
+        .suUserIdentity { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+        .suAvatarWrap { position: relative; flex: 0 0 auto; }
+        .suAvatar { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(180deg, #f8fafc, #eef2ff); border: 1px solid #dbe5ef; display: flex; align-items: center; justify-content: center; overflow: hidden; font-weight: 1000; color: #334155; }
+        .suAvatarDot { position: absolute; right: -1px; bottom: -1px; width: 13px; height: 13px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.75); }
+        .suUserMeta { min-width: 0; flex: 1; }
+        .suUserTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .suUserName { font-size: 16px; font-weight: 1000; color: #0f172a; line-height: 1.2; }
+        .suUserLine { margin-top: 6px; color: #64748b; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .suUserRight { display: grid; grid-template-columns: minmax(220px, 320px) minmax(240px, 1fr); gap: 16px; align-items: start; }
+        .suStack { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+        .suStackLabel { font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: #64748b; }
+        .suSelectPanel { display: flex; flex-direction: column; gap: 8px; }
+        .suAccessPanel { display: flex; flex-direction: column; gap: 8px; }
+        .suAccessChecks { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; min-height: 36px; }
+        .suCheckItem { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid #dbe5ef; background: #fff; font-size: 12px; font-weight: 800; color: #334155; }
+        .suCheckItem input { margin: 0; }
+        @media (max-width: 980px) { .suUserRow { grid-template-columns: 1fr; } .suUserRight { grid-template-columns: 1fr; } }
+        @media (max-width: 640px) { .suSearch { min-width: 0; } }
       `}</style>
 
-      <div className="suHeader">Super Console</div>
-      <div className="suSub">
-        Manage users, projects, and website-facing release visibility.
-      </div>
+      <div className="suShell">
+        <div className="suHero">
+          <div>
+            <div className="suHeader">Super Console</div>
+            <div className="suSub">
+              Manage users, projects, and website-facing release visibility. Read scope is separate from the employee role, so write permissions stay predictable.
+            </div>
+          </div>
+          <div className="suTabs" role="tablist" aria-label="Super Console tabs">
+            <button type="button" className={`suTabBtn ${tab === "users" ? "active" : ""}`} onClick={() => setTab("users")}>Users & Roles</button>
+            <button type="button" className={`suTabBtn ${tab === "projects" ? "active" : ""}`} onClick={() => setTab("projects")}>Projects</button>
+            <button type="button" className={`suTabBtn ${tab === "releases" ? "active" : ""}`} onClick={() => setTab("releases")}>Releases & Products</button>
+          </div>
+        </div>
 
-      <div className="suTabs" role="tablist" aria-label="Super Console tabs">
-        <button type="button" className={`suTabBtn ${tab === "users" ? "active" : ""}`} onClick={() => setTab("users")}>Users & Roles</button>
-        <button type="button" className={`suTabBtn ${tab === "projects" ? "active" : ""}`} onClick={() => setTab("projects")}>Projects</button>
-        <button type="button" className={`suTabBtn ${tab === "releases" ? "active" : ""}`} onClick={() => setTab("releases")}>Releases & Products</button>
+        <div className="suSub" style={{ marginTop: 0 }}>
+          Users: {rows.length} · Admins + Supers: {adminAndSupers.length} · Projects: {projects.length}
+        </div>
       </div>
 
       {tab === "users" && (
         <div className="suCard">
           <div className="card-content">
-            <span className="card-title" style={{ fontWeight: 1000 }}>Users ({rows.length})</span>
-            <div className="input-field">
+            <div className="suToolbar">
+              <span className="card-title" style={{ fontWeight: 1000, margin: 0 }}>Users ({rows.length})</span>
+              <div className="suCellMuted">{loading ? "Loading users..." : `${filtered.length} shown`}</div>
+            </div>
+            <div className="input-field suSearch">
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." />
               <label className="active">Search</label>
             </div>
             {loading ? <p>Loading...</p> : (
-              <table className="highlight responsive-table">
-                <thead>
-                  <tr>
-                    <th>Username</th><th>Name</th><th>Email</th><th>Role</th><th>Portal</th><th>Project</th><th>VCS</th><th>Revoked</th><th>Change</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((u) => {
-                    const isSelf = u.username === user?.username;
-                    const portal = (u as any).portal_access !== false;
-                    const project = (u as any).project_access !== false;
-                    const vcs = (u as any).version_control_access === true;
-                    const revoked = (u as any).revoked === true;
-                    return (
-                      <tr key={u.username} className={isSelf ? "grey lighten-4" : ""}>
-                        <td><code>{u.username}</code></td>
-                        <td>{u.employee_name}</td>
-                        <td><code>{u.employee_email}</code></td>
-                        <td><b>{(u.employee_role ?? "").toUpperCase()}</b></td>
-                        <td><label><input type="checkbox" checked={portal} disabled={!isSuperUser} onChange={(e) => setUserAccessFlag(u.username, "portal_access", e.target.checked)} /><span></span></label></td>
-                        <td><label><input type="checkbox" checked={project} disabled={!isSuperUser} onChange={(e) => setUserAccessFlag(u.username, "project_access", e.target.checked)} /><span></span></label></td>
-                        <td><label><input type="checkbox" checked={vcs} disabled={!isSuperUser} onChange={(e) => setUserAccessFlag(u.username, "version_control_access", e.target.checked)} /><span></span></label></td>
-                        <td>{revoked ? "Yes" : "No"}</td>
-                        <td>
+              <div className="suUserList">
+                {filtered.map((u) => {
+                  const isSelf = u.username === user?.username;
+                  const portal = (u as any).portal_access !== false;
+                  const project = (u as any).project_access !== false;
+                  const vcs = (u as any).version_control_access === true;
+                  const readScope = normalizeRole(
+                    (u as any).read_only_scope ||
+                      (normalizeRole(u.employee_role) === "super"
+                        ? "super"
+                        : normalizeRole(u.employee_role) === "admin"
+                        ? "admin"
+                        : "employee")
+                  ) as ReadScope;
+                  const roleKey = normalizeRole(u.employee_role);
+                  return (
+                    <div key={u.username} className="suUserRow">
+                      <div className="suUserIdentity">
+                        <div className="suAvatarWrap">
+                          <div className="suAvatar">
+                          {(safeStr((u as any).employee_profilepicture || (u as any).employee_picture) || "").trim() ? (
+                            <img
+                              src={safeStr((u as any).employee_profilepicture || (u as any).employee_picture)}
+                              alt=""
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                          ) : (
+                            <span>{safeStr(u.employee_name || u.username).slice(0, 2).toUpperCase()}</span>
+                          )}
+                          </div>
+                        </div>
+                        <div className="suUserMeta">
+                          <div className="suUserTop">
+                            <div className="suUserName">{u.employee_name || u.username}</div>
+                            <span className={`suChip ${roleKey}`}>{roleKey.toUpperCase()}</span>
+                          </div>
+                          <div className="suUserLine"><code>{u.username}</code></div>
+                          <div className="suUserLine"><code>{u.employee_email}</code></div>
+                        </div>
+                      </div>
+
+                      <div className="suUserRight">
+                        <div className="suSelectPanel">
+                          <div className="suStackLabel">Read Scope</div>
                           <select
-                            className="browser-default"
-                            disabled={isSelf || !isSuperUser}
-                            value={normalizeRole(u.employee_role || "employee")}
+                            className="browser-default suMiniSelect"
+                            disabled={!isSuperUser || isSelf}
+                            value={readScope}
+                            onChange={(e) => {
+                              void setReadScope(u.username, e.target.value as ReadScope);
+                            }}
+                          >
+                            <option value="employee">employee</option>
+                            <option value="admin">admin</option>
+                            <option value="super">super</option>
+                          </select>
+                          <div className="suStackLabel" style={{ marginTop: 6 }}>Write Scope</div>
+                          <select
+                            className="browser-default suMiniSelect"
+                            disabled={!isSuperUser || isSelf}
+                            value={roleKey}
                             onChange={(e) => {
                               const nextRole = normalizeRole(e.target.value) as AssignableRole;
                               if (!nextRole || nextRole === normalizeRole(u.employee_role)) return;
@@ -416,12 +505,30 @@ export default function SuperUser() {
                               </option>
                             ))}
                           </select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </div>
+
+                        <div className="suAccessPanel">
+                          <div className="suStackLabel">Access</div>
+                          <div className="suAccessChecks">
+                            <label className="suCheckItem">
+                              <input type="checkbox" checked={portal} disabled={!isSuperUser} onChange={(e) => setUserAccessFlag(u.username, "portal_access", e.target.checked)} />
+                              <span>Portal</span>
+                            </label>
+                            <label className="suCheckItem">
+                              <input type="checkbox" checked={project} disabled={!isSuperUser} onChange={(e) => setUserAccessFlag(u.username, "project_access", e.target.checked)} />
+                              <span>Project</span>
+                            </label>
+                            <label className="suCheckItem">
+                              <input type="checkbox" checked={vcs} disabled={!isSuperUser} onChange={(e) => setUserAccessFlag(u.username, "version_control_access", e.target.checked)} />
+                              <span>VCS</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

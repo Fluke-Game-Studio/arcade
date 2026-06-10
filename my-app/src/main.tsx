@@ -111,7 +111,7 @@ const router = createBrowserRouter([
 
   {
     element: (
-      <Protected roles={["employee", "admin", "super", "admin-readonly", "super-readonly"]}>
+      <Protected roles={["employee", "admin", "super"]}>
         <App />
       </Protected>
     ),
@@ -123,7 +123,7 @@ const router = createBrowserRouter([
       {
         path: "/applicants",
         element: (
-          <Protected roles={["admin", "super", "admin-readonly", "super-readonly"]}>
+          <Protected roles={["admin", "super"]}>
             <Applicants />
           </Protected>
         ),
@@ -132,7 +132,7 @@ const router = createBrowserRouter([
       {
         path: "/admin/jobs",
         element: (
-          <Protected roles={["admin", "super", "admin-readonly", "super-readonly"]}>
+          <Protected roles={["admin", "super"]}>
             <JobsAdmin />
           </Protected>
         ),
@@ -140,7 +140,7 @@ const router = createBrowserRouter([
       {
         path: "/admin/customers",
         element: (
-          <Protected roles={["admin", "super", "admin-readonly", "super-readonly"]}>
+          <Protected roles={["admin", "super"]}>
             <CustomersAdmin />
           </Protected>
         ),
@@ -148,7 +148,7 @@ const router = createBrowserRouter([
       {
         path: "/admin/endpoints",
         element: (
-          <Protected roles={["super", "super-readonly"]}>
+          <Protected roles={["super"]}>
             <ApiEndpoints />
           </Protected>
         ),
@@ -156,7 +156,7 @@ const router = createBrowserRouter([
       {
         path: "/docs/endpoints",
         element: (
-          <Protected roles={["employee", "admin", "super", "admin-readonly", "super-readonly"]}>
+          <Protected roles={["employee", "admin", "super"]}>
             <ApiEndpointsReadOnly />
           </Protected>
         ),
@@ -168,7 +168,7 @@ const router = createBrowserRouter([
       {
         path: "/updates/board",
         element: (
-          <Protected roles={["admin", "super", "admin-readonly", "super-readonly"]}>
+          <Protected roles={["admin", "super"]}>
             <RetroBoard />
           </Protected>
         ),
@@ -177,7 +177,7 @@ const router = createBrowserRouter([
       {
         path: "/updates/activity",
         element: (
-          <Protected roles={["admin", "super", "admin-readonly", "super-readonly"]}>
+          <Protected roles={["admin", "super"]}>
             <AdminWorkspace initialTab="activity" />
           </Protected>
         ),
@@ -186,7 +186,7 @@ const router = createBrowserRouter([
       {
         path: "/admin",
         element: (
-          <Protected roles={["admin", "super", "admin-readonly", "super-readonly"]}>
+          <Protected roles={["admin", "super"]}>
             <AdminWorkspace initialTab="employees" />
           </Protected>
         ),
@@ -195,7 +195,7 @@ const router = createBrowserRouter([
       {
         path: "/super",
         element: (
-          <Protected roles={["super", "super-readonly"]}>
+          <Protected roles={["super"]}>
             <SuperUser />
           </Protected>
         ),
@@ -204,7 +204,7 @@ const router = createBrowserRouter([
       {
         path: "/super/ai",
         element: (
-          <Protected roles={["super", "super-readonly"]}>
+          <Protected roles={["super"]}>
             <SuperAI />
           </Protected>
         ),
@@ -212,7 +212,7 @@ const router = createBrowserRouter([
       {
         path: "/super/ai-character-training",
         element: (
-          <Protected roles={["super", "super-readonly"]}>
+          <Protected roles={["super"]}>
             <CharacterTutorialPage />
           </Protected>
         ),
@@ -220,7 +220,7 @@ const router = createBrowserRouter([
       {
         path: "/super/talking-head-page",
         element: (
-          <Protected roles={["super", "super-readonly"]}>
+          <Protected roles={["super"]}>
             <TalkingHeadPage />
           </Protected>
         ),
@@ -228,7 +228,7 @@ const router = createBrowserRouter([
       {
         path: "/super/manager-agent-builder",
         element: (
-          <Protected roles={["super", "super-readonly"]}>
+          <Protected roles={["super"]}>
             <ManagerAgentBuilderPage />
           </Protected>
         ),
@@ -237,7 +237,7 @@ const router = createBrowserRouter([
       {
         path: "/super/awards",
         element: (
-          <Protected roles={["super", "super-readonly"]}>
+          <Protected roles={["super"]}>
             <SuperAwards />
           </Protected>
         ),
