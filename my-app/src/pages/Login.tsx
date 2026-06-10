@@ -38,11 +38,24 @@ export default function Login() {
     [username, password, loading]
   );
 
+  function normalizeNextPath(raw: string) {
+    const value = String(raw || "").trim();
+    if (!value) return "/";
+    if (value.startsWith("/")) return value;
+    try {
+      const url = new URL(value);
+      const sameOrigin = url.origin === window.location.origin;
+      if (sameOrigin) return `${url.pathname}${url.search}${url.hash}` || "/";
+      return `${url.pathname}${url.search}${url.hash}` || "/";
+    } catch {
+      return "/";
+    }
+  }
+
   const nextPath = useMemo(() => {
     const fromState = String(location?.state?.next || "");
     const fromQuery = String(searchParams.get("next") || searchParams.get("returnTo") || "");
-    const next = fromState || fromQuery || "/";
-    return next && next.startsWith("/") ? next : "/";
+    return normalizeNextPath(fromState || fromQuery || "/");
   }, [location?.state?.next, searchParams]);
 
   useEffect(() => {
