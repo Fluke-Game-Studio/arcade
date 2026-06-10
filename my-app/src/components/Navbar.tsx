@@ -70,7 +70,7 @@ export default function Navbar() {
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`);
     try {
       M.Sidenav.getInstance(sidenavRef.current)?.close();
     } catch {}
@@ -80,13 +80,13 @@ export default function Navbar() {
   const initial = (displayName || "U").slice(0, 1).toUpperCase();
 
   const baseLinks = useMemo<LinkItem[]>(() => {
-    if (!isAuthenticated) return [{ to: "/login", label: "Login" }];
+    if (!isAuthenticated) return [{ to: `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`, label: "Login" }];
     return [
       { to: "/", label: "Home" },
       { to: "/employees", label: "Employees" },
       { to: "/account", label: "My Account" },
     ];
-  }, [isAuthenticated]);
+  }, [isAuthenticated, location.pathname, location.search, location.hash]);
 
   const adminGroup = useMemo<MenuGroup>(
     () => ({
@@ -465,7 +465,7 @@ export default function Navbar() {
           }}
         >
           <NavLink
-            to={isAuthenticated ? "/" : "/login"}
+            to={isAuthenticated ? "/" : `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`}
             style={{
               minWidth: 0,
               display: "inline-flex",
@@ -697,7 +697,7 @@ export default function Navbar() {
             {!isAuthenticated && (
               <a
                 href="#!"
-                onClick={() => navigate("/login")}
+                onClick={() => navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`)}
                 style={{
                   height: 44,
                   padding: "0 16px",
