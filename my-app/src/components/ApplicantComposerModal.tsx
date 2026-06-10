@@ -101,10 +101,12 @@ function getStoredIntakeContextMode(contextKey: string): "public" | "arcade" {
 
 function buildIntakeEmailLink(contextKey: string, token: string, email: string, jobId: string) {
   const mode = getStoredIntakeContextMode(contextKey);
-  if (mode === "public") {
-    return `${PUBLIC_WEBSITE_BASE}/intake?token=${encodeURIComponent(token)}&context=${encodeURIComponent(contextKey)}${email ? `&email=${encodeURIComponent(email)}` : ""}${jobId ? `&jobId=${encodeURIComponent(jobId)}` : ""}`;
-  }
-  return `https://arcade.flukegamestudio.com/updates/ai-intake?ctx=${encodeURIComponent(contextKey)}${jobId ? `&jobId=${encodeURIComponent(jobId)}` : ""}`;
+  const destination =
+    mode === "public"
+      ? `${PUBLIC_WEBSITE_BASE}/intake?token=${encodeURIComponent(token)}&context=${encodeURIComponent(contextKey)}${email ? `&email=${encodeURIComponent(email)}` : ""}${jobId ? `&jobId=${encodeURIComponent(jobId)}` : ""}`
+      : `https://arcade.flukegamestudio.com/updates/ai-intake?ctx=${encodeURIComponent(contextKey)}${jobId ? `&jobId=${encodeURIComponent(jobId)}` : ""}`;
+  const loginBase = mode === "public" ? PUBLIC_WEBSITE_BASE : "https://arcade.flukegamestudio.com";
+  return `${loginBase}/login?next=${encodeURIComponent(destination)}`;
 }
 
 // ------------------------------------------------------------
