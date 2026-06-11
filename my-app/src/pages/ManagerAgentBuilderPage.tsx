@@ -401,6 +401,7 @@ export default function ManagerAgentBuilderPage() {
     approvalPolicy: { mode: "always" },
   });
   const [mcpPolicies, setMcpPolicies] = useState<MpcPolicy[]>([]);
+  const [ragClearState, setRagClearState] = useState<{ busy: boolean; result: string }>({ busy: false, result: "" });
   const [assignUsername, setAssignUsername] = useState("");
   const [assignDefaultAgent, setAssignDefaultAgent] = useState("");
   const [assignAllowedAgentsText, setAssignAllowedAgentsText] = useState("");
@@ -2249,6 +2250,7 @@ function parseMcpInput(text: string) {
           ) : null}
 
           {tab === "policies" ? (
+            <>
             <section className="mgr-card" style={{ marginTop: 12 }}>
               <div className="mgr-row">
                 <div>
@@ -2414,6 +2416,50 @@ function parseMcpInput(text: string) {
                 </button>
               </div>
             </section>
+
+            <section className="mgr-card" style={{ marginTop: 12 }}>
+              <div style={{ marginBottom: 8 }}>
+                <label className="mgr-label" style={{ margin: 0 }}>RAG Action Store</label>
+                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginTop: 4 }}>
+                  Clear all stored action classification feedback for this context. Use this to reset corrupted or incorrect historical data — the system will fall back to builtin examples only until new feedback is submitted.
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="mgr-btn danger"
+                  disabled={ragClearState.busy}
+                  onClick={async () => {
+                    const contextKey = "internal";
+                    if (!window.confirm(`Clear all stored RAG action feedback for context "${contextKey}"? This cannot be undone.`)) return;
+                    setRagClearState({ busy: true, result: "" });
+                    try {
+                      const res = await fetch(`${API_BASE}/admin/ai/action-rag?contextKey=${encodeURIComponent(contextKey)}`, {
+                        method: "DELETE",
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error((err as any)?.error || `HTTP ${res.status}`);
+                      }
+                      setRagClearState({ busy: false, result: "Cleared" });
+                      notify("ok", `RAG store cleared for "${contextKey}"`);
+                    } catch (e: any) {
+                      setRagClearState({ busy: false, result: `Error: ${e?.message}` });
+                      notify("err", `Failed to clear RAG store: ${e?.message}`);
+                    }
+                  }}
+                >
+                  {ragClearState.busy ? "Clearing…" : "Clear RAG Store"}
+                </button>
+                {ragClearState.result && (
+                  <span style={{ fontSize: 12, color: ragClearState.result.startsWith("Error") ? "#f87171" : "#86efac" }}>
+                    {ragClearState.result}
+                  </span>
+                )}
+              </div>
+            </section>
+            </>
           ) : null}
 
           {tab === "intake" ? (
@@ -2607,29 +2653,27 @@ function parseMcpInput(text: string) {
                 </div>
               </div>
 
-              <div style={{ marginTop: 12 }}>
-                <label className="mgr-label">Transcript Email</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
                   <input
                     type="checkbox"
-                    checked={!!intakeForm.transcriptEmailEnabled}
+                    checked={Boolean(intakeForm.transcriptEmailEnabled)}
                     onChange={(e) => setIntakeForm((s) => ({ ...s, transcriptEmailEnabled: e.target.checked }))}
-                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer", flexShrink: 0 }}
+                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
                   />
-                  <span style={{ fontSize: 13, color: "rgba(191,219,254,0.85)" }}>
-                    Email transcript after each submission or skip
-                  </span>
-                </div>
-                {intakeForm.transcriptEmailEnabled && (
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>Email transcript on submission / skip</span>
+                </label>
+                {Boolean(intakeForm.transcriptEmailEnabled) && (
                   <input
                     className="mgr-input"
                     type="email"
                     value={intakeForm.transcriptEmailTo || ""}
                     onChange={(e) => setIntakeForm((s) => ({ ...s, transcriptEmailTo: e.target.value }))}
                     placeholder="recipient@example.com"
+                    style={{ marginTop: 10 }}
                   />
                 )}
-                <div style={{ color: "rgba(191,219,254,0.55)", fontSize: 11, marginTop: 6, lineHeight: 1.45 }}>
+                <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
                   When enabled, a plain-text transcript is emailed to the address above after every submission or skip.
                 </div>
               </div>

@@ -1768,6 +1768,7 @@ export class ApiClient {
       | "transition_issue"
       | "add_comment"
       | string;
+    mcpInputMode?: "override" | "auto";
     mcpInput?: Record<string, any>;
   }): Promise<GenerateAwardsNarrativeResponse> {
     const context = body.context || "internal";
@@ -1792,6 +1793,24 @@ export class ApiClient {
       );
     }
     return payload as GenerateAwardsNarrativeResponse;
+  }
+
+  async submitInternalIntake(body: {
+    contextKey: string;
+    answers?: Record<string, string>;
+    transcript?: string;
+    feedback?: Record<string, any> | null;
+  }): Promise<{ ok: boolean; emailSent?: boolean }> {
+    const r = await fetch(`${API_BASE}/ai/intake/submit-internal`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`submitInternalIntake failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; emailSent?: boolean };
   }
 
   /* ===================== */
