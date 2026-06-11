@@ -125,6 +125,8 @@ type StoredIntakeContext = {
   mcpActions: string[];
   includeJobQuestions: boolean;
   intakeLinkMode?: "public" | "arcade";
+  transcriptEmailEnabled?: boolean;
+  transcriptEmailTo?: string;
 };
 
 const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Games. You have ONE job: conduct this interview by asking the listed questions in order.
@@ -208,6 +210,8 @@ function migrateIntakeContext(raw: any): StoredIntakeContext {
       : [],
     includeJobQuestions: Boolean(raw?.includeJobQuestions),
     intakeLinkMode: raw?.intakeLinkMode === "public" ? "public" : "arcade",
+    transcriptEmailEnabled: Boolean(raw?.transcriptEmailEnabled),
+    transcriptEmailTo: safeStr(raw?.transcriptEmailTo),
   };
 }
 
@@ -426,7 +430,7 @@ export default function ManagerAgentBuilderPage() {
   const [selectedIntakeKey, setSelectedIntakeKey] = useState(() => loadIntakeContexts()[0]?.key || "");
   const [intakeForm, setIntakeForm] = useState<StoredIntakeContext>(() => {
     const ctxs = loadIntakeContexts();
-    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade" };
+    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade", transcriptEmailEnabled: false, transcriptEmailTo: "" };
   });
   const [intakeJobs, setIntakeJobs] = useState<{ jobId: string; title: string }[]>([]);
   const [intakeJobsLoaded, setIntakeJobsLoaded] = useState(false);
@@ -2439,6 +2443,8 @@ function parseMcpInput(text: string) {
                         mcpActions: [],
                         includeJobQuestions: false,
                         intakeLinkMode: "arcade",
+                        transcriptEmailEnabled: false,
+                        transcriptEmailTo: "",
                       };
                       const next = [...intakeContexts, newCtx];
                       setIntakeContexts(next);
@@ -2461,7 +2467,7 @@ function parseMcpInput(text: string) {
                       saveIntakeContexts(next, token).catch(() => {});
                       const first = next[0];
                       setSelectedIntakeKey(first?.key || "");
-                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade" });
+                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade", transcriptEmailEnabled: false, transcriptEmailTo: "" });
                     }}
                   >
                     Delete
@@ -2598,6 +2604,33 @@ function parseMcpInput(text: string) {
                 </div>
                 <div style={{ color: "rgba(191,219,254,0.55)", fontSize: 11, marginTop: 6, lineHeight: 1.45 }}>
                   Arcade Internal Session opens the local `/updates/ai-intake` flow. Public Token Link copies the public `/intake` URL that can be emailed or shared.
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <label className="mgr-label">Transcript Email</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!intakeForm.transcriptEmailEnabled}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, transcriptEmailEnabled: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer", flexShrink: 0 }}
+                  />
+                  <span style={{ fontSize: 13, color: "rgba(191,219,254,0.85)" }}>
+                    Email transcript after each submission or skip
+                  </span>
+                </div>
+                {intakeForm.transcriptEmailEnabled && (
+                  <input
+                    className="mgr-input"
+                    type="email"
+                    value={intakeForm.transcriptEmailTo || ""}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, transcriptEmailTo: e.target.value }))}
+                    placeholder="recipient@example.com"
+                  />
+                )}
+                <div style={{ color: "rgba(191,219,254,0.55)", fontSize: 11, marginTop: 6, lineHeight: 1.45 }}>
+                  When enabled, a plain-text transcript is emailed to the address above after every submission or skip.
                 </div>
               </div>
 
