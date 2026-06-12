@@ -10,11 +10,42 @@ type Action = {
 };
 
 function ActionCard({ a }: { a: Action }) {
-  const tones: Record<Action["tone"], { bg: string; border: string; iconBg: string; icon: string; text: string }> = {
-    primary: { bg: "#0b1220", border: "#1f2a44", iconBg: "rgba(59,130,246,0.18)", icon: "#93c5fd", text: "#e5e7eb" },
-    neutral: { bg: "#ffffff", border: "#e6edf2", iconBg: "#eef2f7", icon: "#607d8b", text: "#263238" },
-    dark: { bg: "#111827", border: "#1f2937", iconBg: "rgba(255,255,255,0.08)", icon: "#e5e7eb", text: "#e5e7eb" },
-    light: { bg: "#f8fafc", border: "#e2e8f0", iconBg: "#ffffff", icon: "#455a64", text: "#263238" },
+  const tones: Record<
+    Action["tone"],
+    { bg: string; border: string; iconBg: string; icon: string; text: string; glow: string }
+  > = {
+    primary: {
+      bg: "linear-gradient(180deg, #0b1220 0%, #101a30 100%)",
+      border: "rgba(59,130,246,0.24)",
+      iconBg: "linear-gradient(135deg, rgba(59,130,246,0.22), rgba(99,102,241,0.16))",
+      icon: "#93c5fd",
+      text: "#eff6ff",
+      glow: "0 18px 34px rgba(37,99,235,0.18)",
+    },
+    neutral: {
+      bg: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+      border: "rgba(148,163,184,0.20)",
+      iconBg: "linear-gradient(135deg, rgba(37,99,235,0.08), rgba(14,165,233,0.05))",
+      icon: "#2563eb",
+      text: "#0f172a",
+      glow: "0 16px 30px rgba(15,23,42,0.08)",
+    },
+    dark: {
+      bg: "linear-gradient(180deg, #111827 0%, #0f172a 100%)",
+      border: "rgba(148,163,184,0.16)",
+      iconBg: "linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05))",
+      icon: "#e5e7eb",
+      text: "#f8fafc",
+      glow: "0 18px 34px rgba(2,6,23,0.18)",
+    },
+    light: {
+      bg: "linear-gradient(180deg, #ffffff 0%, #f7fafc 100%)",
+      border: "rgba(226,232,240,0.95)",
+      iconBg: "linear-gradient(135deg, rgba(148,163,184,0.10), rgba(255,255,255,0.94))",
+      icon: "#334155",
+      text: "#0f172a",
+      glow: "0 16px 30px rgba(15,23,42,0.06)",
+    },
   };
 
   const t = tones[a.tone];
@@ -23,63 +54,56 @@ function ActionCard({ a }: { a: Action }) {
     <Link
       to={a.to}
       style={{ textDecoration: "none" }}
-      className="waves-effect waves-light"
+      className="waves-effect waves-light tooltipped"
       aria-label={a.title}
       title={a.title}
+      data-tooltip={`${a.title} — ${a.subtitle}`}
+      data-position="top"
     >
       <div
         className="z-depth-0"
         style={{
+          position: "relative",
           display: "flex",
-          gap: 12,
           alignItems: "center",
-          padding: "12px 12px",
-          borderRadius: 12,
+          justifyContent: "center",
+          padding: 16,
+          borderRadius: 18,
           border: `1px solid ${t.border}`,
           background: t.bg,
-          transition: "transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
+          boxShadow: t.glow,
+          transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
+          overflow: "hidden",
+          minHeight: 92,
         }}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLDivElement).style.transform = "translateY(-1px)";
-          (e.currentTarget as HTMLDivElement).style.boxShadow = "0 10px 22px rgba(0,0,0,0.10)";
-          (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(59,130,246,0.35)";
+          (e.currentTarget as HTMLDivElement).style.boxShadow = `0 18px 36px rgba(37,99,235,0.14)`;
+          (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(59,130,246,0.32)";
         }}
         onMouseLeave={(e) => {
           (e.currentTarget as HTMLDivElement).style.transform = "translateY(0px)";
-          (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
+          (e.currentTarget as HTMLDivElement).style.boxShadow = t.glow;
           (e.currentTarget as HTMLDivElement).style.borderColor = t.border;
         }}
       >
         <div
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
+            width: 48,
+            height: 48,
+            borderRadius: 16,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             background: t.iconBg,
             flex: "0 0 auto",
+            border: `1px solid ${t.border}`,
           }}
         >
-          <i className="material-icons" style={{ fontSize: 20, color: t.icon }}>
+          <i className="material-icons" style={{ fontSize: 22, color: t.icon }}>
             {a.icon}
           </i>
         </div>
-
-        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 13.5, color: t.text, lineHeight: "18px" }}>{a.title}</div>
-          <div style={{ fontSize: 12, color: a.tone === "primary" || a.tone === "dark" ? "rgba(229,231,235,0.78)" : "#607d8b" }}>
-            {a.subtitle}
-          </div>
-        </div>
-
-        <i
-          className="material-icons"
-          style={{ fontSize: 18, color: a.tone === "primary" || a.tone === "dark" ? "rgba(229,231,235,0.8)" : "#90a4ae" }}
-        >
-          chevron_right
-        </i>
       </div>
     </Link>
   );
@@ -94,7 +118,50 @@ export default function EmployeeActions() {
   ];
 
   return (
-    <div className="card z-depth-1" style={{ borderRadius: 14, overflow: "hidden" }}>
+    <div className="card z-depth-1 employee-actions-card" style={{ borderRadius: 14, overflow: "hidden" }}>
+      <style>{`
+        .employee-actions-grid {
+          display: grid;
+          gap: 10px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        @media (max-width: 600px) {
+          .employee-actions-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .employee-action-hover {
+          position: relative;
+        }
+
+        .employee-action-hover::after {
+          content: attr(data-title);
+          position: absolute;
+          left: 50%;
+          bottom: 10px;
+          transform: translateX(-50%) translateY(8px);
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.92);
+          color: #fff;
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 0.2px;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 140ms ease, transform 140ms ease;
+          white-space: nowrap;
+          box-shadow: 0 12px 24px rgba(15, 23, 42, 0.25);
+        }
+
+        .employee-action-hover:hover::after,
+        .employee-action-hover:focus-visible::after {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+      `}</style>
       <div
         style={{
           padding: "14px 14px 12px",
@@ -124,9 +191,11 @@ export default function EmployeeActions() {
       </div>
 
       <div className="card-content" style={{ padding: 14 }}>
-        <div style={{ display: "grid", gap: 10 }}>
+        <div className="employee-actions-grid">
           {actions.map((a) => (
-            <ActionCard key={`${a.to}:${a.title}`} a={a} />
+            <div key={`${a.to}:${a.title}`} className="employee-action-hover" data-title={a.title}>
+              <ActionCard a={a} />
+            </div>
           ))}
         </div>
       </div>
