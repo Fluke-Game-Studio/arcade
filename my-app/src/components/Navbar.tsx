@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { getDirectReports } from "../utils/employeeHierarchy";
 
 declare const M: any;
 
@@ -18,7 +19,7 @@ type MenuGroup = {
 };
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, api } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -35,6 +36,8 @@ export default function Navbar() {
 
   const [scrolled, setScrolled] = useState(false);
   const [openDesktopMenu, setOpenDesktopMenu] = useState<string | null>(null);
+  const [hasTeamMembers, setHasTeamMembers] = useState(false);
+  const [teamCheckReady, setTeamCheckReady] = useState(false);
 
   const logoSrc = "/logos/Fluke_Games_Icon_5.png";
   const NAV_H = 82;
@@ -68,6 +71,38 @@ export default function Navbar() {
     setOpenDesktopMenu(null);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setHasTeamMembers(false);
+      setTeamCheckReady(true);
+      return;
+    }
+
+    let mounted = true;
+    setTeamCheckReady(false);
+
+    (async () => {
+      try {
+        const resp = await api.getUsers();
+        if (!mounted) return;
+        const list = Array.isArray((resp as any)?.items)
+          ? (resp as any).items
+          : Array.isArray(resp)
+            ? resp
+            : [];
+        setHasTeamMembers(getDirectReports(list, user).length > 0);
+      } catch {
+        if (mounted) setHasTeamMembers(false);
+      } finally {
+        if (mounted) setTeamCheckReady(true);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [api, isAuthenticated, user?.username, user?.name]);
+
   const handleLogout = () => {
     logout();
     navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`);
@@ -83,10 +118,27 @@ export default function Navbar() {
     if (!isAuthenticated) return [{ to: `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`, label: "Login" }];
     return [
       { to: "/", label: "Home" },
-      { to: "/employees", label: "Employees" },
       { to: "/account", label: "My Account" },
     ];
   }, [isAuthenticated, location.pathname, location.search, location.hash]);
+
+  const organisationGroup = useMemo<MenuGroup>(() => {
+    const items: LinkItem[] = [
+      { to: "/organisation/org-chart", label: "Org Chart" },
+      { to: "/organisation/employees", label: "Employees" },
+    ];
+
+    if (teamCheckReady && hasTeamMembers) {
+      items.push({ to: "/organisation/my-team", label: "My Team" });
+    }
+
+    return {
+      key: "organisation",
+      label: "Organisation",
+      show: isAuthenticated,
+      items,
+    };
+  }, [hasTeamMembers, isAuthenticated, teamCheckReady]);
 
   const adminGroup = useMemo<MenuGroup>(
     () => ({
@@ -577,6 +629,7 @@ export default function Navbar() {
               {baseLinks.map((l) => (
                 <TopLink key={l.to} to={l.to} label={l.label} />
               ))}
+              <DesktopDropdown group={organisationGroup} />
               <DesktopDropdown group={adminGroup} />
               <DesktopDropdown group={superGroup} />
             </ul>
@@ -823,6 +876,7 @@ export default function Navbar() {
         </li>
 
         <MobileSection title="Navigation" items={baseLinks} />
+        {organisationGroup.show && <MobileSection title="Organisation" items={organisationGroup.items} />}
         {adminGroup.show && <MobileSection title="Admin Systems" items={adminGroup.items} />}
         {superGroup.show && <MobileSection title="Super Systems" items={superGroup.items} />}
 
