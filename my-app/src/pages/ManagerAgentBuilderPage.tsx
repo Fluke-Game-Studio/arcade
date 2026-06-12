@@ -125,6 +125,8 @@ type StoredIntakeContext = {
   mcpActions: string[];
   includeJobQuestions: boolean;
   intakeLinkMode?: "public" | "arcade";
+  transcriptEmailEnabled?: boolean;
+  transcriptEmailTo?: string;
 };
 
 const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Games. You have ONE job: conduct this interview by asking the listed questions in order.
@@ -208,6 +210,8 @@ function migrateIntakeContext(raw: any): StoredIntakeContext {
       : [],
     includeJobQuestions: Boolean(raw?.includeJobQuestions),
     intakeLinkMode: raw?.intakeLinkMode === "public" ? "public" : "arcade",
+    transcriptEmailEnabled: Boolean(raw?.transcriptEmailEnabled),
+    transcriptEmailTo: safeStr(raw?.transcriptEmailTo),
   };
 }
 
@@ -397,6 +401,7 @@ export default function ManagerAgentBuilderPage() {
     approvalPolicy: { mode: "always" },
   });
   const [mcpPolicies, setMcpPolicies] = useState<MpcPolicy[]>([]);
+  const [ragClearState, setRagClearState] = useState<{ busy: boolean; result: string }>({ busy: false, result: "" });
   const [assignUsername, setAssignUsername] = useState("");
   const [assignDefaultAgent, setAssignDefaultAgent] = useState("");
   const [assignAllowedAgentsText, setAssignAllowedAgentsText] = useState("");
@@ -426,7 +431,7 @@ export default function ManagerAgentBuilderPage() {
   const [selectedIntakeKey, setSelectedIntakeKey] = useState(() => loadIntakeContexts()[0]?.key || "");
   const [intakeForm, setIntakeForm] = useState<StoredIntakeContext>(() => {
     const ctxs = loadIntakeContexts();
-    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade" };
+    return ctxs[0] || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade", transcriptEmailEnabled: false, transcriptEmailTo: "" };
   });
   const [intakeJobs, setIntakeJobs] = useState<{ jobId: string; title: string }[]>([]);
   const [intakeJobsLoaded, setIntakeJobsLoaded] = useState(false);
@@ -2245,6 +2250,7 @@ function parseMcpInput(text: string) {
           ) : null}
 
           {tab === "policies" ? (
+            <>
             <section className="mgr-card" style={{ marginTop: 12 }}>
               <div className="mgr-row">
                 <div>
@@ -2410,6 +2416,50 @@ function parseMcpInput(text: string) {
                 </button>
               </div>
             </section>
+
+            <section className="mgr-card" style={{ marginTop: 12 }}>
+              <div style={{ marginBottom: 8 }}>
+                <label className="mgr-label" style={{ margin: 0 }}>RAG Action Store</label>
+                <div style={{ color: "rgba(191,219,254,0.65)", fontSize: 11, marginTop: 4 }}>
+                  Clear all stored action classification feedback for this context. Use this to reset corrupted or incorrect historical data — the system will fall back to builtin examples only until new feedback is submitted.
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="mgr-btn danger"
+                  disabled={ragClearState.busy}
+                  onClick={async () => {
+                    const contextKey = "internal";
+                    if (!window.confirm(`Clear all stored RAG action feedback for context "${contextKey}"? This cannot be undone.`)) return;
+                    setRagClearState({ busy: true, result: "" });
+                    try {
+                      const res = await fetch(`${API_BASE}/admin/ai/action-rag?contextKey=${encodeURIComponent(contextKey)}`, {
+                        method: "DELETE",
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error((err as any)?.error || `HTTP ${res.status}`);
+                      }
+                      setRagClearState({ busy: false, result: "Cleared" });
+                      notify("ok", `RAG store cleared for "${contextKey}"`);
+                    } catch (e: any) {
+                      setRagClearState({ busy: false, result: `Error: ${e?.message}` });
+                      notify("err", `Failed to clear RAG store: ${e?.message}`);
+                    }
+                  }}
+                >
+                  {ragClearState.busy ? "Clearing…" : "Clear RAG Store"}
+                </button>
+                {ragClearState.result && (
+                  <span style={{ fontSize: 12, color: ragClearState.result.startsWith("Error") ? "#f87171" : "#86efac" }}>
+                    {ragClearState.result}
+                  </span>
+                )}
+              </div>
+            </section>
+            </>
           ) : null}
 
           {tab === "intake" ? (
@@ -2439,6 +2489,8 @@ function parseMcpInput(text: string) {
                         mcpActions: [],
                         includeJobQuestions: false,
                         intakeLinkMode: "arcade",
+                        transcriptEmailEnabled: false,
+                        transcriptEmailTo: "",
                       };
                       const next = [...intakeContexts, newCtx];
                       setIntakeContexts(next);
@@ -2461,7 +2513,7 @@ function parseMcpInput(text: string) {
                       saveIntakeContexts(next, token).catch(() => {});
                       const first = next[0];
                       setSelectedIntakeKey(first?.key || "");
-                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade" });
+                      setIntakeForm(first || { key: "", label: "", description: "", questions: [""], backgroundInfo: "", sessionPrompt: "", customInstructions: "", followUpInstructions: "", endNote: "", mcpActions: [], includeJobQuestions: false, intakeLinkMode: "arcade", transcriptEmailEnabled: false, transcriptEmailTo: "" });
                     }}
                   >
                     Delete
@@ -2598,6 +2650,31 @@ function parseMcpInput(text: string) {
                 </div>
                 <div style={{ color: "rgba(191,219,254,0.55)", fontSize: 11, marginTop: 6, lineHeight: 1.45 }}>
                   Arcade Internal Session opens the local `/updates/ai-intake` flow. Public Token Link copies the public `/intake` URL that can be emailed or shared.
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(intakeForm.transcriptEmailEnabled)}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, transcriptEmailEnabled: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
+                  />
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>Email transcript on submission / skip</span>
+                </label>
+                {Boolean(intakeForm.transcriptEmailEnabled) && (
+                  <input
+                    className="mgr-input"
+                    type="email"
+                    value={intakeForm.transcriptEmailTo || ""}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, transcriptEmailTo: e.target.value }))}
+                    placeholder="recipient@example.com"
+                    style={{ marginTop: 10 }}
+                  />
+                )}
+                <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
+                  When enabled, a plain-text transcript is emailed to the address above after every submission or skip.
                 </div>
               </div>
 
