@@ -53,7 +53,7 @@ function ActionCard({ a }: { a: Action }) {
   return (
     <Link
       to={a.to}
-      style={{ textDecoration: "none" }}
+      style={{ textDecoration: "none", display: "block", width: "100%", height: "100%" }}
       className="waves-effect waves-light tooltipped"
       aria-label={a.title}
       title={a.title}
@@ -64,17 +64,20 @@ function ActionCard({ a }: { a: Action }) {
         className="z-depth-0"
         style={{
           position: "relative",
-          display: "flex",
+          display: "grid",
+          placeItems: "center",
           alignItems: "center",
           justifyContent: "center",
           padding: 16,
-          borderRadius: 18,
+          borderRadius: 20,
           border: `1px solid ${t.border}`,
           background: t.bg,
           boxShadow: t.glow,
           transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
           overflow: "hidden",
-          minHeight: 92,
+          minHeight: 88,
+          width: "100%",
+          height: "100%",
         }}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLDivElement).style.transform = "translateY(-1px)";
@@ -89,18 +92,19 @@ function ActionCard({ a }: { a: Action }) {
       >
         <div
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: 16,
+            width: 54,
+            height: 54,
+            borderRadius: 18,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             background: t.iconBg,
             flex: "0 0 auto",
             border: `1px solid ${t.border}`,
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
           }}
         >
-          <i className="material-icons" style={{ fontSize: 22, color: t.icon }}>
+          <i className="material-icons" style={{ fontSize: 23, color: t.icon }}>
             {a.icon}
           </i>
         </div>
@@ -122,7 +126,7 @@ export default function EmployeeActions() {
       <style>{`
         .employee-actions-grid {
           display: grid;
-          gap: 10px;
+          gap: 12px;
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
@@ -134,13 +138,14 @@ export default function EmployeeActions() {
 
         .employee-action-hover {
           position: relative;
+          min-width: 0;
         }
 
         .employee-action-hover::after {
           content: attr(data-title);
           position: absolute;
           left: 50%;
-          bottom: 10px;
+          bottom: 8px;
           transform: translateX(-50%) translateY(8px);
           padding: 6px 10px;
           border-radius: 999px;
@@ -160,6 +165,10 @@ export default function EmployeeActions() {
         .employee-action-hover:focus-visible::after {
           opacity: 1;
           transform: translateX(-50%) translateY(0);
+        }
+
+        .employee-actions-card .card-content {
+          padding: 12px;
         }
       `}</style>
       <div
@@ -190,7 +199,7 @@ export default function EmployeeActions() {
         </div>
       </div>
 
-      <div className="card-content" style={{ padding: 14 }}>
+      <div className="card-content">
         <div className="employee-actions-grid">
           {actions.map((a) => (
             <div key={`${a.to}:${a.title}`} className="employee-action-hover" data-title={a.title}>
