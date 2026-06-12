@@ -1,9 +1,10 @@
 // src/pages/Applicants.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import type { ApiApplicantDetails, ApiApplicantListItem } from "../api";
+import type { ApiApplicantDetails, ApiApplicantListItem, ApiUser } from "../api";
 import ApplicantComposerModal, { type ApplicantRowLite, type Stage } from "../components/ApplicantComposerModal";
 import ApplicantDetailsModal from "../components/ApplicantDetailsModal";
+import ApplicantShareModal from "../components/ApplicantShareModal";
 
 declare const M: any;
 
@@ -221,6 +222,11 @@ export default function Applicants() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsRaw, setDetailsRaw] = useState<ApiApplicantDetails | null>(null);
+  const [employees, setEmployees] = useState<ApiUser[]>([]);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareApplicantId, setShareApplicantId] = useState("");
+  const [shareApplicantName, setShareApplicantName] = useState("");
+  const [shareApplicantEmail, setShareApplicantEmail] = useState("");
 
   // composer modal
   const [composerOpen, setComposerOpen] = useState(false);
@@ -383,6 +389,22 @@ export default function Applicants() {
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, pipeline, roleFilter, genderFilter, dateFrom, dateTo, sortKey, sortDir, pageSize]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await api.getUsers();
+        if (!mounted) return;
+        setEmployees(Array.isArray(data) ? data : []);
+      } catch {
+        if (mounted) setEmployees([]);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [api]);
 
   async function onView(r: ApplicantRow) {
     setDetailsRaw(null);
@@ -650,7 +672,7 @@ export default function Applicants() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontWeight: 1100, fontSize: 18 }}>Applicant List</div>
               <div className="grey-text" style={{ fontWeight: 900, fontSize: 12 }}>
-                Composer is available inside <b>Details</b> only.
+                Share sends a full applicant email to a current employee.
               </div>
             </div>
 
@@ -690,10 +712,32 @@ export default function Applicants() {
                         <td className="grey-text" style={{ whiteSpace: "nowrap", fontWeight: 900 }}>
                           {fmtDate(r.submittedAt || r.createdAt)}
                         </td>
-                        <td className="right-align" style={{ minWidth: 160 }}>
-                          <button className="btn-small grey darken-2 fg-btn" onClick={() => onView(r)}>
-                            <i className="material-icons left">visibility</i>View
-                          </button>
+                        <td className="right-align" style={{ minWidth: 120 }}>
+                          <div style={{ display: "inline-flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <button
+                              className="btn-small grey darken-2 fg-btn"
+                              onClick={() => onView(r)}
+                              title="View applicant"
+                              aria-label="View applicant"
+                              style={{ width: 42, padding: 0, display: "inline-flex", justifyContent: "center" }}
+                            >
+                              <i className="material-icons" style={{ fontSize: 18 }}>visibility</i>
+                            </button>
+                            <button
+                              className="btn-small blue darken-2 fg-btn"
+                              onClick={() => {
+                                setShareApplicantId(r.id);
+                                setShareApplicantName(r.name);
+                                setShareApplicantEmail(r.email);
+                                setShareOpen(true);
+                              }}
+                              title="Share applicant"
+                              aria-label="Share applicant"
+                              style={{ width: 42, padding: 0, display: "inline-flex", justifyContent: "center" }}
+                            >
+                              <i className="material-icons" style={{ fontSize: 18 }}>share</i>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -732,6 +776,19 @@ export default function Applicants() {
         applicant={composerApplicant}
         prefillAddress={composerPrefill.address}
         prefillCity={composerPrefill.city}
+      />
+
+      <ApplicantShareModal
+        api={api}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        applicantId={shareApplicantId}
+        applicantName={shareApplicantName}
+        applicantEmail={shareApplicantEmail}
+        employeeOptions={employees.filter((employee) => {
+          const role = String((employee as any).employee_role || (employee as any).role || "").toLowerCase();
+          return !!safeStr(employee.employee_email) && (role === "employee" || role === "admin" || role === "super" || !role);
+        })}
       />
     </>
   );
