@@ -20,16 +20,6 @@ const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Ga
 6. BREVITY: Keep your own responses short — one or two sentences maximum before asking or repeating the question.`;
 
 
-function buildWeeklyInput(a: Record<string, string>) {
-  return {
-    weekStart: new Date().toISOString().slice(0, 10),
-    accomplishments: a.q1 || "",
-    blockers: a.q2 || "",
-    nextSteps: a.q3 || "",
-    highlights: a.q4 || "",
-  };
-}
-
 function buildTranscript(answers: Record<string, string>, questions: string[]): string {
   const date = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   let t = `INTERVIEW TRANSCRIPT — ${date}\n${"═".repeat(52)}\n\n`;
@@ -533,25 +523,12 @@ export default function RealtimeIntakePage() {
     setErr("");
     try {
       const qs = allQuestionsRef.current;
-      const isWeekly = ctx.key === "weekly_update" || ctx.mcpActions.some((a) => a === "submit_weekly_update" || a === "updates_write");
-
-      if (isWeekly) {
-        await api.chatOverUpdates({
-          question: "Submit weekly update from voice intake session.",
-          context: "internal",
-          perform: true,
-          mcpAction: "submit_weekly_update",
-          mcpInputMode: "override",
-          mcpInput: buildWeeklyInput(answers),
-        });
-      } else {
-        await api.submitInternalIntake({
-          contextKey: ctx.key,
-          answers,
-          transcript: buildTranscript(answers, qs),
-          feedback: fb,
-        });
-      }
+      await api.submitInternalIntake({
+        contextKey: ctx.key,
+        answers,
+        transcript: buildTranscript(answers, qs),
+        feedback: fb,
+      });
     } catch (e: any) {
       setErr(String(e?.message || "Submission failed. Please try again."));
       setStatus("awaiting_feedback");
