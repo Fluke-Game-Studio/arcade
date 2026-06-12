@@ -5,11 +5,14 @@ import ActivityReport from "./ActivityReport";
 import EmployeeExplorerPanel from "../components/admin/EmployeeExplorerPanel";
 
 type TabKey = "activity" | "employees";
+type EmployeeScope = "all" | "team";
 
 export default function AdminWorkspace({
   initialTab = "employees",
+  employeeScope = "all",
 }: {
   initialTab?: TabKey;
+  employeeScope?: EmployeeScope;
 } = {}) {
   const { user, api } = useAuth();
   const [tab, setTab] = useState<TabKey>(initialTab);
@@ -24,10 +27,12 @@ export default function AdminWorkspace({
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 28, fontWeight: 1000, color: "#0f172a" }}>
-            Admin Workspace
+            {employeeScope === "team" ? "My Team Workspace" : "Admin Workspace"}
           </div>
           <div style={{ marginTop: 6, color: "#475569", fontSize: 14 }}>
-            One place for cumulative activity and employee-level inspection.
+            {employeeScope === "team"
+              ? "Your direct reports, weekly activity, and team-level inspection."
+              : "One place for cumulative activity and employee-level inspection."}
           </div>
         </div>
 
@@ -67,7 +72,7 @@ export default function AdminWorkspace({
           >
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <i className="material-icons" style={{ fontSize: 16 }}>groups</i>
-              Each Employee
+              {employeeScope === "team" ? "My Team" : "Each Employee"}
             </span>
           </button>
         </div>
@@ -88,7 +93,7 @@ export default function AdminWorkspace({
       </div>
 
       <div style={{ display: tab === "employees" ? "block" : "none", width: "100%" }}>
-        <EmployeeExplorerPanel currentUser={user} />
+        <EmployeeExplorerPanel currentUser={user} scope={employeeScope} />
       </div>
       <AdminMailerComposerModal
         api={api}
