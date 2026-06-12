@@ -791,17 +791,19 @@ export default function EmployeeExplorerPanel({
                   <i className="material-icons left">mail</i>
                   Employee composer
                 </button>
-                <button
-                  type="button"
-                  className="btn-small"
-                  disabled={!selectedUser || !isAdmin}
-                  onClick={() => selectedUser && openEdit(selectedUser)}
-                  style={{ borderRadius: 10, textTransform: "none", fontWeight: 900, background: "rgba(15,23,42,.06)", color: "#0f172a", boxShadow: "none" }}
-                  title="Edit employee details"
-                >
-                  <i className="material-icons left">edit</i>
-                  Edit employee
-                </button>
+                {scope !== "team" ? (
+                  <button
+                    type="button"
+                    className="btn-small"
+                    disabled={!selectedUser || !isAdmin}
+                    onClick={() => selectedUser && openEdit(selectedUser)}
+                    style={{ borderRadius: 10, textTransform: "none", fontWeight: 900, background: "rgba(15,23,42,.06)", color: "#0f172a", boxShadow: "none" }}
+                    title="Edit employee details"
+                  >
+                    <i className="material-icons left">edit</i>
+                    Edit employee
+                  </button>
+                ) : null}
               </div>
             </div>
 

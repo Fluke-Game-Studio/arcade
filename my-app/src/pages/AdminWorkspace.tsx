@@ -36,7 +36,7 @@ export default function AdminWorkspace({
           </div>
         </div>
 
-        <div style={{ display: "inline-flex", gap: 8, padding: 6, borderRadius: 999, background: "rgba(15,23,42,.04)", border: "1px solid rgba(148,163,184,.14)" }}>
+        <div style={{ display: "inline-flex", gap: 8, padding: 6, borderRadius: 999, background: "rgba(15,23,42,.04)", border: "1px solid rgba(148,163,184,.14)", margin: "0 auto" }}>
           <button
             type="button"
             onClick={() => setTab("activity")}
@@ -77,29 +77,33 @@ export default function AdminWorkspace({
           </button>
         </div>
 
-        <button
-          type="button"
-          className="btn"
-          onClick={() => setMailerOpen(true)}
-          style={{ borderRadius: 999, textTransform: "none", fontWeight: 900 }}
-        >
-          <i className="material-icons left">campaign</i>
-          Mail Composer
-        </button>
+        {employeeScope !== "team" ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setMailerOpen(true)}
+            style={{ borderRadius: 999, textTransform: "none", fontWeight: 900 }}
+          >
+            <i className="material-icons left">campaign</i>
+            Mail Composer
+          </button>
+        ) : null}
       </div>
 
       <div style={{ display: tab === "activity" ? "block" : "none", width: "100%" }}>
-        <ActivityReport embedded />
+        <ActivityReport embedded currentUser={user} scope={employeeScope} />
       </div>
 
       <div style={{ display: tab === "employees" ? "block" : "none", width: "100%" }}>
         <EmployeeExplorerPanel currentUser={user} scope={employeeScope} />
       </div>
-      <AdminMailerComposerModal
-        api={api}
-        open={mailerOpen}
-        onClose={() => setMailerOpen(false)}
-      />
+      {employeeScope !== "team" ? (
+        <AdminMailerComposerModal
+          api={api}
+          open={mailerOpen}
+          onClose={() => setMailerOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
