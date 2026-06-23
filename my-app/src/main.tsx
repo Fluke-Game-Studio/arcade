@@ -24,6 +24,7 @@ import RealtimeIntakePage from "./pages/RealtimeIntakePage";
 import RetroBoard from "./pages/RetroBoard";
 import Applicants from "./pages/Applicants";
 import CustomersAdmin from "./pages/CustomersAdmin";
+import SocialMediaAdmin from "./pages/SocialMediaAdmin";
 import { UpdatesProvider } from "./pages/UpdatesContext";
 import CharacterTutorialPage from "./pages/CharacterTutorialPage";
 import ManagerAgentBuilderPage from "./pages/ManagerAgentBuilderPage";
@@ -154,6 +155,14 @@ const router = createBrowserRouter([
         element: (
           <Protected roles={["admin", "super"]}>
             <CustomersAdmin />
+          </Protected>
+        ),
+      },
+      {
+        path: "/admin/social-media",
+        element: (
+          <Protected roles={["admin", "super"]}>
+            <SocialMediaAdmin />
           </Protected>
         ),
       },

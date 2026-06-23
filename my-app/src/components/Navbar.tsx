@@ -147,6 +147,7 @@ export default function Navbar() {
       show: isAdminish,
       items: [
         { to: "/admin", label: "Admin Dashboard" },
+        { to: "/admin/social-media", label: "Social Media" },
         { to: "/admin/customers", label: "Customers" },
         { to: "/applicants", label: "Applicants" },
         { to: "/admin/jobs", label: "Jobs Admin" },
