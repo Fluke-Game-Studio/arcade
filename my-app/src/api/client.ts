@@ -1094,6 +1094,29 @@ export class ApiClient {
     return payload;
   }
 
+  async debugInstagramPublish(body: {
+    caption?: string;
+    message?: string;
+    text?: string;
+    imageUrl?: string;
+    instagramAccountId?: string;
+    instagramAccessToken?: string;
+    graphVersion?: string;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/instagram/publish/debug`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `debugInstagramPublish failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
   async publishFacebookPagePost(body: {
     caption?: string;
     message?: string;
@@ -1121,6 +1144,119 @@ export class ApiClient {
       throw new Error(
         `publishFacebookPagePost failed: ${this.extractErrorMessage(payload, r.status)}`
       );
+    }
+    return payload;
+  }
+
+  async submitSocialPost(body: {
+    title?: string;
+    content?: string;
+    caption?: string;
+    message?: string;
+    imageUrl?: string;
+    image_url?: string;
+    channels?: string[];
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`submitSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async updateSocialPost(body: {
+    postId?: string;
+    post_id?: string;
+    title?: string;
+    content?: string;
+    caption?: string;
+    message?: string;
+    imageUrl?: string;
+    image_url?: string;
+    channels?: string[];
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`updateSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async getMySocialPosts(): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/me`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getMySocialPosts failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async getSocialPosts(): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getSocialPosts failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async reviewSocialPost(body: { postId?: string; decision?: string; reviewNote?: string }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/review`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`reviewSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async retrySocialPostChannel(body: { postId?: string; post_id?: string; channel?: string }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/retry-channel`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`retrySocialPostChannel failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async toggleSocialPostTodo(body: {
+    postId?: string;
+    post_id?: string;
+    todoId?: string;
+    todo_id?: string;
+    done?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/todo`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`toggleSocialPostTodo failed: ${this.extractErrorMessage(payload, r.status)}`);
     }
     return payload;
   }

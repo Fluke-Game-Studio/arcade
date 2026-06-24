@@ -570,6 +570,16 @@ export default function SocialMediaAdmin() {
     setInstagramOk("");
     setInstagramError("");
     try {
+      let debugResp: any = null;
+      try {
+        debugResp = await api.debugInstagramPublish({
+          caption: testDraft.includeCaption ? testDraft.caption : "",
+          imageUrl: testDraft.includeImage ? testDraft.imageUrl : "",
+          graphVersion: status?.graphVersion,
+        });
+      } catch (debugErr: any) {
+        debugResp = { error: debugErr?.message || "debug failed" };
+      }
       const resp = await api.publishInstagramPost({
         caption: testDraft.includeCaption ? testDraft.caption : "",
         imageUrl: testDraft.includeImage ? testDraft.imageUrl : "",
@@ -581,7 +591,10 @@ export default function SocialMediaAdmin() {
         kind: "success",
         title: "Instagram response",
         message: resp?.ok ? "Instagram test post sent." : "Instagram test request completed.",
-        raw: resp,
+        raw: {
+          debug: debugResp,
+          publish: resp,
+        },
         at: new Date().toISOString(),
       });
       setInstagramOk(resp?.queued ? "Queued the Instagram test post." : resp?.ok ? "Instagram test post sent." : "Instagram test post request sent.");
@@ -775,7 +788,7 @@ export default function SocialMediaAdmin() {
           <div style={{ maxWidth: 900 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: "6px 12px", borderRadius: 999, background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.10)", marginBottom: 14 }}>
               <i className="material-icons" style={{ fontSize: 18 }}>share</i>
-              <span style={{ fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", fontSize: 12 }}>Admin · Social Media</span>
+              <span style={{ fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", fontSize: 12 }}>Super · Social Media</span>
             </div>
             <h2 style={{ margin: 0, fontSize: 36, lineHeight: 1.05, fontWeight: 1000 }}>Social media control room</h2>
             <p style={{ marginTop: 12, marginBottom: 0, color: "rgba(226,232,240,.90)", fontSize: 15, lineHeight: 1.7, maxWidth: 980 }}>
@@ -970,7 +983,7 @@ export default function SocialMediaAdmin() {
                   onAction={instagramConfigured ? () => void onSendInstagramTest() : undefined}
                   draft={testDraft}
                   setDraft={setTestDraft}
-                  note="This uses the shared test draft and can hit the Instagram publish endpoint when the account is connected."
+                  note="This first runs a debug echo so we can confirm the exact image URL and caption the backend sees, then it hits the publish endpoint."
                 />
                 <div style={{ marginTop: 12 }}>
                   <ResponsePreview result={instagramTestResult} />

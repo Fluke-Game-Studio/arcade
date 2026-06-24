@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 
 type Action = {
   to: string;
@@ -6,6 +8,7 @@ type Action = {
   subtitle: string;
   icon: string;
   tone: "primary" | "neutral" | "dark" | "light";
+  badge?: number;
 };
 
 function ActionCard({ a }: { a: Action }) {
@@ -112,6 +115,28 @@ function ActionCard({ a }: { a: Action }) {
         </div>
 
         <div style={{ minWidth: 0 }}>
+          {typeof a.badge === "number" && a.badge > 0 ? (
+            <div style={{ marginBottom: 8, display: "flex", justifyContent: "flex-end" }}>
+              <span
+                style={{
+                  minWidth: 24,
+                  height: 24,
+                  padding: "0 8px",
+                  borderRadius: 999,
+                  background: "linear-gradient(135deg,#ef4444,#f97316)",
+                  color: "#fff",
+                  fontSize: 11,
+                  fontWeight: 950,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 8px 18px rgba(239,68,68,.22)",
+                }}
+              >
+                {a.badge}
+              </span>
+            </div>
+          ) : null}
           <div
             style={{
               fontSize: 15,
@@ -165,9 +190,36 @@ function ActionCard({ a }: { a: Action }) {
 }
 
 export default function EmployeeActions() {
+  const { api } = useAuth();
+  const [editRequestCount, setEditRequestCount] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const resp = await api.getSocialPosts();
+        const items = Array.isArray(resp?.items) ? resp.items : [];
+        const count = items.filter((p: any) => {
+          const s = String(p?.status || "").toLowerCase();
+          return s.includes("changes_requested");
+        }).length;
+        if (mounted) setEditRequestCount(count);
+      } catch {
+        if (mounted) setEditRequestCount(0);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 30000);
+    return () => {
+      mounted = false;
+      window.clearInterval(id);
+    };
+  }, [api]);
+
   const actions: Action[] = [
     { to: "/updates/new", title: "Fill Timesheet", subtitle: "Log hours for this week", icon: "edit_note", tone: "primary" },
     { to: "/updates/board", title: "Retro Board", subtitle: "Wins, blockers, next steps", icon: "view_kanban", tone: "neutral" },
+    { to: "/social/posts", title: "Social Posts", subtitle: "Submit drafts and review your submissions", icon: "share", tone: "dark", badge: editRequestCount || undefined },
     { to: "/account", title: "Activity Report", subtitle: "Your updates and weekly activity", icon: "insights", tone: "dark" },
     { to: "/account", title: "My Account", subtitle: "Profile and security settings", icon: "manage_accounts", tone: "light" },
   ];
@@ -181,8 +233,14 @@ export default function EmployeeActions() {
 
         .employee-actions-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
+        }
+
+        @media (max-width: 992px) {
+          .employee-actions-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
         }
 
         @media (max-width: 600px) {

@@ -25,6 +25,8 @@ import RetroBoard from "./pages/RetroBoard";
 import Applicants from "./pages/Applicants";
 import CustomersAdmin from "./pages/CustomersAdmin";
 import SocialMediaAdmin from "./pages/SocialMediaAdmin";
+import SocialPostStudio from "./pages/SocialPostStudio";
+import SocialMediaReviewAdmin from "./pages/SocialMediaReviewAdmin";
 import { UpdatesProvider } from "./pages/UpdatesContext";
 import CharacterTutorialPage from "./pages/CharacterTutorialPage";
 import ManagerAgentBuilderPage from "./pages/ManagerAgentBuilderPage";
@@ -132,6 +134,7 @@ const router = createBrowserRouter([
         ),
       },
       { path: "/account", element: <Account /> },
+      { path: "/social/posts", element: <SocialPostStudio /> },
 
       {
         path: "/applicants",
@@ -160,9 +163,29 @@ const router = createBrowserRouter([
       },
       {
         path: "/admin/social-media",
+        element: <Navigate to="/super/social-media" replace />,
+      },
+      {
+        path: "/admin/social-media-admin",
         element: (
           <Protected roles={["admin", "super"]}>
+            <SocialMediaReviewAdmin />
+          </Protected>
+        ),
+      },
+      {
+        path: "/super/social-media",
+        element: (
+          <Protected roles={["super"]}>
             <SocialMediaAdmin />
+          </Protected>
+        ),
+      },
+      {
+        path: "/super/social-posts",
+        element: (
+          <Protected roles={["super"]}>
+            <SocialPostStudio />
           </Protected>
         ),
       },
