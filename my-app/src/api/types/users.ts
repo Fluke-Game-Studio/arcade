@@ -125,6 +125,63 @@ export type StartLinkedInConnectResponse = {
   scopes?: string[];
 };
 
+export type LinkedInOrgPost = {
+  id: string;
+  commentary: string;
+  createdAt: string;
+  lifecycleState: string;
+  visibility: string;
+  mediaType: string;
+  mediaUrl: string;
+  permalink: string;
+  raw?: any;
+};
+
+export type LinkedInOrgStatus = {
+  ok?: boolean;
+  configured?: boolean;
+  organizationUrn?: string;
+  organizationName?: string;
+  tokenSource?: string;
+  tokenExpiresAt?: string;
+  tokenPresent?: boolean;
+};
+
+export type LinkedInOrgPostsResponse = {
+  ok: boolean;
+  configured?: boolean;
+  items: LinkedInOrgPost[];
+};
+
+export type DiscordStatusResponse = {
+  ok?: boolean;
+  configured?: boolean;
+  joinReady?: boolean;
+  botConfigured?: boolean;
+  guildConfigured?: boolean;
+  joinUrlConfigured?: boolean;
+  joinUrl?: string;
+};
+
+export type DiscordWebhookStatusResponse = {
+  ok?: boolean;
+  configured?: boolean;
+  webhookConfigured?: boolean;
+};
+
+export type DiscordWebhookPostBody = {
+  content: string;
+  username?: string;
+  avatarUrl?: string;
+  allowedMentions?: Record<string, any>;
+};
+
+export type DiscordWebhookPostResponse = {
+  ok: boolean;
+  delivered?: boolean;
+  response?: string;
+};
+
 export type StartDiscordConnectBody = {
   returnTo?: string;
 };
