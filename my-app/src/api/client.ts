@@ -16,6 +16,7 @@ import type {
   CreateUserBody,
   CreateWeeklyUpdateUploadUrlsBody,
   CreateWeeklyUpdateUploadUrlsResponse,
+  DeleteStorageFileResponse,
   SaveProjectBody,
   SaveQuestionBankBody,
   SendApplicantDocEmailBody,
@@ -49,6 +50,7 @@ import type {
     LinkedInOrgPostsResponse,
     LinkedInOrgStatus,
     DiscordStatusResponse,
+    ListStorageFilesResponse,
 } from "./types";
 
 import type {
@@ -1156,6 +1158,8 @@ export class ApiClient {
     imageUrl?: string;
     image_url?: string;
     channels?: string[];
+    scheduledAt?: string;
+    reviewerUsernames?: string[];
   }): Promise<any> {
     const r = await fetch(`${API_BASE}/social-posts`, {
       method: "POST",
@@ -1179,6 +1183,7 @@ export class ApiClient {
     imageUrl?: string;
     image_url?: string;
     channels?: string[];
+    reviewerUsernames?: string[];
   }): Promise<any> {
     const r = await fetch(`${API_BASE}/social-posts`, {
       method: "POST",
@@ -1216,7 +1221,18 @@ export class ApiClient {
     return payload;
   }
 
-  async reviewSocialPost(body: { postId?: string; decision?: string; reviewNote?: string }): Promise<any> {
+  async reviewSocialPost(body: {
+    postId?: string;
+    decision?: string;
+    reviewNote?: string;
+    scheduledAt?: string;
+    title?: string;
+    content?: string;
+    caption?: string;
+    imageUrl?: string;
+    image_url?: string;
+    channels?: string[];
+  }): Promise<any> {
     const r = await fetch(`${API_BASE}/social-posts/review`, {
       method: "POST",
       headers: this.headers(true),
@@ -1238,6 +1254,32 @@ export class ApiClient {
     const payload = await this.readJson(r);
     if (!r.ok) {
       throw new Error(`retrySocialPostChannel failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async adminUpdateScheduledSocialPost(body: {
+    postId?: string;
+    post_id?: string;
+    title?: string;
+    content?: string;
+    caption?: string;
+    message?: string;
+    imageUrl?: string;
+    image_url?: string;
+    channels?: string[];
+    scheduledAt?: string;
+    scheduled_at?: string;
+    cancelSchedule?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/admin-update`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`adminUpdateScheduledSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
     }
     return payload;
   }
@@ -1394,6 +1436,60 @@ export class ApiClient {
     }
     return {
       files: Array.isArray(payload?.files) ? payload.files : [],
+    };
+  }
+
+  async listStorageFiles(params?: {
+    prefix?: string;
+    continuationToken?: string;
+    limit?: number;
+  }): Promise<ListStorageFilesResponse> {
+    const qs = new URLSearchParams();
+    if (params?.prefix) qs.set("prefix", params.prefix);
+    if (params?.continuationToken) qs.set("continuationToken", params.continuationToken);
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      qs.set("limit", String(params.limit));
+    }
+    const r = await fetch(`${API_BASE}/updates/storage-files${qs.toString() ? `?${qs.toString()}` : ""}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `listStorageFiles failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      bucket: typeof payload?.bucket === "string" ? payload.bucket : undefined,
+      prefix: typeof payload?.prefix === "string" ? payload.prefix : undefined,
+      limit: Number(payload?.limit) || undefined,
+      items: Array.isArray(payload?.items) ? payload.items : [],
+      truncated: Boolean(payload?.truncated),
+      nextContinuationToken:
+        typeof payload?.nextContinuationToken === "string"
+          ? payload.nextContinuationToken
+          : undefined,
+    };
+  }
+
+  async deleteStorageFile(body: { s3Key?: string }): Promise<DeleteStorageFileResponse> {
+    const r = await fetch(`${API_BASE}/updates/storage-files/delete`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `deleteStorageFile failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      deletedS3Key: typeof payload?.deletedS3Key === "string" ? payload.deletedS3Key : undefined,
+      bucket: typeof payload?.bucket === "string" ? payload.bucket : undefined,
     };
   }
 

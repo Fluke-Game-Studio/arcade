@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export type SocialPostCardData = {
   post_id: string;
@@ -8,6 +8,8 @@ export type SocialPostCardData = {
   channels?: string[];
   status?: string;
   reviewNote?: string;
+  scheduledAt?: string;
+  scheduleName?: string;
   publishResult?: {
     ok?: boolean;
     publishedAt?: string;
@@ -62,6 +64,29 @@ function formatDate(v: string) {
   return Number.isNaN(d.getTime()) ? safeStr(v) : new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(d);
 }
 
+function parseDate(v?: string) {
+  const raw = safeStr(v);
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatCountdown(targetMs: number, nowMs: number) {
+  const diff = Math.max(0, targetMs - nowMs);
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts: string[] = [];
+  if (days) parts.push(`${days}d`);
+  if (days || hours) parts.push(`${hours}h`);
+  if (days || hours || minutes) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
+}
+
 function channelMeta(channel: string) {
   const c = safeStr(channel).toLowerCase();
   if (c === "instagram") return { label: "Instagram", icon: "ig" };
@@ -85,6 +110,13 @@ export default function SocialPostCard({
   onChannelRetry,
 }: Props) {
   const isApproved = safeStr(post.status).toLowerCase().includes("approve");
+  const scheduledAt = safeStr(post.scheduledAt);
+  const publishedAt = safeStr(post.publishResult?.publishedAt);
+  const isScheduled = !!scheduledAt && !safeStr(post.status).toLowerCase().includes("published");
+  const isPosted = safeStr(post.status).toLowerCase().includes("published") || (!!publishedAt && !scheduledAt);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const scheduledDate = parseDate(scheduledAt);
+  const isFutureScheduledApproved = isApproved && !!scheduledDate && scheduledDate.getTime() > nowMs;
   const publishMap = new Map(
     (Array.isArray(post.publishResult?.channels) ? post.publishResult.channels : [])
       .map((item) => ({
@@ -94,6 +126,14 @@ export default function SocialPostCard({
       .filter((item) => item.channel)
       .map((item) => [item.channel, item] as const)
   );
+
+  useEffect(() => {
+    if (!isFutureScheduledApproved) return;
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isFutureScheduledApproved]);
 
   return (
     <section
@@ -107,6 +147,60 @@ export default function SocialPostCard({
         boxShadow: "0 12px 26px rgba(15,23,42,.05)",
       }}
     >
+      {isFutureScheduledApproved ? (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+            padding: "10px 12px",
+            borderRadius: 14,
+            border: "1px solid rgba(37,99,235,.20)",
+            background: "linear-gradient(135deg, rgba(59,130,246,.12), rgba(14,165,233,.08))",
+          }}
+        >
+          <div style={{ display: "grid", gap: 2 }}>
+            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 0.5, textTransform: "uppercase", color: "#1d4ed8" }}>
+              Scheduled countdown
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 1000, color: "#0f172a", lineHeight: 1.1 }}>
+              {formatCountdown(scheduledDate.getTime(), nowMs)}
+            </div>
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#1e3a8a" }}>
+            Publishes {formatDate(scheduledAt)}
+          </div>
+        </div>
+      ) : isPosted ? (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+            padding: "10px 12px",
+            borderRadius: 14,
+            border: "1px solid rgba(34,197,94,.22)",
+            background: "linear-gradient(135deg, rgba(34,197,94,.12), rgba(16,185,129,.08))",
+          }}
+        >
+          <div style={{ display: "grid", gap: 2 }}>
+            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 0.5, textTransform: "uppercase", color: "#047857" }}>
+              Posted
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 1000, color: "#0f172a", lineHeight: 1.1 }}>
+              Published successfully
+            </div>
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#166534" }}>
+            {publishedAt ? formatDate(publishedAt) : "Live"}
+          </div>
+        </div>
+      ) : null}
+
       <header style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", color: "#64748b" }}>
@@ -200,6 +294,22 @@ export default function SocialPostCard({
         >
           {tone.label}
         </div>
+        {isScheduled && !isFutureScheduledApproved ? (
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 900,
+              color: "#7c2d12",
+              background: "rgba(245,158,11,.12)",
+              border: "1px solid rgba(245,158,11,.25)",
+              borderRadius: 999,
+              padding: "6px 10px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Scheduled {formatDate(scheduledAt)}
+          </div>
+        ) : null}
       </header>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 4fr) minmax(0, 8fr)", gap: 12, alignItems: "stretch" }}>
@@ -312,7 +422,7 @@ export default function SocialPostCard({
         </article>
       </div>
 
-      {!isApproved ? (
+      {!isPosted ? (
         <div style={{ display: "grid", gap: 12 }}>
           {actions ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{actions}</div> : null}
           {editor ? <div>{editor}</div> : null}
