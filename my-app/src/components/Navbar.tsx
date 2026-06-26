@@ -9,6 +9,7 @@ declare const M: any;
 type LinkItem = {
   to: string;
   label: string;
+  badge?: number;
 };
 
 type MenuGroup = {
@@ -38,6 +39,7 @@ export default function Navbar() {
   const [openDesktopMenu, setOpenDesktopMenu] = useState<string | null>(null);
   const [hasTeamMembers, setHasTeamMembers] = useState(false);
   const [teamCheckReady, setTeamCheckReady] = useState(false);
+  const [adminQueueCount, setAdminQueueCount] = useState(0);
 
   const logoSrc = "/logos/Fluke_Games_Icon_5.png";
   const NAV_H = 82;
@@ -103,6 +105,35 @@ export default function Navbar() {
     };
   }, [api, isAuthenticated, user?.username, user?.name]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !isAdminish) {
+      setAdminQueueCount(0);
+      return;
+    }
+
+    let mounted = true;
+    const load = async () => {
+      try {
+        const resp = await api.getSocialPosts();
+        const items = Array.isArray(resp?.items) ? resp.items : [];
+        const count = items.filter((p: any) => {
+          const s = String(p?.status || "").toLowerCase();
+          return s.includes("pending_review") || s.includes("pending");
+        }).length;
+        if (mounted) setAdminQueueCount(count);
+      } catch {
+        if (mounted) setAdminQueueCount(0);
+      }
+    };
+
+    void load();
+    const id = window.setInterval(load, 30000);
+    return () => {
+      mounted = false;
+      window.clearInterval(id);
+    };
+  }, [api, isAdminish, isAuthenticated]);
+
   const handleLogout = () => {
     logout();
     navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`);
@@ -145,13 +176,14 @@ export default function Navbar() {
       key: "admin",
       label: "Admin",
       show: isAdminish,
-      items: [
+          items: [
         { to: "/admin", label: "Admin Dashboard" },
         { to: "/admin/customers", label: "Customers" },
         { to: "/applicants", label: "Applicants" },
         { to: "/admin/jobs", label: "Jobs Admin" },
-      ],
-    }),
+        { to: "/admin/social-media-admin", label: "Social Media Admin", badge: adminQueueCount || undefined },
+        ],
+      }),
     [isAdminish]
   );
 
@@ -164,6 +196,7 @@ export default function Navbar() {
         { to: "/super", label: "Super Console" },
         { to: "/super/ai", label: "Super AI" },
         { to: "/super/awards", label: "Awards Console" },
+        { to: "/super/social-media", label: "Social Media" },
         { to: "/admin/endpoints", label: "Endpoint Access" },
         { to: "/super/ai-character-training", label: "AI Character Training" },
         { to: "/super/talking-head-page", label: "Talking Head Training" },
@@ -402,6 +435,28 @@ export default function Navbar() {
                   }}
                 />
                 <span style={{ position: "relative", zIndex: 1 }}>{item.label}</span>
+                {typeof item.badge === "number" && item.badge > 0 ? (
+                  <span
+                    style={{
+                      position: "relative",
+                      zIndex: 1,
+                      minWidth: 22,
+                      height: 22,
+                      padding: "0 7px",
+                      borderRadius: 999,
+                      background: "linear-gradient(135deg,#ef4444,#f97316)",
+                      color: "#fff",
+                      fontSize: 11,
+                      fontWeight: 950,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow: "0 8px 18px rgba(239,68,68,.22)",
+                    }}
+                  >
+                    {item.badge}
+                  </span>
+                ) : null}
                 <i
                   className="material-icons"
                   style={{ position: "relative", zIndex: 1, fontSize: 17, opacity: 0.78 }}

@@ -16,6 +16,7 @@ import type {
   CreateUserBody,
   CreateWeeklyUpdateUploadUrlsBody,
   CreateWeeklyUpdateUploadUrlsResponse,
+  DeleteStorageFileResponse,
   SaveProjectBody,
   SaveQuestionBankBody,
   SendApplicantDocEmailBody,
@@ -33,6 +34,9 @@ import type {
     StartLinkedInConnectResponse,
     StartDiscordConnectBody,
     StartDiscordConnectResponse,
+    DiscordWebhookStatusResponse,
+    DiscordWebhookPostBody,
+    DiscordWebhookPostResponse,
     StartJiraConnectBody,
     StartJiraConnectResponse,
     JiraConnectStatusResponse,
@@ -43,6 +47,10 @@ import type {
     CreateCustomerUserBody,
     UpsertEntitlementBody,
     CustomerFlowRow,
+    LinkedInOrgPostsResponse,
+    LinkedInOrgStatus,
+    DiscordStatusResponse,
+    ListStorageFilesResponse,
 } from "./types";
 
 import type {
@@ -372,6 +380,60 @@ export class ApiClient {
     };
   }
 
+  async startLinkedInOrgConnect(
+    body?: StartLinkedInConnectBody
+  ): Promise<StartLinkedInConnectResponse> {
+    const r = await fetch(`${API_BASE}/integrations/linkedin/org/start`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `startLinkedInOrgConnect failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      authorizeUrl: String(payload?.authorizeUrl || ""),
+      returnTo: typeof payload?.returnTo === "string" ? payload.returnTo : undefined,
+      scopes: Array.isArray(payload?.scopes) ? payload.scopes : undefined,
+    };
+  }
+
+  async getLinkedInOrgStatus(): Promise<LinkedInOrgStatus> {
+    const r = await fetch(`${API_BASE}/integrations/linkedin/org/status`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getLinkedInOrgStatus failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async getLinkedInOrgPosts(limit = 12): Promise<LinkedInOrgPostsResponse> {
+    const r = await fetch(`${API_BASE}/integrations/linkedin/org/posts?limit=${encodeURIComponent(String(limit))}`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getLinkedInOrgPosts failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      configured: Boolean(payload?.configured),
+      items: Array.isArray(payload?.items) ? payload.items : [],
+    };
+  }
+
   async startDiscordConnect(
     body?: StartDiscordConnectBody
   ): Promise<StartDiscordConnectResponse> {
@@ -392,6 +454,62 @@ export class ApiClient {
       returnTo: typeof payload?.returnTo === "string" ? payload.returnTo : undefined,
       joinUrl: typeof payload?.joinUrl === "string" ? payload.joinUrl : undefined,
       scopes: Array.isArray(payload?.scopes) ? payload.scopes : undefined,
+    };
+  }
+
+  async getDiscordStatus(): Promise<DiscordStatusResponse> {
+    const r = await fetch(`${API_BASE}/integrations/discord/status`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getDiscordStatus failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async getDiscordWebhookStatus(): Promise<DiscordWebhookStatusResponse> {
+    const r = await fetch(`${API_BASE}/integrations/discord/webhook/status`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (r.status === 404) {
+      return {
+        ok: false,
+        configured: false,
+        webhookConfigured: false,
+      };
+    }
+    if (!r.ok) {
+      throw new Error(
+        `getDiscordWebhookStatus failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async postDiscordWebhookMessage(
+    body: DiscordWebhookPostBody
+  ): Promise<DiscordWebhookPostResponse> {
+    const r = await fetch(`${API_BASE}/integrations/discord/webhook/post`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `postDiscordWebhookMessage failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      delivered: Boolean(payload?.delivered),
+      response: typeof payload?.response === "string" ? payload.response : undefined,
     };
   }
 
@@ -785,6 +903,406 @@ export class ApiClient {
     return [];
   }
 
+  async getInstagramStatus(): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/instagram/status`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getInstagramStatus failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async getFacebookPageStatus(): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/facebook-page/status`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getFacebookPageStatus failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async saveInstagramConfig(body: {
+    accessToken?: string;
+    instagramAccessToken?: string;
+    pageAccessToken?: string;
+    pageToken?: string;
+    accountId?: string;
+    instagramAccountId?: string;
+    pageId?: string;
+    facebookPageId?: string;
+    pageName?: string;
+    tokenSource?: string;
+    tokenExpiresAt?: string;
+    metaUserAccessToken?: string;
+    metaUserTokenExpiresAt?: string;
+    graphVersion?: string;
+    exchangeLongLived?: boolean;
+    resolveFromPage?: boolean;
+    resolveInstagramAccount?: boolean;
+    dryRun?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/instagram/config`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `saveInstagramConfig failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async saveFacebookPageConfig(body: {
+    accessToken?: string;
+    facebookPageAccessToken?: string;
+    pageAccessToken?: string;
+    metaUserAccessToken?: string;
+    metaUserTokenExpiresAt?: string;
+    pageId?: string;
+    facebookPageId?: string;
+    pageName?: string;
+    tokenSource?: string;
+    tokenExpiresAt?: string;
+    graphVersion?: string;
+    exchangeLongLived?: boolean;
+    resolveFromPage?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/facebook-page/config`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `saveFacebookPageConfig failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async refreshFacebookPageConfig(): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/facebook-page/refresh`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `refreshFacebookPageConfig failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async refreshInstagramConfig(): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/instagram/refresh`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `refreshInstagramConfig failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async getInstagramPosts(limit = 24): Promise<any> {
+    const qs = new URLSearchParams();
+    if (Number.isFinite(limit)) {
+      qs.set("limit", String(Math.max(1, Math.min(100, Math.floor(limit)))));
+    }
+    const r = await fetch(
+      `${API_BASE}/integrations/instagram/posts${qs.toString() ? `?${qs.toString()}` : ""}`,
+      {
+        method: "GET",
+        headers: this.headers(false),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getInstagramPosts failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async getFacebookPagePosts(limit = 24): Promise<any> {
+    const qs = new URLSearchParams();
+    if (Number.isFinite(limit)) {
+      qs.set("limit", String(Math.max(1, Math.min(100, Math.floor(limit)))));
+    }
+    const r = await fetch(
+      `${API_BASE}/integrations/facebook-page/posts${qs.toString() ? `?${qs.toString()}` : ""}`,
+      {
+        method: "GET",
+        headers: this.headers(false),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getFacebookPagePosts failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async publishInstagramPost(body: {
+    caption?: string;
+    message?: string;
+    text?: string;
+    imageUrl?: string;
+    mediaUrl?: string;
+    image_url?: string;
+    media_url?: string;
+    instagramAccountId?: string;
+    instagramAccessToken?: string;
+    graphVersion?: string;
+    queue?: boolean;
+    async?: boolean;
+    dryRun?: boolean;
+    preview?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/instagram/publish`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `publishInstagramPost failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async debugInstagramPublish(body: {
+    caption?: string;
+    message?: string;
+    text?: string;
+    imageUrl?: string;
+    instagramAccountId?: string;
+    instagramAccessToken?: string;
+    graphVersion?: string;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/instagram/publish/debug`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `debugInstagramPublish failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async publishFacebookPagePost(body: {
+    caption?: string;
+    message?: string;
+    text?: string;
+    imageUrl?: string;
+    mediaUrl?: string;
+    image_url?: string;
+    media_url?: string;
+    facebookPageId?: string;
+    pageId?: string;
+    facebookPageAccessToken?: string;
+    pageAccessToken?: string;
+    accessToken?: string;
+    graphVersion?: string;
+    dryRun?: boolean;
+    preview?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/integrations/facebook-page/publish`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `publishFacebookPagePost failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload;
+  }
+
+  async submitSocialPost(body: {
+    title?: string;
+    content?: string;
+    caption?: string;
+    message?: string;
+    imageUrl?: string;
+    image_url?: string;
+    channels?: string[];
+    scheduledAt?: string;
+    reviewerUsernames?: string[];
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`submitSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async updateSocialPost(body: {
+    postId?: string;
+    post_id?: string;
+    title?: string;
+    content?: string;
+    caption?: string;
+    message?: string;
+    imageUrl?: string;
+    image_url?: string;
+    channels?: string[];
+    reviewerUsernames?: string[];
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`updateSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async getMySocialPosts(): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/me`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getMySocialPosts failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async getSocialPosts(): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getSocialPosts failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async reviewSocialPost(body: {
+    postId?: string;
+    decision?: string;
+    reviewNote?: string;
+    scheduledAt?: string;
+    title?: string;
+    content?: string;
+    caption?: string;
+    imageUrl?: string;
+    image_url?: string;
+    channels?: string[];
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/review`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`reviewSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async retrySocialPostChannel(body: { postId?: string; post_id?: string; channel?: string }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/retry-channel`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`retrySocialPostChannel failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async adminUpdateScheduledSocialPost(body: {
+    postId?: string;
+    post_id?: string;
+    title?: string;
+    content?: string;
+    caption?: string;
+    message?: string;
+    imageUrl?: string;
+    image_url?: string;
+    channels?: string[];
+    scheduledAt?: string;
+    scheduled_at?: string;
+    cancelSchedule?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/admin-update`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`adminUpdateScheduledSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async toggleSocialPostTodo(body: {
+    postId?: string;
+    post_id?: string;
+    todoId?: string;
+    todo_id?: string;
+    done?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/todo`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`toggleSocialPostTodo failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
   async getEmployeeCustomerDownloads(): Promise<{ customer: any; entitlements: any[]; items: any[] }> {
     const r = await fetch(`${API_BASE}/customer/employee/downloads`, {
       method: "GET",
@@ -918,6 +1436,60 @@ export class ApiClient {
     }
     return {
       files: Array.isArray(payload?.files) ? payload.files : [],
+    };
+  }
+
+  async listStorageFiles(params?: {
+    prefix?: string;
+    continuationToken?: string;
+    limit?: number;
+  }): Promise<ListStorageFilesResponse> {
+    const qs = new URLSearchParams();
+    if (params?.prefix) qs.set("prefix", params.prefix);
+    if (params?.continuationToken) qs.set("continuationToken", params.continuationToken);
+    if (typeof params?.limit === "number" && Number.isFinite(params.limit)) {
+      qs.set("limit", String(params.limit));
+    }
+    const r = await fetch(`${API_BASE}/updates/storage-files${qs.toString() ? `?${qs.toString()}` : ""}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `listStorageFiles failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      bucket: typeof payload?.bucket === "string" ? payload.bucket : undefined,
+      prefix: typeof payload?.prefix === "string" ? payload.prefix : undefined,
+      limit: Number(payload?.limit) || undefined,
+      items: Array.isArray(payload?.items) ? payload.items : [],
+      truncated: Boolean(payload?.truncated),
+      nextContinuationToken:
+        typeof payload?.nextContinuationToken === "string"
+          ? payload.nextContinuationToken
+          : undefined,
+    };
+  }
+
+  async deleteStorageFile(body: { s3Key?: string }): Promise<DeleteStorageFileResponse> {
+    const r = await fetch(`${API_BASE}/updates/storage-files/delete`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `deleteStorageFile failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      deletedS3Key: typeof payload?.deletedS3Key === "string" ? payload.deletedS3Key : undefined,
+      bucket: typeof payload?.bucket === "string" ? payload.bucket : undefined,
     };
   }
 
