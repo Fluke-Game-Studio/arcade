@@ -479,14 +479,22 @@ function OrgChart({ employees, brokenAvatarKeys, setBrokenAvatarKeys }: {
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
-export default function Employees() {
+type EmployeesProps = {
+  initialView?: "list" | "org";
+};
+
+export default function Employees({ initialView = "list" }: EmployeesProps = {}) {
   const { api } = useAuth();
 
   const [query, setQuery]   = useState("");
   const [rows, setRows]     = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [brokenAvatarKeys, setBrokenAvatarKeys] = useState<Record<string, boolean>>({});
-  const [view, setView]     = useState<"list" | "org">("list");
+  const [view, setView]     = useState<"list" | "org">(initialView);
+
+  useEffect(() => {
+    setView(initialView);
+  }, [initialView]);
 
   useEffect(() => {
     let mount = true;

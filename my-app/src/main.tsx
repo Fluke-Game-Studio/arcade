@@ -9,6 +9,7 @@ import Protected from "./auth/Protected";
 import App from "./pages/App";
 import Home from "./pages/Home";
 import Employees from "./pages/Employees";
+import MyTeam from "./pages/MyTeam";
 import AdminWorkspace from "./pages/AdminWorkspace";
 import SuperUser from "./pages/SuperUser";
 import SuperAI from "./pages/SuperAI";
@@ -23,6 +24,9 @@ import RealtimeIntakePage from "./pages/RealtimeIntakePage";
 import RetroBoard from "./pages/RetroBoard";
 import Applicants from "./pages/Applicants";
 import CustomersAdmin from "./pages/CustomersAdmin";
+import SocialMediaAdmin from "./pages/SocialMediaAdmin";
+import SocialPostStudio from "./pages/SocialPostStudio";
+import SocialMediaReviewAdmin from "./pages/SocialMediaReviewAdmin";
 import { UpdatesProvider } from "./pages/UpdatesContext";
 import CharacterTutorialPage from "./pages/CharacterTutorialPage";
 import ManagerAgentBuilderPage from "./pages/ManagerAgentBuilderPage";
@@ -118,7 +122,19 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Home /> },
       { path: "/employees", element: <Employees /> },
+      { path: "/organisation", element: <Navigate to="/organisation/employees" replace /> },
+      { path: "/organisation/employees", element: <Employees initialView="list" /> },
+      { path: "/organisation/org-chart", element: <Employees initialView="org" /> },
+      {
+        path: "/organisation/my-team",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <MyTeam />
+          </Protected>
+        ),
+      },
       { path: "/account", element: <Account /> },
+      { path: "/social/posts", element: <SocialPostStudio /> },
 
       {
         path: "/applicants",
@@ -142,6 +158,34 @@ const router = createBrowserRouter([
         element: (
           <Protected roles={["admin", "super"]}>
             <CustomersAdmin />
+          </Protected>
+        ),
+      },
+      {
+        path: "/admin/social-media",
+        element: <Navigate to="/super/social-media" replace />,
+      },
+      {
+        path: "/admin/social-media-admin",
+        element: (
+          <Protected roles={["admin", "super"]}>
+            <SocialMediaReviewAdmin />
+          </Protected>
+        ),
+      },
+      {
+        path: "/super/social-media",
+        element: (
+          <Protected roles={["super"]}>
+            <SocialMediaAdmin />
+          </Protected>
+        ),
+      },
+      {
+        path: "/super/social-posts",
+        element: (
+          <Protected roles={["super"]}>
+            <SocialPostStudio />
           </Protected>
         ),
       },

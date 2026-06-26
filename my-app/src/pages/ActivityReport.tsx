@@ -5,6 +5,7 @@ import {
   type ApiUpdatesResponse,
   type ApiUser,
 } from "../api";
+import { getDirectReports } from "../utils/employeeHierarchy";
 
 declare const M: any;
 
@@ -1091,7 +1092,15 @@ function SubmissionWeekCalendar({
   );
 }
 
-export default function ActivityReport({ embedded = false }: { embedded?: boolean } = {}) {
+export default function ActivityReport({
+  embedded = false,
+  scope = "all",
+  currentUser = null,
+}: {
+  embedded?: boolean;
+  scope?: "all" | "team";
+  currentUser?: any;
+} = {}) {
   const [summaries, setSummaries] = useState<ApiUpdateSummary[]>([]);
   const [allWeekSummaries, setAllWeekSummaries] = useState<ApiUpdateSummary[]>([]);
   const [users, setUsers] = useState<ApiUser[]>([]);
@@ -1153,6 +1162,27 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
       mounted = false;
     };
   }, []);
+
+  const scopedUsers = useMemo(() => {
+    if (scope !== "team") return users;
+    return getDirectReports(users, currentUser);
+  }, [currentUser, scope, users]);
+
+  const scopedUserKeys = useMemo(() => {
+    return new Set(
+      scopedUsers
+        .flatMap((user) => [
+          getUserKey(user),
+          norm((user as any)?.userId),
+          norm((user as any)?.employee_id),
+          norm((user as any)?.employee_name),
+          norm((user as any)?.employee_email),
+          norm((user as any)?.email),
+          norm((user as any)?.username),
+        ])
+        .filter(Boolean)
+    );
+  }, [scopedUsers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1305,28 +1335,42 @@ export default function ActivityReport({ embedded = false }: { embedded?: boolea
     };
   }, [api, selectedWeek]);
 
+  const scopeSummaryMatch = (summary: Partial<ApiUpdateSummary>) => {
+    if (scope !== "team") return true;
+    const summaryKeys = [
+      getSummaryKey(summary),
+      norm((summary as any)?.userId),
+      norm((summary as any)?.userName),
+      norm((summary as any)?.employee_id),
+      norm((summary as any)?.employee_email),
+      norm((summary as any)?.email),
+    ].filter(Boolean);
+    return summaryKeys.some((key) => scopedUserKeys.has(key));
+  };
+
   const rows = useMemo(() => {
     return [...summaries].sort((a, b) => {
       return String((a as any).userName || (a as any).userId || "").localeCompare(
         String((b as any).userName || (b as any).userId || "")
       );
-    });
-  }, [summaries]);
+    }).filter(scopeSummaryMatch);
+  }, [scope, scopedUserKeys, summaries]);
 
   const allRows = useMemo(() => {
     return [...allWeekSummaries].sort((a, b) => {
       return String((a as any).userName || (a as any).userId || "").localeCompare(
         String((b as any).userName || (b as any).userId || "")
       );
-    });
-  }, [allWeekSummaries]);
+    }).filter(scopeSummaryMatch);
+  }, [allWeekSummaries, scope, scopedUserKeys]);
 
   const eligibleUsers = useMemo(() => {
-    return (Array.isArray(users) ? users : []).filter((u) => {
+    const sourceUsers = scope === "team" ? scopedUsers : users;
+    return (Array.isArray(sourceUsers) ? sourceUsers : []).filter((u) => {
       if (isRevoked(u)) return false;
       return !!getUserKey(u);
     });
-  }, [users]);
+  }, [scope, scopedUsers, users]);
 
   const summaryMap = useMemo(() => {
     const map = new Map<string, ApiUpdateSummary>();

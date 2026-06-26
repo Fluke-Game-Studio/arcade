@@ -20,6 +20,16 @@ export type PresignedUploadItem = {
   publicUrl?: string;
 };
 
+export type StorageFileItem = {
+  key: string;
+  lastModified?: string;
+  size: number;
+  etag?: string;
+  storageClass?: string;
+  url?: string;
+  uploadedBy?: string;
+};
+
 export type CreateWeeklyUpdateUploadUrlsBody = {
   weekStart: string;
   files: Array<{
@@ -31,6 +41,22 @@ export type CreateWeeklyUpdateUploadUrlsBody = {
 
 export type CreateWeeklyUpdateUploadUrlsResponse = {
   files: PresignedUploadItem[];
+};
+
+export type ListStorageFilesResponse = {
+  ok?: boolean;
+  bucket?: string;
+  prefix?: string;
+  limit?: number;
+  items: StorageFileItem[];
+  truncated?: boolean;
+  nextContinuationToken?: string;
+};
+
+export type DeleteStorageFileResponse = {
+  ok?: boolean;
+  deletedS3Key?: string;
+  bucket?: string;
 };
 
 export type ApiUpdateRow = {

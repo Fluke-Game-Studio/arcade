@@ -19,17 +19,6 @@ const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Ga
 5. ENGLISH ONLY: Respond only in English, regardless of what language the candidate uses.
 6. BREVITY: Keep your own responses short — one or two sentences maximum before asking or repeating the question.`;
 
-const HR_EMAIL = "flukegamestudio@gmail.com";
-
-function buildWeeklyInput(a: Record<string, string>) {
-  return {
-    weekStart: new Date().toISOString().slice(0, 10),
-    accomplishments: a.q1 || "",
-    blockers: a.q2 || "",
-    nextSteps: a.q3 || "",
-    highlights: a.q4 || "",
-  };
-}
 
 function buildTranscript(answers: Record<string, string>, questions: string[]): string {
   const date = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -92,6 +81,8 @@ function migrateStored(raw: any): StoredIntakeContext {
       ? raw.mcpActions
       : String(raw?.mcpAction || "") ? [String(raw.mcpAction)] : [],
     includeJobQuestions: Boolean(raw?.includeJobQuestions),
+    transcriptEmailEnabled: Boolean(raw?.transcriptEmailEnabled),
+    transcriptEmailTo: String(raw?.transcriptEmailTo || ""),
   };
 }
 
@@ -532,38 +523,12 @@ export default function RealtimeIntakePage() {
     setErr("");
     try {
       const qs = allQuestionsRef.current;
-      const isWeekly = ctx.key === "weekly_update" || ctx.mcpActions.some((a) => a === "submit_weekly_update" || a === "updates_write");
-
-      if (isWeekly) {
-        await api.chatOverUpdates({
-          question: "Submit weekly update from voice intake session.",
-          context: "internal",
-          perform: true,
-          mcpAction: "updates_write",
-          mcpInput: buildWeeklyInput(answers),
-        });
-      } else {
-        let body = buildTranscript(answers, qs);
-        if (fb && fb.stars > 0) {
-          const stars = "★".repeat(fb.stars) + "☆".repeat(5 - fb.stars);
-          body += `\n${"─".repeat(52)}\nCANDIDATE FEEDBACK\n`;
-          body += `Overall Quality:       ${stars} (${fb.stars}/5)\n`;
-          if (fb.completedQs !== null) body += `Completed Questions:   ${fb.completedQs ? "Yes" : "No"}\n`;
-          if (fb.listenedFully)        body += `Listened Fully:        ${fb.listenedFully}\n`;
-          if (fb.stuckToTopic)         body += `Stuck to Topic:        ${fb.stuckToTopic}\n`;
-        }
-        await api.chatOverUpdates({
-          question: `Send interview transcript email for ${ctx.label}.`,
-          context: "internal",
-          perform: true,
-          mcpAction: "sendEmail",
-          mcpInput: {
-            to: HR_EMAIL,
-            subject: `Interview Transcript — ${ctx.label} (${new Date().toLocaleDateString("en-GB")})`,
-            body,
-          },
-        });
-      }
+      await api.submitInternalIntake({
+        contextKey: ctx.key,
+        answers,
+        transcript: buildTranscript(answers, qs),
+        feedback: fb,
+      });
     } catch (e: any) {
       setErr(String(e?.message || "Submission failed. Please try again."));
       setStatus("awaiting_feedback");

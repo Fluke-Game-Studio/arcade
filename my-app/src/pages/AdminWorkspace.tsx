@@ -5,11 +5,14 @@ import ActivityReport from "./ActivityReport";
 import EmployeeExplorerPanel from "../components/admin/EmployeeExplorerPanel";
 
 type TabKey = "activity" | "employees";
+type EmployeeScope = "all" | "team";
 
 export default function AdminWorkspace({
   initialTab = "employees",
+  employeeScope = "all",
 }: {
   initialTab?: TabKey;
+  employeeScope?: EmployeeScope;
 } = {}) {
   const { user, api } = useAuth();
   const [tab, setTab] = useState<TabKey>(initialTab);
@@ -24,14 +27,16 @@ export default function AdminWorkspace({
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 28, fontWeight: 1000, color: "#0f172a" }}>
-            Admin Workspace
+            {employeeScope === "team" ? "My Team Workspace" : "Admin Workspace"}
           </div>
           <div style={{ marginTop: 6, color: "#475569", fontSize: 14 }}>
-            One place for cumulative activity and employee-level inspection.
+            {employeeScope === "team"
+              ? "Your direct reports, weekly activity, and team-level inspection."
+              : "One place for cumulative activity and employee-level inspection."}
           </div>
         </div>
 
-        <div style={{ display: "inline-flex", gap: 8, padding: 6, borderRadius: 999, background: "rgba(15,23,42,.04)", border: "1px solid rgba(148,163,184,.14)" }}>
+        <div style={{ display: "inline-flex", gap: 8, padding: 6, borderRadius: 999, background: "rgba(15,23,42,.04)", border: "1px solid rgba(148,163,184,.14)", margin: "0 auto" }}>
           <button
             type="button"
             onClick={() => setTab("activity")}
@@ -67,34 +72,38 @@ export default function AdminWorkspace({
           >
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <i className="material-icons" style={{ fontSize: 16 }}>groups</i>
-              Each Employee
+              {employeeScope === "team" ? "My Team" : "Each Employee"}
             </span>
           </button>
         </div>
 
-        <button
-          type="button"
-          className="btn"
-          onClick={() => setMailerOpen(true)}
-          style={{ borderRadius: 999, textTransform: "none", fontWeight: 900 }}
-        >
-          <i className="material-icons left">campaign</i>
-          Mail Composer
-        </button>
+        {employeeScope !== "team" ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setMailerOpen(true)}
+            style={{ borderRadius: 999, textTransform: "none", fontWeight: 900 }}
+          >
+            <i className="material-icons left">campaign</i>
+            Mail Composer
+          </button>
+        ) : null}
       </div>
 
       <div style={{ display: tab === "activity" ? "block" : "none", width: "100%" }}>
-        <ActivityReport embedded />
+        <ActivityReport embedded currentUser={user} scope={employeeScope} />
       </div>
 
       <div style={{ display: tab === "employees" ? "block" : "none", width: "100%" }}>
-        <EmployeeExplorerPanel currentUser={user} />
+        <EmployeeExplorerPanel currentUser={user} scope={employeeScope} />
       </div>
-      <AdminMailerComposerModal
-        api={api}
-        open={mailerOpen}
-        onClose={() => setMailerOpen(false)}
-      />
+      {employeeScope !== "team" ? (
+        <AdminMailerComposerModal
+          api={api}
+          open={mailerOpen}
+          onClose={() => setMailerOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

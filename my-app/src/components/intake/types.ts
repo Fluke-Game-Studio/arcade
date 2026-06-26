@@ -11,6 +11,8 @@ export type StoredIntakeContext = {
   mcpActions: string[];
   includeJobQuestions?: boolean;
   intakeLinkMode?: "public" | "arcade";
+  transcriptEmailEnabled?: boolean;
+  transcriptEmailTo?: string;
 };
 
 export type FeedbackState = {
