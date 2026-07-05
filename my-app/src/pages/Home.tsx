@@ -49,9 +49,6 @@ export default function Home() {
   const [activeDocCategory, setActiveDocCategory] = useState<string | null>(null);
   const role = String(user?.role || "").toUpperCase();
   const isAdminOrSuper = role === "ADMIN" || role === "SUPER";
-  const releaseVersion = "v2026.04.12";
-  const releaseStorageKey = `fg_home_whats_new_seen_${releaseVersion}`;
-  const [showReleaseCard, setShowReleaseCard] = useState(false);
   const [showBirthdayModal, setShowBirthdayModal] = useState(false);
   const birthdayGifs = useMemo(
     () => [
@@ -66,12 +63,6 @@ export default function Home() {
   );
   const [birthdayGif, setBirthdayGif] = useState(birthdayGifs[0]);
   const birthdayName = String((user as any)?.employee_name || (user as any)?.name || "Superstar").trim();
-
-  useEffect(() => {
-    const seen = localStorage.getItem(releaseStorageKey);
-    if (seen === "1") return;
-    setShowReleaseCard(true);
-  }, [releaseStorageKey]);
 
   useEffect(() => {
     const dob = String((user as any)?.employee_dob || "").trim();
@@ -648,51 +639,6 @@ export default function Home() {
       `}</style>
 
       <div className="portalBg" />
-      {showReleaseCard && (
-        <div className="releaseOverlay" role="dialog" aria-modal="true" aria-label="What's new in this release">
-          <div className="releaseCard">
-            <div className="releaseHead">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                <div>
-                  <div className="releaseBadge">
-                    <i className="material-icons" style={{ fontSize: 14 }}>new_releases</i>
-                    {releaseVersion}
-                  </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 1000, letterSpacing: "-.02em", color: "var(--text)" }}>
-                    What's New In This Release
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="releaseBody">
-              <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 800 }}>
-                Release highlights (core features only).
-              </div>
-              <ul className="releaseList">
-                <li>Auth boot: validate saved token before entering the app (no Home flash + no bad-token toast loop).</li>
-                <li>Login UX: branded loader under the Fluke logo, then auto-flip to the form only when the token is invalid.</li>
-                <li>AI Chat routing: requests carry context + agent identity (Project Manager for internal/public, default assistant for personal).</li>
-                <li>WebSocket reliability: `ai-result` frames include `clientId` so responses attach to the correct request.</li>
-                <li>Update summaries: admin queries resolve the correct employee and summarize real submissions instead of generic JSON-style replies.</li>
-                <li>Summary tone: deterministic summaries now return smooth “pattern/themes” answers by default (raw lists only when requested).</li>
-              </ul>
-              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className="btn blue"
-                  onClick={() => {
-                    localStorage.setItem(releaseStorageKey, "1");
-                    setShowReleaseCard(false);
-                  }}
-                >
-                  Got it
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showBirthdayModal && (
         <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(2,6,23,.6)", display: "grid", placeItems: "center", padding: 16 }}>
           <div style={{ width: "min(620px, 95vw)", borderRadius: 18, overflow: "hidden", background: "#fff", border: "1px solid rgba(2,6,23,.12)", boxShadow: "0 30px 80px rgba(2,6,23,.35)" }}>

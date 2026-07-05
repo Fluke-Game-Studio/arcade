@@ -232,6 +232,43 @@ export class ApiClient {
     return r.json();
   }
 
+  async getArcadeReleaseConfig(): Promise<{ ok: boolean; releaseVersion: string; releaseNotes: string }> {
+    const r = await fetch(`${API_BASE}/arcade-release-config`, {
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getArcadeReleaseConfig failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; releaseVersion: string; releaseNotes: string };
+  }
+
+  async updateArcadeReleaseConfig(body: { releaseVersion: string; releaseNotes: string }): Promise<{ ok: boolean; releaseVersion: string; releaseNotes: string }> {
+    const r = await fetch(`${API_BASE}/admin/arcade-release-config`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`updateArcadeReleaseConfig failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; releaseVersion: string; releaseNotes: string };
+  }
+
+  async markReleaseSeen(body: { releaseVersion: string }): Promise<{ ok: boolean; releaseVersion: string }> {
+    const r = await fetch(`${API_BASE}/me/release-seen`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`markReleaseSeen failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; releaseVersion: string };
+  }
+
   async getDirectory(): Promise<ApiUser[]> {
     const r = await fetch(`${API_BASE}/directory`, {
       headers: this.headers(false),
@@ -1160,6 +1197,7 @@ export class ApiClient {
     channels?: string[];
     scheduledAt?: string;
     reviewerUsernames?: string[];
+    internalReviewNote?: string;
   }): Promise<any> {
     const r = await fetch(`${API_BASE}/social-posts`, {
       method: "POST",
@@ -1184,6 +1222,7 @@ export class ApiClient {
     image_url?: string;
     channels?: string[];
     reviewerUsernames?: string[];
+    internalReviewNote?: string;
   }): Promise<any> {
     const r = await fetch(`${API_BASE}/social-posts`, {
       method: "POST",
@@ -1221,6 +1260,18 @@ export class ApiClient {
     return payload;
   }
 
+  async getSocialPostsOrg(): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/org`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getSocialPostsOrg failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
   async reviewSocialPost(body: {
     postId?: string;
     decision?: string;
@@ -1241,6 +1292,27 @@ export class ApiClient {
     const payload = await this.readJson(r);
     if (!r.ok) {
       throw new Error(`reviewSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
+  async addSocialPostComment(body: {
+    postId?: string;
+    post_id?: string;
+    comment?: string;
+    text?: string;
+    reviewNote?: string;
+    note?: string;
+    requestEdits?: boolean;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/comment`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`addSocialPostComment failed: ${this.extractErrorMessage(payload, r.status)}`);
     }
     return payload;
   }
@@ -1301,6 +1373,82 @@ export class ApiClient {
       throw new Error(`toggleSocialPostTodo failed: ${this.extractErrorMessage(payload, r.status)}`);
     }
     return payload;
+  }
+
+  async getNotifications(params?: {
+    limit?: number;
+    cursor?: string;
+    unreadOnly?: boolean;
+  }): Promise<{ ok: boolean; items: any[]; nextCursor?: string | null; unreadCount?: number }> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.cursor) query.set("cursor", params.cursor);
+    if (params?.unreadOnly) query.set("unreadOnly", "true");
+    const qs = query.toString();
+    const r = await fetch(`${API_BASE}/notifications${qs ? `?${qs}` : ""}`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getNotifications failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; items: any[]; nextCursor?: string | null; unreadCount?: number };
+  }
+
+  async getNotificationUnreadCount(): Promise<{ ok: boolean; unreadCount: number }> {
+    const r = await fetch(`${API_BASE}/notifications/unread-count`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getNotificationUnreadCount failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; unreadCount: number };
+  }
+
+  async markNotificationsRead(body: {
+    notificationId?: string;
+    notification_id?: string;
+    notificationIds?: string[];
+    all?: boolean;
+  }): Promise<{ ok: boolean; unreadCount?: number }> {
+    const r = await fetch(`${API_BASE}/notifications/read`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`markNotificationsRead failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; unreadCount?: number };
+  }
+
+  async getNotificationPreferences(): Promise<{ ok: boolean; preferences: any }> {
+    const r = await fetch(`${API_BASE}/notifications/preferences`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getNotificationPreferences failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; preferences: any };
+  }
+
+  async updateNotificationPreferences(body: { preferences: any }): Promise<{ ok: boolean; preferences: any }> {
+    const r = await fetch(`${API_BASE}/notifications/preferences`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`updateNotificationPreferences failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; preferences: any };
   }
 
   async getEmployeeCustomerDownloads(): Promise<{ customer: any; entitlements: any[]; items: any[] }> {
@@ -2550,6 +2698,21 @@ export class ApiClient {
       );
     }
     return payload as { ok: boolean; result?: any };
+  }
+
+  async generateCalendlySchedulingLink(body: {
+    name?: string;
+    contactEmail?: string;
+    contactName?: string;
+  }): Promise<{ ok: boolean; schedulingUrl: string; name: string }> {
+    const r = await fetch(`${API_BASE}/integrations/calendly/scheduling-link`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(this.extractErrorMessage(payload, r.status));
+    return payload as { ok: boolean; schedulingUrl: string; name: string };
   }
 }
 

@@ -5,6 +5,7 @@ export type SocialPostCardData = {
   title?: string;
   content?: string;
   imageUrl?: string;
+  internalReviewNote?: string;
   channels?: string[];
   status?: string;
   reviewNote?: string;
@@ -52,6 +53,8 @@ type Props = {
   comments?: CommentEntry[];
   actions?: ReactNode;
   editor?: ReactNode;
+  headerActions?: ReactNode;
+  headerEditor?: ReactNode;
   onChannelRetry?: (channel: string) => void | Promise<void>;
 };
 
@@ -93,7 +96,7 @@ function channelMeta(channel: string) {
   if (c === "facebook") return { label: "Facebook", icon: "f" };
   if (c === "linkedin") return { label: "LinkedIn", icon: "in" };
   if (c === "discord") return { label: "Discord", icon: "#" };
-  return { label: channel, icon: "•" };
+  return { label: channel, icon: "\u2022" };
 }
 
 export default function SocialPostCard({
@@ -107,6 +110,8 @@ export default function SocialPostCard({
   comments = [],
   actions,
   editor,
+  headerActions,
+  headerEditor,
   onChannelRetry,
 }: Props) {
   const isApproved = safeStr(post.status).toLowerCase().includes("approve");
@@ -203,12 +208,20 @@ export default function SocialPostCard({
 
       <header style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", color: "#64748b" }}>
-            {post.title || "Untitled"}
-          </div>
-          <div style={{ marginTop: 4, color: "#0f172a", fontSize: 15, fontWeight: 700, lineHeight: 1.45, wordBreak: "break-word" }}>
-            {post.content}
-          </div>
+          {headerEditor ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {headerEditor}
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", color: "#64748b" }}>
+                {post.title || "Untitled"}
+              </div>
+              <div style={{ marginTop: 4, color: "#0f172a", fontSize: 15, fontWeight: 700, lineHeight: 1.45, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+                {post.content}
+              </div>
+            </>
+          )}
           {post.author ? (
             <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
               By {post.author} · {formatDate(safeStr(post.updatedAt || post.createdAt))}
@@ -279,37 +292,40 @@ export default function SocialPostCard({
           ) : null}
         </div>
 
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 900,
-            color: tone.text,
-            background: "#fff",
-            border: `1px solid ${tone.border}`,
-            borderRadius: 999,
-            padding: "6px 10px",
-            textTransform: "uppercase",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {tone.label}
-        </div>
-        {isScheduled && !isFutureScheduledApproved ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
           <div
             style={{
               fontSize: 12,
               fontWeight: 900,
-              color: "#7c2d12",
-              background: "rgba(245,158,11,.12)",
-              border: "1px solid rgba(245,158,11,.25)",
+              color: tone.text,
+              background: "#fff",
+              border: `1px solid ${tone.border}`,
               borderRadius: 999,
               padding: "6px 10px",
+              textTransform: "uppercase",
               whiteSpace: "nowrap",
             }}
           >
-            Scheduled {formatDate(scheduledAt)}
+            {tone.label}
           </div>
-        ) : null}
+          {isScheduled && !isFutureScheduledApproved ? (
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 900,
+                color: "#7c2d12",
+                background: "rgba(245,158,11,.12)",
+                border: "1px solid rgba(245,158,11,.25)",
+                borderRadius: 999,
+                padding: "6px 10px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Scheduled {formatDate(scheduledAt)}
+            </div>
+          ) : null}
+          {headerActions}
+        </div>
       </header>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 4fr) minmax(0, 8fr)", gap: 12, alignItems: "stretch" }}>
@@ -384,22 +400,27 @@ export default function SocialPostCard({
               border: "1px solid rgba(148,163,184,.18)",
               background: "#fff",
               height: 280,
-              display: "grid",
-              gridTemplateRows: "1fr auto",
             }}
           >
             {previewUrl ? (
-              <div style={{ background: "#e2e8f0", overflow: "hidden" }}>
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                title="Open image in new tab"
+                style={{ background: "#e2e8f0", overflow: "hidden", height: "100%", display: "block", cursor: "zoom-in" }}
+              >
                 <img
                   src={previewUrl}
                   alt={post.title || "Preview"}
                   style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", background: "#e2e8f0" }}
                 />
-              </div>
+              </a>
             ) : (
               <div
                 style={{
                   minHeight: 180,
+                  height: "100%",
                   display: "grid",
                   placeItems: "center",
                   padding: 16,
@@ -409,15 +430,9 @@ export default function SocialPostCard({
                   textAlign: "center",
                 }}
               >
-                {previewFallbackLabel}
+                {previewFallbackLabel || previewCaption || "No preview yet"}
               </div>
             )}
-
-            {previewCaption ? (
-              <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(148,163,184,.14)", color: "#334155", fontSize: 13, fontWeight: 700, lineHeight: 1.45 }}>
-                {previewCaption}
-              </div>
-            ) : null}
           </div>
         </article>
       </div>

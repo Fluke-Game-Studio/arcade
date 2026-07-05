@@ -61,6 +61,13 @@ export type ApiUser = {
   project_access?: boolean;
   version_control_access?: boolean;
   project_setup?: "" | "ProjectPartialCleanUp" | "ProjectCompleteCleanup" | string;
+  notification_preferences?: string | {
+    email?: Record<string, boolean>;
+    in_app?: Record<string, boolean>;
+    discord_dm?: Record<string, boolean>;
+    discord_channel?: Record<string, boolean>;
+  };
+  last_seen_release_version?: string;
   [k: string]: any;
 };
 

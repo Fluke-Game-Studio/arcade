@@ -219,7 +219,7 @@ export default function EmployeeActions() {
   const actions: Action[] = [
     { to: "/updates/new", title: "Fill Timesheet", subtitle: "Log hours for this week", icon: "edit_note", tone: "primary" },
     { to: "/updates/board", title: "Retro Board", subtitle: "Wins, blockers, next steps", icon: "view_kanban", tone: "neutral" },
-    { to: "/social/posts", title: "Social Posts", subtitle: "Submit drafts and review your submissions", icon: "share", tone: "dark", badge: editRequestCount || undefined },
+    { to: "/organisation/social-media", title: "Social Media", subtitle: "Submit drafts and review your submissions", icon: "share", tone: "dark", badge: editRequestCount || undefined },
     { to: "/account", title: "Activity Report", subtitle: "Your updates and weekly activity", icon: "insights", tone: "dark" },
     { to: "/account", title: "My Account", subtitle: "Profile and security settings", icon: "manage_accounts", tone: "light" },
   ];
