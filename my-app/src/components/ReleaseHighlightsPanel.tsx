@@ -1,4 +1,4 @@
-export const HOME_RELEASE_VERSION = "v2026.04.12";
+export const HOME_RELEASE_VERSION = "v2026.07.05";
 export const HOME_RELEASE_STORAGE_KEY = `fg_home_whats_new_seen_${HOME_RELEASE_VERSION}`;
 
 const RELEASE_HIGHLIGHTS = [
