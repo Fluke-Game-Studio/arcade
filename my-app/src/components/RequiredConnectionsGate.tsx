@@ -271,22 +271,33 @@ export default function RequiredConnectionsGate() {
                     checked: acceptTimesheet,
                     setChecked: setAcceptTimesheet,
                     title: "Update Time Sheet weekly.",
-                    detail: "This keeps delivery, planning, and accountability visible across the team every week.",
+                    detail:
+                      "This keeps delivery, planning, and accountability visible across the team every week. Performance metrics may also be reported to LinkedIn and the concerned university departments where applicable.",
                   },
                   {
                     checked: acceptDiscordExpectations,
                     setChecked: setAcceptDiscordExpectations,
                     title: "Install Discord App. Enable notifications and be responsive",
-                    detail: "Discord is used for notification delivery, review workflow coordination, and team responsiveness.",
+                    detail:
+                      "Discord is used for notification delivery, review workflow coordination, and team responsiveness. LinkedIn may be used for employee performance metrics and identity alignment, and Jira remains optional in the next step.",
                   },
                 ].map((item) => (
-                  <label
+                  <div
                     key={item.title}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => item.setChecked(!item.checked)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        item.setChecked(!item.checked);
+                      }
+                    }}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "24px minmax(0,1fr)",
+                      display: "flex",
+                      alignItems: "flex-start",
                       gap: 14,
-                      alignItems: "start",
+                      width: "100%",
                       borderRadius: 20,
                       border: item.checked ? "1px solid rgba(37,99,235,.26)" : "1px solid rgba(148,163,184,.18)",
                       background: item.checked ? "rgba(37,99,235,.07)" : "#fff",
@@ -298,13 +309,48 @@ export default function RequiredConnectionsGate() {
                       type="checkbox"
                       checked={item.checked}
                       onChange={(e) => item.setChecked(e.target.checked)}
-                      style={{ width: 20, height: 20, marginTop: 2, accentColor: "#2563eb" }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 20, height: 20, marginTop: 2, flex: "0 0 20px", accentColor: "#2563eb" }}
                     />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 18, fontWeight: 1000, color: "#0f172a" }}>{item.title}</div>
-                      <div style={{ marginTop: 6, color: "#64748b", lineHeight: 1.6 }}>{item.detail}</div>
+                    <div
+                      style={{
+                        flex: "1 1 auto",
+                        minWidth: 0,
+                        width: "100%",
+                        display: "block",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          fontSize: 18,
+                          fontWeight: 1000,
+                          color: "#0f172a",
+                          lineHeight: 1.3,
+                          whiteSpace: "normal",
+                          wordBreak: "normal",
+                          overflowWrap: "anywhere",
+                        }}
+                      >
+                        {item.title}
+                      </div>
+                      <div
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          marginTop: 6,
+                          color: "#64748b",
+                          lineHeight: 1.6,
+                          whiteSpace: "normal",
+                          wordBreak: "normal",
+                          overflowWrap: "anywhere",
+                        }}
+                      >
+                        {item.detail}
+                      </div>
                     </div>
-                  </label>
+                  </div>
                 ))}
               </div>
 
@@ -319,7 +365,7 @@ export default function RequiredConnectionsGate() {
                   lineHeight: 1.6,
                 }}
               >
-                LinkedIn may be used for employee performance metrics and identity alignment. Discord is used for notifications, workflow coordination, and timely review responsiveness. Jira is optional in the next step.
+                LinkedIn may be used for employee performance metrics and identity alignment, and relevant metrics may be reported to the concerned university departments where applicable. Discord is used for notifications, workflow coordination, and timely review responsiveness. Jira is optional in the next step.
               </div>
             </section>
           )}
