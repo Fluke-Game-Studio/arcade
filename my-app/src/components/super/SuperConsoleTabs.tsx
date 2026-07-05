@@ -1,4 +1,4 @@
-export type SuperTab = "users" | "projects" | "releases" | "storage";
+export type SuperTab = "users" | "projects" | "releases" | "arcade_release" | "storage";
 
 type Props = {
   tab: SuperTab;
@@ -16,6 +16,9 @@ export default function SuperConsoleTabs({ tab, onChange }: Props) {
       </button>
       <button type="button" className={`suTabBtn ${tab === "releases" ? "active" : ""}`} onClick={() => onChange("releases")}>
         Releases & Products
+      </button>
+      <button type="button" className={`suTabBtn ${tab === "arcade_release" ? "active" : ""}`} onClick={() => onChange("arcade_release")}>
+        Arcade Release
       </button>
       <button type="button" className={`suTabBtn ${tab === "storage" ? "active" : ""}`} onClick={() => onChange("storage")}>
         Storage Files

@@ -1,24 +1,75 @@
-export const HOME_RELEASE_VERSION = "v2026.07.05";
-export const HOME_RELEASE_STORAGE_KEY = `fg_home_whats_new_seen_${HOME_RELEASE_VERSION}`;
+export const DEFAULT_RELEASE_VERSION = "v2026.07.05";
+export const DEFAULT_RELEASE_NOTES = [
+  "Welcome to the latest Arcade release.",
+  "",
+  "🚀 Core highlights",
+  "- Auth boot validates saved sessions before entering the app.",
+  "- Social media workflow, notifications, and connected tooling continue to expand.",
+  "- Use this guided setup flow to review the release, agree to expectations, and confirm your connected apps.",
+].join("\n");
 
-const RELEASE_HIGHLIGHTS = [
-  "Auth boot: validate saved token before entering the app (no Home flash + no bad-token toast loop).",
-  "Login UX: branded loader under the Fluke logo, then auto-flip to the form only when the token is invalid.",
-  "AI Chat routing: requests carry context + agent identity (Project Manager for internal/public, default assistant for personal).",
-  "WebSocket reliability: `ai-result` frames include `clientId` so responses attach to the correct request.",
-  "Update summaries: admin queries resolve the correct employee and summarize real submissions instead of generic JSON-style replies.",
-  "Summary tone: deterministic summaries now return smooth pattern and theme answers by default (raw lists only when requested).",
-];
+function normalizeNotes(notes?: string) {
+  return String(notes ?? "").trim() || DEFAULT_RELEASE_NOTES;
+}
+
+function renderNoteBlock(line: string, idx: number) {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return <div key={`spacer-${idx}`} style={{ height: 8 }} />;
+  }
+
+  const isBullet = /^[-*•]\s+/.test(trimmed);
+  if (isBullet) {
+    return (
+      <div
+        key={`bullet-${idx}`}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "16px minmax(0,1fr)",
+          gap: 10,
+          alignItems: "start",
+          color: "#334155",
+          lineHeight: 1.75,
+        }}
+      >
+        <span style={{ color: "#2563eb", fontWeight: 1000, lineHeight: 1.6 }}>•</span>
+        <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+          {trimmed.replace(/^[-*•]\s+/, "")}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      key={`line-${idx}`}
+      style={{
+        color: "#334155",
+        lineHeight: 1.75,
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+      }}
+    >
+      {line}
+    </div>
+  );
+}
 
 export default function ReleaseHighlightsPanel({
   title = "What's New In This Release",
   subtitle = "Release highlights (core features only).",
+  releaseVersion = DEFAULT_RELEASE_VERSION,
+  releaseNotes = DEFAULT_RELEASE_NOTES,
   compact = false,
 }: {
   title?: string;
   subtitle?: string;
+  releaseVersion?: string;
+  releaseNotes?: string;
   compact?: boolean;
 }) {
+  const lines = normalizeNotes(releaseNotes).split(/\r?\n/);
+
   return (
     <div style={{ display: "grid", gap: compact ? 12 : 14 }}>
       <div>
@@ -39,7 +90,7 @@ export default function ReleaseHighlightsPanel({
           }}
         >
           <i className="material-icons" style={{ fontSize: 14 }}>new_releases</i>
-          {HOME_RELEASE_VERSION}
+          {releaseVersion || DEFAULT_RELEASE_VERSION}
         </div>
         <div
           style={{
@@ -57,13 +108,18 @@ export default function ReleaseHighlightsPanel({
         </div>
       </div>
 
-      <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 10, color: "#334155", lineHeight: 1.6 }}>
-        {RELEASE_HIGHLIGHTS.map((item) => (
-          <li key={item} style={{ margin: 0 }}>
-            {item}
-          </li>
-        ))}
-      </ul>
+      <div
+        style={{
+          borderRadius: 18,
+          border: "1px solid rgba(148,163,184,.16)",
+          background: "rgba(255,255,255,.72)",
+          padding: compact ? 16 : 18,
+          display: "grid",
+          gap: 8,
+        }}
+      >
+        {lines.map((line, idx) => renderNoteBlock(line, idx))}
+      </div>
     </div>
   );
 }

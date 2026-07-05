@@ -67,6 +67,7 @@ export type ApiUser = {
     discord_dm?: Record<string, boolean>;
     discord_channel?: Record<string, boolean>;
   };
+  last_seen_release_version?: string;
   [k: string]: any;
 };
 

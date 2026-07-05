@@ -33,6 +33,7 @@ export type SessionUser = {
     email?: Record<string, boolean>;
     in_app?: Record<string, boolean>;
   };
+  last_seen_release_version?: string;
 };
 
 export type AuthStatus = "checking" | "authenticated" | "unauthenticated";
