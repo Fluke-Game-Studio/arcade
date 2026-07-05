@@ -5,7 +5,6 @@ import RightRail from "../components/RightRail";
 import EventHero from "../components/EventHero";
 import EmployeeActions from "../components/EmployeeActions";
 import { useAuth } from "../auth/AuthContext";
-import ReleaseHighlightsPanel, { HOME_RELEASE_STORAGE_KEY } from "../components/ReleaseHighlightsPanel";
 
 declare const M: any;
 
@@ -50,8 +49,6 @@ export default function Home() {
   const [activeDocCategory, setActiveDocCategory] = useState<string | null>(null);
   const role = String(user?.role || "").toUpperCase();
   const isAdminOrSuper = role === "ADMIN" || role === "SUPER";
-  const releaseStorageKey = HOME_RELEASE_STORAGE_KEY;
-  const [showReleaseCard, setShowReleaseCard] = useState(false);
   const [showBirthdayModal, setShowBirthdayModal] = useState(false);
   const birthdayGifs = useMemo(
     () => [
@@ -66,12 +63,6 @@ export default function Home() {
   );
   const [birthdayGif, setBirthdayGif] = useState(birthdayGifs[0]);
   const birthdayName = String((user as any)?.employee_name || (user as any)?.name || "Superstar").trim();
-
-  useEffect(() => {
-    const seen = localStorage.getItem(releaseStorageKey);
-    if (seen === "1") return;
-    setShowReleaseCard(true);
-  }, [releaseStorageKey]);
 
   useEffect(() => {
     const dob = String((user as any)?.employee_dob || "").trim();
@@ -648,28 +639,6 @@ export default function Home() {
       `}</style>
 
       <div className="portalBg" />
-      {showReleaseCard && (
-        <div className="releaseOverlay" role="dialog" aria-modal="true" aria-label="What's new in this release">
-          <div className="releaseCard">
-            <div className="releaseBody">
-              <ReleaseHighlightsPanel />
-              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className="btn blue"
-                  onClick={() => {
-                    localStorage.setItem(releaseStorageKey, "1");
-                    setShowReleaseCard(false);
-                  }}
-                >
-                  Got it
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showBirthdayModal && (
         <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(2,6,23,.6)", display: "grid", placeItems: "center", padding: 16 }}>
           <div style={{ width: "min(620px, 95vw)", borderRadius: 18, overflow: "hidden", background: "#fff", border: "1px solid rgba(2,6,23,.12)", boxShadow: "0 30px 80px rgba(2,6,23,.35)" }}>

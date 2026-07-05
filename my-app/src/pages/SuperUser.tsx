@@ -4,6 +4,7 @@ import type { ApiProject, ApiUser } from "../api";
 import { useReleaseProductsData } from "../components/admin/useReleaseProductsData";
 import SuperConsoleTabs, { type SuperTab } from "../components/super/SuperConsoleTabs";
 import SuperProjectsTab from "../components/super/SuperProjectsTab";
+import SuperArcadeReleaseTab from "../components/super/SuperArcadeReleaseTab";
 import SuperReleasesTab from "../components/super/SuperReleasesTab";
 import SuperStorageTab from "../components/super/SuperStorageTab";
 import SuperUsersTab from "../components/super/SuperUsersTab";
@@ -85,6 +86,10 @@ export default function SuperUser() {
   const [storageTruncated, setStorageTruncated] = useState(false);
   const [storageBucket, setStorageBucket] = useState("");
   const [storageError, setStorageError] = useState("");
+  const [arcadeReleaseLoading, setArcadeReleaseLoading] = useState(false);
+  const [arcadeReleaseSaving, setArcadeReleaseSaving] = useState(false);
+  const [arcadeReleaseVersion, setArcadeReleaseVersion] = useState("");
+  const [arcadeReleaseNotes, setArcadeReleaseNotes] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [projectSaving, setProjectSaving] = useState(false);
   const [savingProductKey, setSavingProductKey] = useState("");
@@ -163,6 +168,19 @@ export default function SuperUser() {
     }
   }
 
+  async function loadArcadeReleaseConfig() {
+    try {
+      setArcadeReleaseLoading(true);
+      const resp = await (api as any).getArcadeReleaseConfig();
+      setArcadeReleaseVersion(safeStr(resp?.releaseVersion));
+      setArcadeReleaseNotes(String(resp?.releaseNotes ?? ""));
+    } catch (e: any) {
+      M.toast({ html: e?.message || "Failed to load Arcade release config", classes: "red" });
+    } finally {
+      setArcadeReleaseLoading(false);
+    }
+  }
+
   function formatBytesMb(bytes: number) {
     const mb = Number(bytes || 0) / (1024 * 1024);
     if (!Number.isFinite(mb) || mb <= 0) return "0 MB";
@@ -207,6 +225,7 @@ export default function SuperUser() {
 
   useEffect(() => {
     if (tab === "storage") void loadStorageFiles();
+    if (tab === "arcade_release") void loadArcadeReleaseConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -566,6 +585,32 @@ export default function SuperUser() {
           }}
           onSavingKeyChange={setSavingProductKey}
           safeStr={safeStr}
+        />
+      )}
+
+      {tab === "arcade_release" && (
+        <SuperArcadeReleaseTab
+          loading={arcadeReleaseLoading}
+          saving={arcadeReleaseSaving}
+          releaseVersion={arcadeReleaseVersion}
+          releaseNotes={arcadeReleaseNotes}
+          onReleaseVersionChange={setArcadeReleaseVersion}
+          onReleaseNotesChange={setArcadeReleaseNotes}
+          onRefresh={() => void loadArcadeReleaseConfig()}
+          onSave={async () => {
+            try {
+              setArcadeReleaseSaving(true);
+              await (api as any).updateArcadeReleaseConfig({
+                releaseVersion: safeStr(arcadeReleaseVersion),
+                releaseNotes: String(arcadeReleaseNotes ?? ""),
+              });
+              M.toast({ html: "Arcade release updated", classes: "green" });
+            } catch (e: any) {
+              M.toast({ html: e?.message || "Failed to save Arcade release", classes: "red" });
+            } finally {
+              setArcadeReleaseSaving(false);
+            }
+          }}
         />
       )}
 

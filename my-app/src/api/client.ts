@@ -232,6 +232,43 @@ export class ApiClient {
     return r.json();
   }
 
+  async getArcadeReleaseConfig(): Promise<{ ok: boolean; releaseVersion: string; releaseNotes: string }> {
+    const r = await fetch(`${API_BASE}/arcade-release-config`, {
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getArcadeReleaseConfig failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; releaseVersion: string; releaseNotes: string };
+  }
+
+  async updateArcadeReleaseConfig(body: { releaseVersion: string; releaseNotes: string }): Promise<{ ok: boolean; releaseVersion: string; releaseNotes: string }> {
+    const r = await fetch(`${API_BASE}/admin/arcade-release-config`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`updateArcadeReleaseConfig failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; releaseVersion: string; releaseNotes: string };
+  }
+
+  async markReleaseSeen(body: { releaseVersion: string }): Promise<{ ok: boolean; releaseVersion: string }> {
+    const r = await fetch(`${API_BASE}/me/release-seen`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`markReleaseSeen failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; releaseVersion: string };
+  }
+
   async getDirectory(): Promise<ApiUser[]> {
     const r = await fetch(`${API_BASE}/directory`, {
       headers: this.headers(false),

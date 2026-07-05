@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import ReleaseHighlightsPanel from "./ReleaseHighlightsPanel";
+import ReleaseHighlightsPanel, {
+  DEFAULT_RELEASE_NOTES,
+  DEFAULT_RELEASE_VERSION,
+} from "./ReleaseHighlightsPanel";
 import { useIntegrations } from "./account/useIntegrations";
 
 function safeStr(v: any) {
@@ -118,6 +121,12 @@ export default function RequiredConnectionsGate() {
   const [step, setStep] = useState<GateStep>(1);
   const [acceptTimesheet, setAcceptTimesheet] = useState(false);
   const [acceptDiscordExpectations, setAcceptDiscordExpectations] = useState(false);
+  const [releaseConfig, setReleaseConfig] = useState({
+    releaseVersion: DEFAULT_RELEASE_VERSION,
+    releaseNotes: DEFAULT_RELEASE_NOTES,
+  });
+  const [releaseConfigLoading, setReleaseConfigLoading] = useState(true);
+  const [finishing, setFinishing] = useState(false);
 
   const requirements = useMemo(
     () => [
@@ -163,19 +172,57 @@ export default function RequiredConnectionsGate() {
   );
 
   const mustConnectReady = integrations.status.linkedin && integrations.status.discord;
-  const needsGate = !mustConnectReady;
+  const seenCurrentRelease =
+    safeStr((user as any)?.last_seen_release_version) === safeStr(releaseConfig.releaseVersion);
+  const needsGate = !releaseConfigLoading && (!seenCurrentRelease || !mustConnectReady);
 
   useEffect(() => {
-    if (!needsGate) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setReleaseConfigLoading(true);
+        const resp = await (api as any).getArcadeReleaseConfig?.();
+        if (cancelled || !resp) return;
+        setReleaseConfig({
+          releaseVersion: safeStr(resp.releaseVersion) || DEFAULT_RELEASE_VERSION,
+          releaseNotes: String(resp.releaseNotes ?? "").trim() || DEFAULT_RELEASE_NOTES,
+        });
+      } catch {
+        if (cancelled) return;
+        setReleaseConfig({
+          releaseVersion: DEFAULT_RELEASE_VERSION,
+          releaseNotes: DEFAULT_RELEASE_NOTES,
+        });
+      } finally {
+        if (!cancelled) setReleaseConfigLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  useEffect(() => {
     if (step === 3) return;
     if (acceptTimesheet && acceptDiscordExpectations) {
       setStep((prev) => (prev < 2 ? 2 : prev));
     }
-  }, [acceptDiscordExpectations, acceptTimesheet, needsGate, step]);
+  }, [acceptDiscordExpectations, acceptTimesheet, step]);
 
-  if (!user || !needsGate) return null;
+  if (!user || releaseConfigLoading || !needsGate) return null;
 
   const agreementReady = acceptTimesheet && acceptDiscordExpectations;
+  const finalReady = mustConnectReady && !finishing;
+
+  async function finishReleaseFlow() {
+    try {
+      setFinishing(true);
+      await (api as any).markReleaseSeen({ releaseVersion: releaseConfig.releaseVersion });
+      await refreshSession();
+    } finally {
+      setFinishing(false);
+    }
+  }
 
   return (
     <div
@@ -234,6 +281,8 @@ export default function RequiredConnectionsGate() {
                 <ReleaseHighlightsPanel
                   title="Welcome"
                   subtitle="Start with the latest release context before we lock in your team workflow setup."
+                  releaseVersion={releaseConfig.releaseVersion}
+                  releaseNotes={releaseConfig.releaseNotes}
                   compact
                 />
               </div>
@@ -480,8 +529,20 @@ export default function RequiredConnectionsGate() {
             )}
 
             {step === 3 && (
-              <button type="button" disabled={!mustConnectReady} style={primaryButton(!mustConnectReady)}>
-                {mustConnectReady ? "Portal unlocking..." : "Waiting for required connections"}
+              <button
+                type="button"
+                disabled={!finalReady}
+                onClick={() => {
+                  if (!finalReady) return;
+                  void finishReleaseFlow();
+                }}
+                style={primaryButton(!finalReady)}
+              >
+                {finishing
+                  ? "Saving release acknowledgement..."
+                  : mustConnectReady
+                    ? "Enter portal"
+                    : "Waiting for required connections"}
               </button>
             )}
           </div>
