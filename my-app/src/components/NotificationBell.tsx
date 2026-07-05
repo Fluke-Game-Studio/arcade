@@ -47,6 +47,27 @@ function categoryTone(category?: string) {
   return { dot: "#475569", chip: "rgba(148,163,184,.12)", text: "#475569", label: "System" };
 }
 
+function typeIcon(type?: string, category?: string) {
+  const value = safeStr(type).toLowerCase();
+  const group = safeStr(category).toLowerCase();
+  if (value.includes("mention")) return "alternate_email";
+  if (value.includes("changes_requested")) return "edit_note";
+  if (value.includes("published")) return "campaign";
+  if (value.includes("review")) return "rate_review";
+  if (group === "weekly_updates") return "event_note";
+  if (group === "applicants") return "group_add";
+  return "notifications";
+}
+
+function renderMetaChips(item: NotificationItem) {
+  const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
+  const chips: Array<{ key: string; label: string }> = [];
+  const channels = Array.isArray(meta.channels) ? meta.channels.map((x) => safeStr(x)).filter(Boolean) : [];
+  channels.forEach((channel) => chips.push({ key: `channel-${channel}`, label: channel }));
+  if (safeStr(item.actorUsername)) chips.push({ key: "actor", label: safeStr(item.actorUsername) });
+  return chips.slice(0, 3);
+}
+
 export default function NotificationBell({ compact = false }: { compact?: boolean }) {
   const { api, user } = useAuth();
   const navigate = useNavigate();
@@ -246,6 +267,9 @@ export default function NotificationBell({ compact = false }: { compact?: boolea
 
           {items.map((item) => {
             const tone = categoryTone(item.category);
+            const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
+            const chips = renderMetaChips(item);
+            const comment = safeStr(meta.comment);
             return (
               <button
                 key={safeStr(item.notificationId)}
@@ -267,10 +291,29 @@ export default function NotificationBell({ compact = false }: { compact?: boolea
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 999, background: tone.dot, boxShadow: !item.read ? `0 0 0 4px ${tone.chip}` : "none", flex: "0 0 auto" }} />
-                    <span style={{ color: "#f8fbff", fontWeight: 900, fontSize: 14, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {safeStr(item.title) || "Notification"}
+                    <span
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 10,
+                        background: tone.chip,
+                        color: tone.text,
+                        display: "inline-grid",
+                        placeItems: "center",
+                        boxShadow: !item.read ? `0 0 0 4px ${tone.chip}` : "none",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <i className="material-icons" style={{ fontSize: 16 }}>{typeIcon(item.type, item.category)}</i>
                     </span>
+                    <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
+                      <span style={{ color: "#f8fbff", fontWeight: 900, fontSize: 14, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {safeStr(item.title) || "Notification"}
+                      </span>
+                      <span style={{ color: "rgba(125,211,252,0.74)", fontSize: 11, fontWeight: 800 }}>
+                        {relativeTime(item.createdAt)}
+                      </span>
+                    </div>
                   </div>
                   <span style={{ color: tone.text, background: tone.chip, borderRadius: 999, padding: "5px 9px", fontWeight: 800, fontSize: 11, flex: "0 0 auto" }}>
                     {tone.label}
@@ -279,9 +322,45 @@ export default function NotificationBell({ compact = false }: { compact?: boolea
                 <div style={{ color: "rgba(226,232,240,0.86)", fontSize: 13, lineHeight: 1.5, fontWeight: 700 }}>
                   {safeStr(item.body)}
                 </div>
+                {chips.length ? (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {chips.map((chip) => (
+                      <span
+                        key={chip.key}
+                        style={{
+                          borderRadius: 999,
+                          border: "1px solid rgba(148,163,184,.14)",
+                          background: "rgba(255,255,255,.05)",
+                          color: "#cbd5e1",
+                          padding: "5px 8px",
+                          fontSize: 10,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {chip.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {comment ? (
+                  <div
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(148,163,184,.12)",
+                      background: "rgba(255,255,255,.04)",
+                      padding: 10,
+                      color: "#e2e8f0",
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {comment}
+                  </div>
+                ) : null}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <span style={{ color: "rgba(125,211,252,0.74)", fontSize: 11, fontWeight: 800 }}>
-                    {relativeTime(item.createdAt)}
+                    Tap to open
                   </span>
                   {!item.read ? (
                     <span style={{ color: "#f8fbff", fontSize: 11, fontWeight: 900, letterSpacing: 0.5, textTransform: "uppercase" }}>
