@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import MentionTextarea from "../components/MentionTextarea";
 import SocialPostCard, { type SocialPostCardData } from "../components/SocialPostCard";
+import SocialMediaReviewAdmin from "./SocialMediaReviewAdmin";
 import { uploadFileToWeeklyBucket } from "../lib/socialUploads";
 import type { ApiUser } from "../api/types";
 
 type EditForm = {
   title: string;
   content: string;
+  internalReviewNote: string;
   imageUrl: string;
   channels: string[];
   reviewerUsernames: string[];
@@ -23,6 +27,32 @@ type ReviewTodo = {
 
 function safeStr(v: any) {
   return String(v ?? "").trim();
+}
+
+function normalizeUserRole(row?: Partial<ApiUser> | null) {
+  const direct = safeStr((row as any)?.employee_role || (row as any)?.role).toLowerCase().replace(/_/g, "-");
+  const scope = safeStr((row as any)?.read_only_scope).toLowerCase().replace(/_/g, "-");
+  const resolved = direct || scope;
+  if (resolved === "super" || resolved === "super-readonly") return "super";
+  if (resolved === "admin" || resolved === "admin-readonly") return "admin";
+  return "employee";
+}
+
+function isTeamMember(row?: Partial<ApiUser> | null) {
+  const role = normalizeUserRole(row);
+  return role === "employee" || role === "admin" || role === "super";
+}
+
+function isAdminReviewer(row?: Partial<ApiUser> | null) {
+  const role = normalizeUserRole(row);
+  return role === "admin" || role === "super";
+}
+
+function reviewerRoleLabel(row?: Partial<ApiUser> | null) {
+  const role = normalizeUserRole(row);
+  if (role === "super") return "Super";
+  if (role === "admin") return "Admin";
+  return "Team";
 }
 
 function toIsoFromDateTimeLocal(value: string) {
@@ -141,6 +171,23 @@ function SectionCard({ title, children, tone = "default" }: { title: string; chi
   );
 }
 
+function editIconButton(active: boolean) {
+  return {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    border: active ? "1px solid rgba(37,99,235,.26)" : "1px solid rgba(148,163,184,.2)",
+    background: active ? "linear-gradient(135deg,rgba(59,130,246,.14),rgba(37,99,235,.08))" : "#fff",
+    color: active ? "#1d4ed8" : "#334155",
+    display: "inline-grid",
+    placeItems: "center",
+    cursor: "pointer" as const,
+    fontSize: 16,
+    fontWeight: 900,
+    boxShadow: active ? "0 10px 20px rgba(37,99,235,.12)" : "none",
+  };
+}
+
 function ReviewerPicker({
   reviewerOptions,
   selected,
@@ -175,13 +222,13 @@ function ReviewerPicker({
             color: selectedUsers.length ? "#0f172a" : "#94a3b8",
           }}
         >
-          {selectedUsers.length ? `${selectedUsers.length} reviewer${selectedUsers.length === 1 ? "" : "s"} selected` : "Choose admins / supers"}
+          {selectedUsers.length ? `${selectedUsers.length} reviewer${selectedUsers.length === 1 ? "" : "s"} selected` : "Choose teammates"}
         </summary>
         <div style={{ padding: 12, borderTop: "1px solid rgba(148,163,184,.16)", display: "grid", gap: 8, maxHeight: 220, overflowY: "auto" }}>
           {reviewerOptions.map((row) => {
             const username = safeStr(row.username);
             const checked = selected.includes(username);
-            const roleLabel = safeStr(row.employee_role).toLowerCase() === "super" ? "Super" : "Admin";
+            const roleLabel = reviewerRoleLabel(row);
 
             return (
               <label
@@ -246,11 +293,19 @@ function ReviewerPicker({
   );
 }
 
-export default function SocialPostStudio() {
-  const { api } = useAuth();
-  const [activeTab, setActiveTab] = useState<"submit" | "mine">("submit");
+export default function SocialPostStudio({
+  embedded = false,
+  includeReviewTab = false,
+}: {
+  embedded?: boolean;
+  includeReviewTab?: boolean;
+}) {
+  const { api, user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"submit" | "mine" | "reviews">("submit");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [internalReviewNote, setInternalReviewNote] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [draftLocalFile, setDraftLocalFile] = useState<File | null>(null);
   const [draftUploadName, setDraftUploadName] = useState("");
@@ -273,6 +328,21 @@ export default function SocialPostStudio() {
   const [editUploadStates, setEditUploadStates] = useState<Record<string, { uploading: boolean; progress: number; name: string; error: string; file?: File | null }>>({});
   const [editMessages, setEditMessages] = useState<Record<string, { type: "error" | "ok"; text: string }>>({});
 
+  useEffect(() => {
+    const requested = safeStr(searchParams.get("tab")).toLowerCase();
+    if (requested === "mine") {
+      setActiveTab("mine");
+      return;
+    }
+    if (requested === "reviews" && includeReviewTab) {
+      setActiveTab("reviews");
+      return;
+    }
+    if (requested === "submit") {
+      setActiveTab("submit");
+    }
+  }, [includeReviewTab, searchParams]);
+
   async function loadMine() {
     setLoading(true);
     try {
@@ -286,6 +356,7 @@ export default function SocialPostStudio() {
             next[p.post_id] = {
               title: safeStr(p.title),
               content: safeStr(p.content),
+              internalReviewNote: safeStr((p as any).internalReviewNote),
               imageUrl: safeStr(p.imageUrl),
               channels: Array.isArray(p.channels) ? p.channels : [],
               reviewerUsernames: Array.isArray((p as any).reviewerUsernames) ? (p as any).reviewerUsernames.map(safeStr).filter(Boolean) : [],
@@ -311,10 +382,7 @@ export default function SocialPostStudio() {
         if (!mounted) return;
         setReviewerOptions(
           (Array.isArray(rows) ? rows : [])
-            .filter((row) => {
-              const role = safeStr((row as any)?.employee_role || (row as any)?.role).toLowerCase();
-              return role === "admin" || role === "super";
-            })
+            .filter((row) => isTeamMember(row))
             .sort((a, b) => safeStr(a.employee_name || a.username).localeCompare(safeStr(b.employee_name || b.username)))
         );
       } catch {
@@ -341,6 +409,16 @@ export default function SocialPostStudio() {
     () => reviewerOptions.filter((row) => taggedReviewers.includes(safeStr(row.username))),
     [reviewerOptions, taggedReviewers]
   );
+  const hasAdminTaggedReviewer = useMemo(
+    () => taggedReviewerUsers.some((row) => isAdminReviewer(row)),
+    [taggedReviewerUsers]
+  );
+
+  function selectionHasAdminReviewer(selected: string[]) {
+    return reviewerOptions
+      .filter((row) => selected.includes(safeStr(row.username)))
+      .some((row) => isAdminReviewer(row));
+  }
 
   function toggleDraftChannel(channel: string) {
     setChannels((prev) => (prev.includes(channel) ? prev.filter((item) => item !== channel) : [...prev, channel]));
@@ -392,6 +470,10 @@ export default function SocialPostStudio() {
       return;
     }
     if (!taggedReviewers.length) {
+      setSubmitReviewerError("Select reviewers before submitting.");
+      return;
+    }
+    if (!hasAdminTaggedReviewer) {
       setSubmitReviewerError("Select at least one admin or super reviewer before submitting.");
       return;
     }
@@ -408,6 +490,7 @@ export default function SocialPostStudio() {
       await api.submitSocialPost({
         title,
         content,
+        internalReviewNote,
         imageUrl: finalImageUrl,
         caption: content,
         channels,
@@ -416,6 +499,7 @@ export default function SocialPostStudio() {
       });
       setTitle("");
       setContent("");
+      setInternalReviewNote("");
       setImageUrl("");
       setDraftLocalFile(null);
       setDraftUploadName("");
@@ -441,6 +525,10 @@ export default function SocialPostStudio() {
       return;
     }
     if (!form?.reviewerUsernames?.length) {
+      setEditMessages((prev) => ({ ...prev, [postId]: { type: "error", text: "Select reviewers before sending this back to review." } }));
+      return;
+    }
+    if (!selectionHasAdminReviewer(form.reviewerUsernames)) {
       setEditMessages((prev) => ({ ...prev, [postId]: { type: "error", text: "Select at least one admin or super reviewer before sending this back to review." } }));
       return;
     }
@@ -469,6 +557,7 @@ export default function SocialPostStudio() {
         title: form.title,
         content: form.content,
         caption: form.content,
+        internalReviewNote: form.internalReviewNote,
         imageUrl: nextImageUrl,
         channels: form.channels,
         reviewerUsernames: form.reviewerUsernames,
@@ -496,16 +585,19 @@ export default function SocialPostStudio() {
   const tabs = [
     { key: "submit" as const, label: "Submit draft" },
     { key: "mine" as const, label: "My submissions" },
+    ...(includeReviewTab ? [{ key: "reviews" as const, label: "My reviews" }] : []),
   ];
 
   return (
-    <div style={{ padding: 20, maxWidth: 1240, margin: "0 auto", display: "grid", gap: 18 }}>
-      <div style={{ display: "grid", gap: 8 }}>
-        <h2 style={{ margin: 0, fontSize: 32, fontWeight: 1000 }}>Social Post Studio</h2>
-        <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
-          Submit a draft, tag reviewers, then track and edit your own submissions from the second tab.
-        </p>
-      </div>
+    <div style={{ padding: embedded ? 0 : 20, maxWidth: 1240, margin: "0 auto", display: "grid", gap: 18 }}>
+      {!embedded ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <h2 style={{ margin: 0, fontSize: 32, fontWeight: 1000 }}>Social Post Studio</h2>
+          <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
+            Submit a draft, tag reviewers, then track and edit your own submissions from the second tab.
+          </p>
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {tabs.map((tab) => (
@@ -532,12 +624,18 @@ export default function SocialPostStudio() {
       {activeTab === "submit" ? (
         <section style={{ display: "grid", gap: 16 }}>
           <SocialPostCard
-            post={{ post_id: "draft-preview", title: submitPreview.title, content: submitPreview.caption, imageUrl: submitPreview.imageUrl, channels }}
+            post={{ post_id: "draft-preview", title: submitPreview.title, content: submitPreview.caption, internalReviewNote, imageUrl: submitPreview.imageUrl, channels }}
             tone={{ border: "rgba(148,163,184,.18)", bg: "linear-gradient(180deg, #fff, #f8fafc)", text: "#475569", label: "LIVE PREVIEW" }}
             previewUrl={submitPreview.imageUrl}
-            previewCaption={submitPreview.caption}
             sidebarContent={
               <div style={{ display: "grid", gap: 10 }}>
+                {internalReviewNote ? (
+                  <SectionCard title="Internal review note">
+                    <div style={{ color: "#0f172a", fontWeight: 700, fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {internalReviewNote}
+                    </div>
+                  </SectionCard>
+                ) : null}
                 <SectionCard title="Reviewers" tone={taggedReviewerUsers.length ? "default" : "warning"}>
                   {taggedReviewerUsers.length ? (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -628,7 +726,7 @@ export default function SocialPostStudio() {
             <div style={{ display: "grid", gap: 4 }}>
               <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000 }}>Submit draft</h3>
               <p style={{ margin: 0, color: "#64748b", fontWeight: 700 }}>
-                Tag reviewers first. The submitter goes in To, tagged reviewers and the admin notify email go in CC.
+                Tag teammates for review access. The submitter goes in To, tagged reviewers go in CC, and at least one selected reviewer must be an admin or super.
               </p>
             </div>
 
@@ -666,12 +764,23 @@ export default function SocialPostStudio() {
               </label>
 
               <label style={{ display: "grid", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Internal review note</span>
+                <MentionTextarea
+                  value={internalReviewNote}
+                  onChange={setInternalReviewNote}
+                  placeholder="Private note for reviewers. Use @username or @email to tag teammates."
+                  rows={4}
+                  users={reviewerOptions}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 8 }}>
                 <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Tag reviewers</span>
                 <ReviewerPicker
                   reviewerOptions={reviewerOptions}
                   selected={taggedReviewers}
                   onToggle={toggleDraftReviewer}
-                  helperText="Tagged reviewers will be CC'd on the review request email, along with the admin notify email."
+                  helperText="Tagged teammates can see this post on the Organisation review page. At least one selected reviewer must still be an admin or super."
                   errorText={submitReviewerError}
                 />
               </label>
@@ -679,15 +788,15 @@ export default function SocialPostStudio() {
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   type="submit"
-                  disabled={!content.trim() || !taggedReviewers.length || saving}
+                  disabled={!content.trim() || !taggedReviewers.length || !hasAdminTaggedReviewer || saving}
                   style={{
                     border: 0,
                     borderRadius: 999,
                     padding: "12px 18px",
-                    background: !content.trim() || !taggedReviewers.length || saving ? "#94a3b8" : "linear-gradient(135deg,#2563eb,#0f766e)",
+                    background: !content.trim() || !taggedReviewers.length || !hasAdminTaggedReviewer || saving ? "#94a3b8" : "linear-gradient(135deg,#2563eb,#0f766e)",
                     color: "#fff",
                     fontWeight: 900,
-                    cursor: !content.trim() || !taggedReviewers.length || saving ? "not-allowed" : "pointer",
+                    cursor: !content.trim() || !taggedReviewers.length || !hasAdminTaggedReviewer || saving ? "not-allowed" : "pointer",
                   }}
                 >
                   {saving ? "Submitting..." : "Submit for review"}
@@ -702,7 +811,7 @@ export default function SocialPostStudio() {
             </form>
           </section>
         </section>
-      ) : (
+      ) : activeTab === "mine" ? (
         <section style={{ borderRadius: 20, border: "1px solid rgba(148,163,184,.18)", background: "#fff", padding: 16, display: "grid", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000 }}>My submissions</h3>
@@ -721,21 +830,138 @@ export default function SocialPostStudio() {
                 const form = editForms[post.post_id] || {
                   title: safeStr(post.title),
                   content: safeStr(post.content),
+                  internalReviewNote: safeStr((post as any).internalReviewNote),
                   imageUrl: safeStr(post.imageUrl),
                   channels: Array.isArray(post.channels) ? post.channels : [],
                   reviewerUsernames: Array.isArray((post as any).reviewerUsernames) ? (post as any).reviewerUsernames.map(safeStr).filter(Boolean) : [],
                 };
-                const isEditing = editingPostId === post.post_id;
+                  const isEditing = editingPostId === post.post_id;
 
-                return (
-                  <SocialPostCard
-                    key={post.post_id}
-                    post={post}
-                    tone={tone}
-                    previewUrl={previewSrc(form.imageUrl || post.imageUrl || "")}
-                    previewCaption={form.content || post.content}
-                    subMeta={safeStr(post.scheduledAt) ? `Requested publish: ${safeStr(post.scheduledAt)}` : undefined}
-                    comments={todos.map((todo) => ({
+                  return (
+                    <SocialPostCard
+                      key={post.post_id}
+                      post={{ ...post, internalReviewNote: form.internalReviewNote }}
+                      tone={tone}
+                      previewUrl={previewSrc(form.imageUrl || post.imageUrl || "")}
+                      subMeta={safeStr(post.scheduledAt) ? `Requested publish: ${safeStr(post.scheduledAt)}` : undefined}
+                      sidebarContent={
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {safeStr(form.internalReviewNote) ? (
+                            <SectionCard title="Internal review note">
+                              <div style={{ color: "#0f172a", fontWeight: 700, fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                {form.internalReviewNote}
+                              </div>
+                            </SectionCard>
+                          ) : null}
+                          <SectionCard title="Review history">
+                            {todos.length ? (
+                              <div style={{ display: "grid", gap: 8 }}>
+                                {todos.map((todo) => (
+                                  <label
+                                    key={`${post.post_id}-${todo.id || todo.text}`}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "flex-start",
+                                      gap: 10,
+                                      padding: "10px 11px",
+                                      borderRadius: 12,
+                                      border: "1px solid rgba(148,163,184,.18)",
+                                      background: todo.done ? "rgba(34,197,94,.08)" : "rgba(248,250,252,.92)",
+                                      color: "#334155",
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      lineHeight: 1.45,
+                                      textDecoration: todo.done ? "line-through" : "none",
+                                      opacity: todo.done ? 0.72 : 1,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!todo.done}
+                                      onChange={async () => {
+                                        try {
+                                          await api.toggleSocialPostTodo({ postId: post.post_id, todoId: todo.id, done: !todo.done });
+                                          await loadMine();
+                                        } catch (e: any) {
+                                          setEditMessages((prev) => ({ ...prev, [post.post_id]: { type: "error", text: e?.message || "Failed to update todo" } }));
+                                        }
+                                      }}
+                                      style={{ marginTop: 3, flex: "0 0 auto" }}
+                                    />
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                      <div style={{ wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>{todo.text}</div>
+                                      {[todo.author, todo.createdAt].filter(Boolean).length ? (
+                                        <div style={{ marginTop: 3, fontSize: 10, color: "#64748b", fontWeight: 700, wordBreak: "break-word", overflowWrap: "anywhere" }}>
+                                          {[todo.author, todo.createdAt].filter(Boolean).join(" · ")}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </label>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>No review history yet.</div>
+                            )}
+                          </SectionCard>
+                        </div>
+                      }
+                      headerActions={!safeStr(post.status).toLowerCase().includes("approve") ? (
+                        isEditing ? (
+                          <button
+                            type="button"
+                            onClick={() => void saveEdit(post.post_id)}
+                            aria-label="Save post"
+                            title="Save post"
+                            style={editIconButton(true)}
+                          >
+                            ✓
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditingPostId(post.post_id)}
+                            aria-label="Edit post"
+                            title="Edit post"
+                            style={editIconButton(false)}
+                          >
+                            ✎
+                          </button>
+                        )
+                      ) : undefined}
+                      headerEditor={
+                        isEditing ? (
+                          <>
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Title</span>
+                              <input value={form.title} onChange={(e) => updateEditForm(post.post_id, { title: e.target.value })} style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)" }} />
+                            </label>
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Caption / text</span>
+                              <textarea value={form.content} onChange={(e) => updateEditForm(post.post_id, { content: e.target.value })} rows={5} style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)", resize: "vertical" }} />
+                            </label>
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Internal review note</span>
+                              <MentionTextarea
+                                value={form.internalReviewNote}
+                                onChange={(next) => updateEditForm(post.post_id, { internalReviewNote: next })}
+                                placeholder="Private note for reviewers. Use @username or @email to tag teammates."
+                                rows={4}
+                                users={reviewerOptions}
+                              />
+                            </label>
+                            <div style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Channels</span>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                {["instagram", "facebook", "linkedin", "discord"].map((channel) => (
+                                  <ChannelChip key={`${post.post_id}-header-${channel}`} channel={channel} active={form.channels.includes(channel)} onClick={() => toggleEditChannel(post.post_id, channel)} />
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        ) : undefined
+                      }
+                      comments={todos.map((todo) => ({
                       text: todo.text,
                       checked: !!todo.done,
                       onToggle: async () => {
@@ -748,33 +974,13 @@ export default function SocialPostStudio() {
                       },
                       meta: [todo.author, todo.createdAt].filter(Boolean).join(" · ") || undefined,
                     }))}
-                    actions={
-                      <button
-                        type="button"
-                        onClick={() => setEditingPostId((curr) => (curr === post.post_id ? null : post.post_id))}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 999,
-                          border: "1px solid rgba(148,163,184,.2)",
-                          background: isEditing ? "rgba(59,130,246,.12)" : "#fff",
-                          fontWeight: 800,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {isEditing ? "Close edit" : "Edit post"}
-                      </button>
-                    }
-                    editor={
-                      isEditing ? (
-                        <div style={{ display: "grid", gap: 12, marginTop: 6 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-                            <label style={{ display: "grid", gap: 6 }}>
-                              <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Title</span>
-                              <input value={form.title} onChange={(e) => updateEditForm(post.post_id, { title: e.target.value })} style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)" }} />
-                            </label>
-                            <label style={{ display: "grid", gap: 6 }}>
-                              <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Fresh content / URL</span>
-                              <input
+                      editor={
+                        isEditing ? (
+                          <div style={{ display: "grid", gap: 12, marginTop: 6 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Fresh content / URL</span>
+                                <input
                                 value={editUploadStates[post.post_id]?.file ? "" : form.imageUrl}
                                 onChange={(e) => updateEditForm(post.post_id, { imageUrl: e.target.value })}
                                 disabled={!!editUploadStates[post.post_id]?.file}
@@ -790,14 +996,9 @@ export default function SocialPostStudio() {
                             </label>
                           </div>
 
-                          <label style={{ display: "grid", gap: 6 }}>
-                            <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Caption / text</span>
-                            <textarea value={form.content} onChange={(e) => updateEditForm(post.post_id, { content: e.target.value })} rows={4} style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)", resize: "vertical" }} />
-                          </label>
-
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-                            <label style={{ display: "grid", gap: 6 }}>
-                              <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Upload local file</span>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Upload local file</span>
                               <input
                                 type="file"
                                 accept="image/*,video/*"
@@ -816,17 +1017,8 @@ export default function SocialPostStudio() {
                               {editUploadStates[post.post_id]?.file ? <div style={{ color: "#475569", fontWeight: 700, fontSize: 12 }}>Selected: {editUploadStates[post.post_id].name}. Upload will run on save.</div> : null}
                               {editUploadStates[post.post_id]?.uploading ? <div style={{ color: "#1d4ed8", fontWeight: 800, fontSize: 12 }}>Uploading {editUploadStates[post.post_id].name}... {editUploadStates[post.post_id].progress}%</div> : null}
                               {editUploadStates[post.post_id]?.error ? <div style={{ color: "#b91c1c", fontWeight: 800, fontSize: 12 }}>{editUploadStates[post.post_id].error}</div> : null}
-                            </label>
-
-                            <label style={{ display: "grid", gap: 6 }}>
-                              <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Channels</span>
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                {["instagram", "facebook", "linkedin", "discord"].map((channel) => (
-                                  <ChannelChip key={channel} channel={channel} active={form.channels.includes(channel)} onClick={() => toggleEditChannel(post.post_id, channel)} />
-                                ))}
-                              </div>
-                            </label>
-                          </div>
+                              </label>
+                            </div>
 
                           <label style={{ display: "grid", gap: 6 }}>
                             <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Tag reviewers</span>
@@ -834,15 +1026,15 @@ export default function SocialPostStudio() {
                               reviewerOptions={reviewerOptions}
                               selected={form.reviewerUsernames}
                               onToggle={(username) => toggleEditReviewer(post.post_id, username)}
-                              helperText="These tagged reviewers will be CC'd again when the updated draft goes back into review."
-                              errorText={!form.reviewerUsernames.length ? "At least one admin or super reviewer is required." : ""}
+                              helperText="Tagged teammates can still view this post on the Organisation review page after you send the updated draft back."
+                              errorText={!form.reviewerUsernames.length ? "Select reviewers for this draft." : !selectionHasAdminReviewer(form.reviewerUsernames) ? "At least one selected reviewer must be an admin or super." : ""}
                             />
                           </label>
 
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                             <button
                               type="button"
-                              disabled={saving || !form.reviewerUsernames.length}
+                              disabled={saving || !form.reviewerUsernames.length || !selectionHasAdminReviewer(form.reviewerUsernames)}
                               onClick={() => void saveEdit(post.post_id)}
                               style={{
                                 border: 0,
@@ -880,6 +1072,10 @@ export default function SocialPostStudio() {
 
             {!mine.length ? <div style={{ color: "#64748b", fontWeight: 700 }}>{loading ? "Loading..." : "No submissions yet."}</div> : null}
           </div>
+        </section>
+      ) : (
+        <section style={{ display: "grid", gap: 12 }}>
+          <SocialMediaReviewAdmin mode="org" embedded onlyTaggedUsername={safeStr((user as any)?.username)} />
         </section>
       )}
     </div>

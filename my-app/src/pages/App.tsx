@@ -2,6 +2,7 @@
 import { Outlet, useLocation } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import FloatingAIChat from "../components/FloatingAIChat";
+import RequiredConnectionsGate from "../components/RequiredConnectionsGate";
 
 export default function App() {
   const location = useLocation();
@@ -11,6 +12,7 @@ export default function App() {
     <>
       <Navbar />
       <Outlet />
+      <RequiredConnectionsGate />
       {!hideFloatingAI && <FloatingAIChat />}
     </>
   );

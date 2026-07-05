@@ -9,7 +9,7 @@ function safeStr(v: any) {
 
 export type IntegrationKey = "linkedin" | "discord" | "jira";
 
-export function useIntegrations(api: any, me: any) {
+export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => void | Promise<void> }) {
   const [loadingByKey, setLoadingByKey] = useState<Record<IntegrationKey, boolean>>({
     linkedin: false,
     discord: false,
@@ -103,12 +103,15 @@ export function useIntegrations(api: any, me: any) {
       const type = safeStr((event as any)?.data?.type);
       if (type === "linkedin-connected") {
         setLoading("linkedin", false);
+        void opts?.onConnected?.();
         M?.toast?.({ html: "LinkedIn connected.", classes: "green" });
       } else if (type === "discord-connected") {
         setLoading("discord", false);
+        void opts?.onConnected?.();
         M?.toast?.({ html: "Discord connected.", classes: "green" });
       } else if (type === "jira-connected") {
         setLoading("jira", false);
+        void opts?.onConnected?.();
         void refreshJiraStatus();
         M?.toast?.({ html: "Jira connected.", classes: "green" });
       } else if (type === "jira-error") {
@@ -122,7 +125,7 @@ export function useIntegrations(api: any, me: any) {
     }
     window.addEventListener("message", onOauthMessage);
     return () => window.removeEventListener("message", onOauthMessage);
-  }, [refreshJiraStatus, setLoading]);
+  }, [opts, refreshJiraStatus, setLoading]);
 
   return {
     status,
@@ -132,4 +135,3 @@ export function useIntegrations(api: any, me: any) {
     disconnectJira,
   };
 }
-

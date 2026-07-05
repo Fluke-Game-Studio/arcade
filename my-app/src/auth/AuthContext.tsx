@@ -29,6 +29,10 @@ export type SessionUser = {
   discord_url?: string;
   employee_picture?: string;
   employee_profilepicture?: string;
+  notification_preferences?: string | {
+    email?: Record<string, boolean>;
+    in_app?: Record<string, boolean>;
+  };
 };
 
 export type AuthStatus = "checking" | "authenticated" | "unauthenticated";

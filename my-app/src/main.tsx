@@ -27,6 +27,9 @@ import CustomersAdmin from "./pages/CustomersAdmin";
 import SocialMediaAdmin from "./pages/SocialMediaAdmin";
 import SocialPostStudio from "./pages/SocialPostStudio";
 import SocialMediaReviewAdmin from "./pages/SocialMediaReviewAdmin";
+import SocialMediaOrgHub from "./pages/SocialMediaOrgHub";
+import NotificationsCenter from "./pages/NotificationsCenter";
+import AppErrorPage from "./pages/AppErrorPage";
 import { UpdatesProvider } from "./pages/UpdatesContext";
 import CharacterTutorialPage from "./pages/CharacterTutorialPage";
 import ManagerAgentBuilderPage from "./pages/ManagerAgentBuilderPage";
@@ -111,9 +114,10 @@ function ModalScrollRepair() {
 }
 
 const router = createBrowserRouter([
-  { path: "/login", element: <Login /> },
+  { path: "/login", element: <Login />, errorElement: <AppErrorPage /> },
 
   {
+    errorElement: <AppErrorPage />,
     element: (
       <Protected roles={["employee", "admin", "super"]}>
         <App />
@@ -126,6 +130,22 @@ const router = createBrowserRouter([
       { path: "/organisation/employees", element: <Employees initialView="list" /> },
       { path: "/organisation/org-chart", element: <Employees initialView="org" /> },
       {
+        path: "/organisation/social-media",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <SocialMediaOrgHub />
+          </Protected>
+        ),
+      },
+      {
+        path: "/account/notifications",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <NotificationsCenter />
+          </Protected>
+        ),
+      },
+      {
         path: "/organisation/my-team",
         element: (
           <Protected roles={["employee", "admin", "super"]}>
@@ -134,7 +154,7 @@ const router = createBrowserRouter([
         ),
       },
       { path: "/account", element: <Account /> },
-      { path: "/social/posts", element: <SocialPostStudio /> },
+      { path: "/social/posts", element: <Navigate to="/organisation/social-media" replace /> },
 
       {
         path: "/applicants",
@@ -289,7 +309,7 @@ const router = createBrowserRouter([
     ],
   },
 
-  { path: "*", element: <Navigate to="/" replace /> },
+  { path: "*", element: <Navigate to="/" replace />, errorElement: <AppErrorPage /> },
 ]);
 
 createRoot(document.getElementById("root")!).render(

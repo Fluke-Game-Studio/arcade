@@ -115,6 +115,7 @@ function buildIntakeEmailLink(contextKey: string, token: string, email: string, 
 export type ApplicantRowLite = {
   id: string;
   name: string;
+  fullName?: string;
   email: string;
   roleTitle: string;
   roleId: string;
@@ -312,6 +313,23 @@ export default function ApplicantComposerModal({
   const [jobInfo, setJobInfo] = useState<{ title: string; generalCount: number; roleCount: number; roleId: string } | null>(null);
   const [jobInfoLoading, setJobInfoLoading] = useState(false);
   const [allJobs, setAllJobs] = useState<{ jobId: string; title: string }[]>([]);
+  const [isGeneratingCalendly, setIsGeneratingCalendly] = useState(false);
+
+  async function handleGenerateCalendlyLink() {
+    setIsGeneratingCalendly(true);
+    try {
+      const result = await api.generateCalendlySchedulingLink({
+        name: `Introduction - ${applicant?.fullName || ""}`.trim(),
+        contactEmail: applicant?.email || "",
+        contactName: applicant?.fullName || "",
+      });
+      updateComposer({ calendlyUrl: result.schedulingUrl });
+    } catch (e: any) {
+      alert(`Failed to generate Calendly link: ${e?.message || e}`);
+    } finally {
+      setIsGeneratingCalendly(false);
+    }
+  }
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -918,9 +936,25 @@ export default function ApplicantComposerModal({
             )}
 
             {richType === "INTRO" && (
-              <div className="input-field" style={{ marginTop: 6 }}>
-                <input value={composer.calendlyUrl} onChange={(e) => updateComposer({ calendlyUrl: e.target.value })} />
-                <label className="active">calendlyUrl</label>
+              <div style={{ marginTop: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div className="input-field" style={{ flex: 1, marginTop: 0, marginBottom: 0 }}>
+                    <input
+                      value={composer.calendlyUrl}
+                      onChange={(e) => updateComposer({ calendlyUrl: e.target.value })}
+                    />
+                    <label className="active">calendlyUrl</label>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-small waves-effect waves-light"
+                    style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                    disabled={isGeneratingCalendly}
+                    onClick={handleGenerateCalendlyLink}
+                  >
+                    {isGeneratingCalendly ? "Generating..." : "Generate"}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1232,4 +1266,3 @@ export default function ApplicantComposerModal({
     </div>
   );
 }
-
