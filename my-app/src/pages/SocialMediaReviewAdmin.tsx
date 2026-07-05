@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import MentionTextarea from "../components/MentionTextarea";
 import SocialPostCard, { type SocialPostCardData } from "../components/SocialPostCard";
+import type { ApiUser } from "../api/types/users";
 
 declare const M: any;
 
@@ -10,6 +13,20 @@ type MediaTab = "discord" | "linkedin" | "instagram" | "facebook";
 
 function safeStr(v: any) {
   return String(v ?? "").trim();
+}
+
+function normalizeUserRole(row?: Partial<ApiUser> | null) {
+  const direct = safeStr((row as any)?.employee_role || (row as any)?.role).toLowerCase().replace(/_/g, "-");
+  const scope = safeStr((row as any)?.read_only_scope).toLowerCase().replace(/_/g, "-");
+  const resolved = direct || scope;
+  if (resolved === "super" || resolved === "super-readonly") return "super";
+  if (resolved === "admin" || resolved === "admin-readonly") return "admin";
+  return "employee";
+}
+
+function isReviewTeamMember(row?: Partial<ApiUser> | null) {
+  const role = normalizeUserRole(row);
+  return role === "employee" || role === "admin" || role === "super";
 }
 
 function toIsoFromDateTimeLocal(value?: string) {
@@ -114,6 +131,37 @@ function tabButton(active: boolean) {
   };
 }
 
+function reviewActionButton(tone: "blue" | "green" | "red") {
+  const palette = tone === "green"
+    ? {
+        border: "1px solid rgba(34,197,94,.24)",
+        background: "rgba(34,197,94,.10)",
+        color: "#166534",
+      }
+    : tone === "red"
+      ? {
+          border: "1px solid rgba(239,68,68,.24)",
+          background: "rgba(239,68,68,.10)",
+          color: "#b91c1c",
+        }
+      : {
+          border: "1px solid rgba(37,99,235,.24)",
+          background: "rgba(59,130,246,.10)",
+          color: "#1d4ed8",
+        };
+
+  return {
+    border: palette.border,
+    borderRadius: 999,
+    padding: "10px 18px",
+    fontWeight: 900 as const,
+    cursor: "pointer" as const,
+    background: palette.background,
+    color: palette.color,
+    textAlign: "center" as const,
+  };
+}
+
 type AdminEditDraft = {
   title: string;
   content: string;
@@ -177,22 +225,67 @@ function toast(message: string, classes = "red") {
   }
 }
 
-export default function SocialMediaReviewAdmin() {
+function editIconButton(active: boolean) {
+  return {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    border: active ? "1px solid rgba(37,99,235,.26)" : "1px solid rgba(148,163,184,.2)",
+    background: active ? "linear-gradient(135deg,rgba(59,130,246,.14),rgba(37,99,235,.08))" : "#fff",
+    color: active ? "#1d4ed8" : "#334155",
+    display: "inline-grid",
+    placeItems: "center",
+    cursor: "pointer" as const,
+    fontSize: 16,
+    fontWeight: 900,
+    boxShadow: active ? "0 10px 20px rgba(37,99,235,.12)" : "none",
+  };
+}
+
+export default function SocialMediaReviewAdmin({
+  mode = "admin",
+  embedded = false,
+  onlyTaggedUsername = "",
+}: {
+  mode?: "admin" | "org";
+  embedded?: boolean;
+  onlyTaggedUsername?: string;
+}) {
   const { api } = useAuth();
+  const [searchParams] = useSearchParams();
+  const isOrgMode = mode === "org";
   const [posts, setPosts] = useState<SocialPostCardData[]>([]);
   const [loading, setLoading] = useState(false);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<string, string>>({});
   const [editDrafts, setEditDrafts] = useState<Record<string, AdminEditDraft>>({});
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [approvalPrompts, setApprovalPrompts] = useState<Record<string, boolean>>({});
   const [topTab, setTopTab] = useState<TopTab>("requests");
   const [requestTab, setRequestTab] = useState<RequestTab>("pending");
   const [mediaTab, setMediaTab] = useState<MediaTab>("discord");
+  const [mentionUsers, setMentionUsers] = useState<ApiUser[]>([]);
+
+  useEffect(() => {
+    const requestedTop = safeStr(searchParams.get("topTab")).toLowerCase();
+    const requestedRequest = safeStr(searchParams.get("requestTab")).toLowerCase();
+    const requestedMedia = safeStr(searchParams.get("mediaTab")).toLowerCase();
+
+    if (!isOrgMode && (requestedTop === "requests" || requestedTop === "media")) {
+      setTopTab(requestedTop as TopTab);
+    }
+    if (requestedRequest === "pending" || requestedRequest === "approved" || requestedRequest === "published") {
+      setRequestTab(requestedRequest as RequestTab);
+    }
+    if (requestedMedia === "discord" || requestedMedia === "linkedin" || requestedMedia === "instagram" || requestedMedia === "facebook") {
+      setMediaTab(requestedMedia as MediaTab);
+    }
+  }, [isOrgMode, searchParams]);
 
   async function load() {
     setLoading(true);
     try {
-      const resp = await api.getSocialPosts();
+      const resp = isOrgMode ? await api.getSocialPostsOrg() : await api.getSocialPosts();
       const items = Array.isArray(resp?.items) ? resp.items : [];
       setPosts(items);
       setNoteDrafts((prev) => {
@@ -233,7 +326,33 @@ export default function SocialMediaReviewAdmin() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isOrgMode]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadMentionUsers() {
+      try {
+        const rows = await api.getUsers();
+        if (!mounted) return;
+        setMentionUsers(
+          (Array.isArray(rows) ? rows : [])
+            .filter((row) => isReviewTeamMember(row) && !!safeStr(row.username))
+            .sort((a, b) =>
+              safeStr(a.employee_name || a.username || "Unknown teammate").localeCompare(
+                safeStr(b.employee_name || b.username || "Unknown teammate")
+              )
+            )
+        );
+      } catch {
+        if (!mounted) return;
+        setMentionUsers([]);
+      }
+    }
+    void loadMentionUsers();
+    return () => {
+      mounted = false;
+    };
+  }, [api]);
 
   async function decide(postId: string, decision: string, opts?: { forceNow?: boolean }) {
     const post = posts.find((item) => item.post_id === postId);
@@ -302,6 +421,26 @@ export default function SocialMediaReviewAdmin() {
     }
   }
 
+  async function addOrgComment(postId: string, requestEdits = false) {
+    const note = safeStr(noteDrafts[postId]);
+    if (!note) {
+      toast(requestEdits ? "Add a request note before asking for edits." : "Add a comment before posting it.", "red");
+      return;
+    }
+    try {
+      await api.addSocialPostComment({
+        postId,
+        comment: note,
+        requestEdits,
+      });
+      setNoteDrafts((prev) => ({ ...prev, [postId]: "" }));
+      toast(requestEdits ? "Edit request added to the post." : "Comment added to the post.", requestEdits ? "orange" : "green");
+      await load();
+    } catch (e: any) {
+      toast(e?.message || "Failed to add comment", "red");
+    }
+  }
+
   async function saveApprovedScheduleChanges(postId: string) {
     const post = posts.find((item) => item.post_id === postId);
     if (!post) return;
@@ -362,16 +501,49 @@ export default function SocialMediaReviewAdmin() {
     }
   }
 
+  async function saveInlineAdminEdits(postId: string) {
+    const post = posts.find((item) => item.post_id === postId);
+    if (!post) return;
+    const editDraft = editDrafts[postId] || {
+      title: safeStr(post.title),
+      content: safeStr(post.content),
+      imageUrl: safeStr(post.imageUrl),
+      channels: Array.isArray(post.channels) ? post.channels.map(safeStr).filter(Boolean) : [],
+    };
+    try {
+      await api.adminUpdateScheduledSocialPost({
+        postId,
+        title: editDraft.title,
+        content: editDraft.content,
+        caption: editDraft.content,
+        imageUrl: editDraft.imageUrl,
+        channels: editDraft.channels,
+      });
+      setEditingCardId((curr) => (curr === postId ? null : curr));
+      toast("Draft edits saved to backend.", "green");
+      await load();
+    } catch (e: any) {
+      toast(e?.message || "Failed to save draft edits", "red");
+    }
+  }
+
   const allEmpty = useMemo(() => !loading && !posts.length, [loading, posts.length]);
 
   const requests = useMemo(() => {
     return posts.filter((p) => {
       const s = safeStr(p.status).toLowerCase();
+      if (isOrgMode) {
+        const tagged = !safeStr(onlyTaggedUsername)
+          || (Array.isArray((p as any).reviewerUsernames) ? (p as any).reviewerUsernames : [])
+            .map((value: any) => safeStr(value).toLowerCase())
+            .includes(safeStr(onlyTaggedUsername).toLowerCase());
+        return tagged && (s.includes("pending") || s.includes("request"));
+      }
       if (requestTab === "pending") return s.includes("pending") || s.includes("request");
       if (requestTab === "published") return s.includes("publish");
       return s.includes("approve") && !s.includes("publish");
     });
-  }, [posts, requestTab]);
+  }, [isOrgMode, onlyTaggedUsername, posts, requestTab]);
 
   const media = useMemo(() => {
     const selected = mediaTab.toLowerCase();
@@ -428,24 +600,38 @@ export default function SocialMediaReviewAdmin() {
   );
 
   return (
-    <div style={{ padding: 20, maxWidth: 1200, margin: "0 auto" }}>
-      <h2 style={{ margin: 0, fontSize: 32, fontWeight: 1000 }}>Social Media Admin</h2>
-      <p style={{ color: "#64748b", fontWeight: 700 }}>Review requests or browse media by channel. Todos stay attached to each post.</p>
+    <div style={{ padding: embedded ? 0 : 20, maxWidth: 1200, margin: "0 auto" }}>
+      {!embedded ? (
+        <>
+          <h2 style={{ margin: 0, fontSize: 32, fontWeight: 1000 }}>
+            {isOrgMode ? "Social Media Review" : "Social Media Admin"}
+          </h2>
+          <p style={{ color: "#64748b", fontWeight: 700 }}>
+            {isOrgMode
+              ? "Browse request progress, media previews, and review notes without admin controls."
+              : "Review requests or browse media by channel. Todos stay attached to each post."}
+          </p>
+        </>
+      ) : null}
 
-      <div style={{ display: "inline-flex", gap: 0, padding: 6, borderRadius: 999, border: "1px solid rgba(148,163,184,.18)", background: "rgba(255,255,255,.82)", boxShadow: "0 8px 24px rgba(15,23,42,.05)", marginBottom: 16, flexWrap: "wrap" }}>
-        <button type="button" onClick={() => setTopTab("requests")} style={{ ...tabButton(topTab === "requests"), border: "none" }}>Requests</button>
-        <button type="button" onClick={() => setTopTab("media")} style={{ ...tabButton(topTab === "media"), border: "none" }}>Media</button>
-      </div>
+      {!isOrgMode ? (
+        <div style={{ display: "inline-flex", gap: 0, padding: 6, borderRadius: 999, border: "1px solid rgba(148,163,184,.18)", background: "rgba(255,255,255,.82)", boxShadow: "0 8px 24px rgba(15,23,42,.05)", marginBottom: 16, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => setTopTab("requests")} style={{ ...tabButton(topTab === "requests"), border: "none" }}>Requests</button>
+          <button type="button" onClick={() => setTopTab("media")} style={{ ...tabButton(topTab === "media"), border: "none" }}>Media</button>
+        </div>
+      ) : null}
 
-      {topTab === "requests" ? (
+      {isOrgMode || topTab === "requests" ? (
         <section style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "inline-flex", gap: 0, padding: 5, borderRadius: 999, border: "1px solid rgba(148,163,184,.18)", background: "rgba(255,255,255,.82)", boxShadow: "0 8px 24px rgba(15,23,42,.05)", flexWrap: "wrap" }}>
-            {requestTabs.map((tab) => (
-              <button key={tab.key} type="button" onClick={() => setRequestTab(tab.key)} style={{ ...tabButton(requestTab === tab.key), border: "none" }}>
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          {!isOrgMode ? (
+            <div style={{ display: "inline-flex", gap: 0, padding: 5, borderRadius: 999, border: "1px solid rgba(148,163,184,.18)", background: "rgba(255,255,255,.82)", boxShadow: "0 8px 24px rgba(15,23,42,.05)", flexWrap: "wrap" }}>
+              {requestTabs.map((tab) => (
+                <button key={tab.key} type="button" onClick={() => setRequestTab(tab.key)} style={{ ...tabButton(requestTab === tab.key), border: "none" }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div style={{ display: "grid", gap: 12 }}>
             {requests.map((p) => {
@@ -462,6 +648,7 @@ export default function SocialMediaReviewAdmin() {
               const hasPastSchedule = !!safeStr(p.scheduledAt) && isPastDate(p.scheduledAt) && !safeStr(scheduleDrafts[p.post_id]);
               const isPosted = isPostedPost(p);
               const canEditApproved = safeStr(p.status).toLowerCase().includes("approve") && !isPosted;
+              const isInlineEditing = editingCardId === p.post_id;
               const scheduleStatusText = safeStr(scheduleDrafts[p.post_id])
                 ? isFutureDate(scheduleDrafts[p.post_id])
                   ? `Will schedule for ${safeStr(scheduleDrafts[p.post_id]).replace("T", " ")}`
@@ -478,79 +665,213 @@ export default function SocialMediaReviewAdmin() {
                   post={{ ...p, title: editDraft.title, content: editDraft.content, imageUrl: editDraft.imageUrl, channels: editDraft.channels }}
                   tone={tone}
                   previewUrl={previewSrc(safeStr(editDraft.imageUrl || p.imageUrl || editDraft.content || p.content))}
-                  previewCaption={editDraft.content || p.content}
-                  onChannelRetry={(channel) => void retryChannel(p.post_id, channel)}
+                  onChannelRetry={isOrgMode ? undefined : (channel) => void retryChannel(p.post_id, channel)}
+                  sidebarContent={
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {safeStr((p as any).internalReviewNote) ? (
+                        <div style={{ display: "grid", gap: 8 }}>
+                          <div style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>
+                            Internal review note
+                          </div>
+                          <div
+                            style={{
+                              borderRadius: 12,
+                              border: "1px solid rgba(148,163,184,.18)",
+                              background: "rgba(248,250,252,.92)",
+                              padding: "10px 11px",
+                              color: "#0f172a",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              lineHeight: 1.55,
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {safeStr((p as any).internalReviewNote)}
+                          </div>
+                        </div>
+                      ) : null}
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 900, color: "#475569", letterSpacing: 0.5, textTransform: "uppercase" }}>
+                          Review history
+                        </div>
+                        {todos.length ? (
+                          todos.map((todo, idx) => (
+                            <label
+                              key={`${p.post_id}-${todo.id || idx}`}
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: 10,
+                                padding: "10px 11px",
+                                borderRadius: 12,
+                                border: "1px solid rgba(148,163,184,.18)",
+                                background: todo.done ? "rgba(34,197,94,.08)" : "rgba(248,250,252,.92)",
+                                color: "#334155",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                lineHeight: 1.45,
+                                textDecoration: todo.done ? "line-through" : "none",
+                                opacity: todo.done ? 0.72 : 1,
+                                cursor: !isOrgMode && todo.id ? "pointer" : "default",
+                              }}
+                            >
+                              {!isOrgMode && todo.id ? (
+                                <input
+                                  type="checkbox"
+                                  checked={!!todo.done}
+                                  onChange={async () => {
+                                    try {
+                                      await api.toggleSocialPostTodo({ postId: p.post_id, todoId: todo.id, done: !todo.done });
+                                      await load();
+                                    } catch (e: any) {
+                                      toast(e?.message || "Failed to update todo", "red");
+                                    }
+                                  }}
+                                  style={{ marginTop: 3, flex: "0 0 auto" }}
+                                />
+                              ) : <span style={{ width: 14, flex: "0 0 auto" }} />}
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>{todo.text}</div>
+                                {[todo.author, todo.createdAt].filter(Boolean).length ? (
+                                  <div style={{ marginTop: 3, fontSize: 10, color: "#64748b", fontWeight: 700, wordBreak: "break-word", overflowWrap: "anywhere" }}>
+                                    {[todo.author, todo.createdAt].filter(Boolean).join(" · ")}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </label>
+                          ))
+                        ) : (
+                          <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>No review history yet.</div>
+                        )}
+                      </div>
+                    </div>
+                  }
+                  headerActions={!isOrgMode && !isPosted ? (
+                        isInlineEditing ? (
+                          <button
+                            type="button"
+                            onClick={() => void (canEditApproved ? saveApprovedScheduleChanges(p.post_id) : saveInlineAdminEdits(p.post_id))}
+                            aria-label="Save post"
+                            title="Save post"
+                            style={editIconButton(true)}
+                          >
+                        ✓
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setEditingCardId(p.post_id)}
+                        aria-label="Edit post"
+                        title="Edit post"
+                        style={editIconButton(false)}
+                      >
+                        ✎
+                      </button>
+                    )
+                  ) : undefined}
+                  headerEditor={
+                    !isOrgMode && isInlineEditing ? (
+                      <>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Title</span>
+                          <input
+                            value={editDraft.title}
+                            onChange={(e) =>
+                              setEditDrafts((prev) => ({
+                                ...prev,
+                                [p.post_id]: { ...editDraft, title: e.target.value },
+                              }))
+                            }
+                            style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)", background: "#fff" }}
+                          />
+                        </label>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Caption / content</span>
+                          <textarea
+                            value={editDraft.content}
+                            onChange={(e) =>
+                              setEditDrafts((prev) => ({
+                                ...prev,
+                                [p.post_id]: { ...editDraft, content: e.target.value },
+                              }))
+                            }
+                            rows={5}
+                            style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)", background: "#fff", resize: "vertical" }}
+                          />
+                        </label>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Channels</span>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {["instagram", "facebook", "linkedin", "discord"].map((channel) => (
+                              <ChannelChip
+                                key={`${p.post_id}-header-${channel}`}
+                                channel={channel}
+                                active={editDraft.channels.includes(channel)}
+                                onClick={() =>
+                                  setEditDrafts((prev) => {
+                                    const current = prev[p.post_id] || editDraft;
+                                    const nextChannels = current.channels.includes(channel)
+                                      ? current.channels.filter((item) => item !== channel)
+                                      : [...current.channels, channel];
+                                    return {
+                                      ...prev,
+                                      [p.post_id]: { ...current, channels: nextChannels },
+                                    };
+                                  })
+                                }
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    ) : undefined
+                  }
                   comments={todos.map((todo) => ({
                     text: todo.text,
                     checked: !!todo.done,
-                    onToggle: async () => {
-                      try {
-                        await api.toggleSocialPostTodo({ postId: p.post_id, todoId: todo.id, done: !todo.done });
-                        await load();
-                      } catch (e: any) {
-                        toast(e?.message || "Failed to update todo", "red");
-                      }
-                    },
+                    onToggle: isOrgMode
+                      ? undefined
+                      : async () => {
+                          try {
+                            await api.toggleSocialPostTodo({ postId: p.post_id, todoId: todo.id, done: !todo.done });
+                            await load();
+                          } catch (e: any) {
+                            toast(e?.message || "Failed to update todo", "red");
+                          }
+                        },
                     meta: [todo.author, todo.createdAt].filter(Boolean).join(" · ") || undefined,
                   }))}
                   editor={
-                    <div style={{ display: "grid", gap: 10 }}>
-                      <label style={{ display: "grid", gap: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Title</span>
-                        <input
-                          value={editDraft.title}
-                          onChange={(e) =>
-                            setEditDrafts((prev) => ({
-                              ...prev,
-                              [p.post_id]: { ...editDraft, title: e.target.value },
-                            }))
-                          }
-                          style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)", background: "#fff" }}
-                        />
-                      </label>
-                      <label style={{ display: "grid", gap: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Caption / content</span>
-                        <textarea
-                          value={editDraft.content}
-                          onChange={(e) =>
-                            setEditDrafts((prev) => ({
-                              ...prev,
-                              [p.post_id]: { ...editDraft, content: e.target.value },
-                            }))
-                          }
-                          rows={4}
-                          style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)", background: "#fff", resize: "vertical" }}
-                        />
-                      </label>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {["instagram", "facebook", "linkedin", "discord"].map((channel) => (
-                          <ChannelChip
-                            key={`${p.post_id}-${channel}`}
-                            channel={channel}
-                            active={editDraft.channels.includes(channel)}
-                            onClick={() =>
-                              setEditDrafts((prev) => {
-                                const current = prev[p.post_id] || editDraft;
-                                const nextChannels = current.channels.includes(channel)
-                                  ? current.channels.filter((item) => item !== channel)
-                                  : [...current.channels, channel];
-                                return {
-                                  ...prev,
-                                  [p.post_id]: { ...current, channels: nextChannels },
-                                };
-                              })
-                            }
-                          />
-                        ))}
-                      </div>
+                    isOrgMode ? (
+                      !isPosted ? (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          <label style={{ display: "grid", gap: 8 }}>
+                            <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Team comment</span>
+                            <MentionTextarea
+                              value={draft}
+                              onChange={(next) => setNoteDrafts((prev) => ({ ...prev, [p.post_id]: next }))}
+                              placeholder="Write the edit request for this post. Use @username or @email to notify someone."
+                              rows={3}
+                              users={mentionUsers}
+                            />
+                          </label>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => void addOrgComment(p.post_id, true)} style={reviewActionButton("blue")}>
+                              Request edits
+                            </button>
+                          </div>
+                        </div>
+                      ) : undefined
+                    ) : <div style={{ display: "grid", gap: 10 }}>
                       <label style={{ display: "grid", gap: 8 }}>
                         <span style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#475569" }}>Request changes comment</span>
-                        <textarea
+                        <MentionTextarea
                           value={draft}
-                          onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [p.post_id]: e.target.value }))}
-                          placeholder="Write the change request for this post"
+                          onChange={(next) => setNoteDrafts((prev) => ({ ...prev, [p.post_id]: next }))}
+                          placeholder="Write the change request for this post. Use @username or @email to notify someone."
                           rows={3}
-                          style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(148,163,184,.26)", background: "#fff" }}
+                          users={mentionUsers}
                         />
                       </label>
                       <label style={{ display: "grid", gap: 8 }}>
@@ -581,7 +902,7 @@ export default function SocialMediaReviewAdmin() {
                             This scheduled time has passed. Pick a new future time or publish immediately.
                           </div>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <button type="button" onClick={() => void decide(p.post_id, "approve", { forceNow: true })} style={tabButton(true)}>
+                            <button type="button" onClick={() => void decide(p.post_id, "approve", { forceNow: true })} style={reviewActionButton("green")}>
                               Submit now
                             </button>
                             <button
@@ -597,7 +918,15 @@ export default function SocialMediaReviewAdmin() {
                         </div>
                       ) : null}
 
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
                         {canEditApproved ? (
                           <>
                             <button type="button" onClick={() => void saveApprovedScheduleChanges(p.post_id)} style={tabButton(true)}>Save changes</button>
@@ -606,11 +935,24 @@ export default function SocialMediaReviewAdmin() {
                             ) : null}
                           </>
                         ) : (
-                          <>
-                            <button type="button" onClick={() => void decide(p.post_id, "approve")} style={tabButton(true)}>Approve</button>
-                            <button type="button" onClick={() => void decide(p.post_id, "request_changes")} style={tabButton(false)}>Request edits</button>
-                            <button type="button" onClick={() => void decide(p.post_id, "reject")} style={tabButton(false)}>Reject</button>
-                          </>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              width: "100%",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => void decide(p.post_id, "request_changes")} style={reviewActionButton("blue")}>Request edits</button>
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              <button type="button" onClick={() => void decide(p.post_id, "approve")} style={reviewActionButton("green")}>Approve</button>
+                              <button type="button" onClick={() => void decide(p.post_id, "reject")} style={reviewActionButton("red")}>Reject</button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>

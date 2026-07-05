@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getDirectReports } from "../utils/employeeHierarchy";
+import NotificationBell from "./NotificationBell";
 
 declare const M: any;
 
@@ -157,6 +158,7 @@ export default function Navbar() {
     const items: LinkItem[] = [
       { to: "/organisation/org-chart", label: "Org Chart" },
       { to: "/organisation/employees", label: "Employees" },
+      { to: "/organisation/social-media", label: "Social Media" },
     ];
 
     if (teamCheckReady && hasTeamMembers) {
@@ -702,6 +704,7 @@ export default function Navbar() {
           >
             {isAuthenticated && (
               <>
+                <NotificationBell />
                 <div
                   title={displayName}
                   style={{
@@ -831,27 +834,32 @@ export default function Navbar() {
             )}
           </div>
 
-          <a
-            href="#!"
-            data-target="mobile-sidenav"
-            className="sidenav-trigger hide-on-med-and-up"
-            style={{
-              justifySelf: "end",
-              height: 46,
-              width: 46,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 14,
-              color: "white",
-              background:
-                "linear-gradient(180deg, rgba(16,27,45,0.96), rgba(9,16,28,0.95))",
-              border: "1px solid rgba(56,189,248,0.14)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-            }}
+          <div
+            className="hide-on-med-and-up"
+            style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 10 }}
           >
-            <i className="material-icons">menu</i>
-          </a>
+            {isAuthenticated ? <NotificationBell compact /> : null}
+            <a
+              href="#!"
+              data-target="mobile-sidenav"
+              className="sidenav-trigger"
+              style={{
+                height: 46,
+                width: 46,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 14,
+                color: "white",
+                background:
+                  "linear-gradient(180deg, rgba(16,27,45,0.96), rgba(9,16,28,0.95))",
+                border: "1px solid rgba(56,189,248,0.14)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+              }}
+            >
+              <i className="material-icons">menu</i>
+            </a>
+          </div>
         </div>
       </nav>
 
