@@ -49,6 +49,31 @@ function categoryTone(category?: string) {
   return { dot: "#475569", chip: "rgba(148,163,184,.12)", text: "#475569", label: "System" };
 }
 
+function typeIcon(type?: string, category?: string) {
+  const value = safeStr(type).toLowerCase();
+  const group = safeStr(category).toLowerCase();
+  if (value.includes("mention")) return "alternate_email";
+  if (value.includes("changes_requested")) return "edit_note";
+  if (value.includes("published")) return "campaign";
+  if (value.includes("review")) return "rate_review";
+  if (group === "weekly_updates") return "event_note";
+  if (group === "applicants") return "group_add";
+  return "notifications";
+}
+
+function renderMetaChips(item: NotificationItem) {
+  const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
+  const chips: Array<{ key: string; label: string }> = [];
+  const channels = Array.isArray(meta.channels) ? meta.channels.map((x) => safeStr(x)).filter(Boolean) : [];
+  channels.forEach((channel) => chips.push({ key: `channel-${channel}`, label: channel }));
+  if (safeStr(item.actorUsername)) chips.push({ key: "actor", label: safeStr(item.actorUsername) });
+  if (safeStr(meta.weekStart)) chips.push({ key: "week", label: `Week ${safeStr(meta.weekStart)}` });
+  if (safeStr(meta.projectId)) chips.push({ key: "project", label: safeStr(meta.projectId) });
+  if (safeStr(meta.scheduledAt)) chips.push({ key: "scheduled", label: `Scheduled ${safeStr(meta.scheduledAt).replace("T", " ")}` });
+  if (safeStr(meta.publishedAt)) chips.push({ key: "published", label: `Published ${safeStr(meta.publishedAt).replace("T", " ")}` });
+  return chips;
+}
+
 const actionButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -198,6 +223,9 @@ export default function NotificationsCenter() {
 
           {filtered.map((item) => {
             const tone = categoryTone(item.category);
+            const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
+            const chips = renderMetaChips(item);
+            const comment = safeStr(meta.comment);
             return (
               <button
                 key={safeStr(item.notificationId)}
@@ -218,8 +246,25 @@ export default function NotificationsCenter() {
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 999, background: tone.dot, boxShadow: !item.read ? `0 0 0 4px ${tone.chip}` : "none" }} />
-                    <span style={{ fontWeight: 900, color: "#0f172a", fontSize: 16 }}>{safeStr(item.title) || "Notification"}</span>
+                    <span
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 12,
+                        background: tone.chip,
+                        color: tone.text,
+                        display: "inline-grid",
+                        placeItems: "center",
+                        boxShadow: !item.read ? `0 0 0 4px ${tone.chip}` : "none",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <i className="material-icons" style={{ fontSize: 18 }}>{typeIcon(item.type, item.category)}</i>
+                    </span>
+                    <div style={{ minWidth: 0, display: "grid", gap: 4 }}>
+                      <span style={{ fontWeight: 900, color: "#0f172a", fontSize: 16 }}>{safeStr(item.title) || "Notification"}</span>
+                      <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>{relativeTime(item.createdAt)}</span>
+                    </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ color: tone.text, background: tone.chip, borderRadius: 999, padding: "6px 10px", fontWeight: 800, fontSize: 11 }}>
@@ -235,8 +280,59 @@ export default function NotificationsCenter() {
                 <div style={{ color: "#334155", fontSize: 14, lineHeight: 1.6, fontWeight: 700 }}>
                   {safeStr(item.body)}
                 </div>
-                <div style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
-                  {relativeTime(item.createdAt)}
+                {chips.length ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {chips.map((chip) => (
+                      <span
+                        key={chip.key}
+                        style={{
+                          borderRadius: 999,
+                          border: "1px solid rgba(148,163,184,.18)",
+                          background: "rgba(248,250,252,.95)",
+                          color: "#475569",
+                          padding: "6px 10px",
+                          fontSize: 11,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {chip.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {comment ? (
+                  <div
+                    style={{
+                      borderRadius: 14,
+                      border: "1px solid rgba(148,163,184,.16)",
+                      background: "rgba(248,250,252,.92)",
+                      padding: 12,
+                      color: "#334155",
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                      fontWeight: 700,
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: ".08em", textTransform: "uppercase", color: "#64748b", marginBottom: 6 }}>
+                      Review note
+                    </div>
+                    {comment}
+                  </div>
+                ) : null}
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      color: "#1d4ed8",
+                      fontSize: 12,
+                      fontWeight: 900,
+                    }}
+                  >
+                    Open
+                    <i className="material-icons" style={{ fontSize: 16 }}>arrow_forward</i>
+                  </span>
                 </div>
               </button>
             );
