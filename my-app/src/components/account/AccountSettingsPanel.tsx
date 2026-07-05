@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useIntegrations } from "./useIntegrations";
 
 declare const M: any;
 
-type SettingsSectionKey = "general" | "integrations" | "ai_access";
+type SettingsSectionKey = "general" | "notifications" | "integrations" | "ai_access";
 type AiAccessTabKey = "request" | "requests";
 
 function safeStr(v: any) {
@@ -22,6 +23,54 @@ function chipStyle(active: boolean) {
     fontSize: 12,
     cursor: "pointer",
     textAlign: "left" as const,
+  };
+}
+
+function normalizePreferences(value: any) {
+  const defaults = {
+    email: {
+      social_media: true,
+      weekly_updates: true,
+      applicants: true,
+      mentions: true,
+      system: true,
+    },
+    in_app: {
+      social_media: true,
+      weekly_updates: true,
+      applicants: true,
+      mentions: true,
+      system: true,
+    },
+    discord_dm: {
+      social_media: true,
+      weekly_updates: true,
+      applicants: false,
+      mentions: true,
+      system: false,
+    },
+    discord_channel: {
+      social_media: true,
+      weekly_updates: true,
+      applicants: false,
+      mentions: false,
+      system: false,
+    },
+  };
+  if (!value) return defaults;
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed || "{}");
+    } catch {
+      parsed = {};
+    }
+  }
+  return {
+    email: { ...defaults.email, ...((parsed as any)?.email || {}) },
+    in_app: { ...defaults.in_app, ...((parsed as any)?.in_app || {}) },
+    discord_dm: { ...defaults.discord_dm, ...((parsed as any)?.discord_dm || {}) },
+    discord_channel: { ...defaults.discord_channel, ...((parsed as any)?.discord_channel || {}) },
   };
 }
 
@@ -46,8 +95,60 @@ export default function AccountSettingsPanel({
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [myRequestsLoading, setMyRequestsLoading] = useState(false);
   const [requestNotice, setRequestNotice] = useState("");
+  const navigate = useNavigate();
+  const [notificationPrefs, setNotificationPrefs] = useState(() => normalizePreferences((me as any)?.notification_preferences));
+  const [notificationSaving, setNotificationSaving] = useState(false);
 
   const integrations = useIntegrations(api, me);
+
+  function preferenceCheckbox(checked: boolean, onChange: (checked: boolean) => void, label: string) {
+    return (
+      <label
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          color: "#334155",
+          fontWeight: 800,
+          cursor: "pointer",
+          userSelect: "none",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          style={{
+            width: 18,
+            height: 18,
+            accentColor: "#2563eb",
+            cursor: "pointer",
+            margin: 0,
+            flex: "0 0 auto",
+          }}
+        />
+        <span>{label}</span>
+      </label>
+    );
+  }
+
+  useEffect(() => {
+    setNotificationPrefs(normalizePreferences((me as any)?.notification_preferences));
+  }, [me]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const resp = await api.getNotificationPreferences();
+        if (!mounted) return;
+        setNotificationPrefs(normalizePreferences(resp?.preferences));
+      } catch {}
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [api]);
 
   async function loadAvailableAgents() {
     try {
@@ -110,6 +211,18 @@ export default function AccountSettingsPanel({
     }
   }
 
+  async function saveNotificationPreferences() {
+    try {
+      setNotificationSaving(true);
+      await api.updateNotificationPreferences({ preferences: notificationPrefs });
+      M?.toast?.({ html: "Notification preferences saved.", classes: "green" });
+    } catch (e: any) {
+      M?.toast?.({ html: e?.message || "Failed to save notification preferences.", classes: "red" });
+    } finally {
+      setNotificationSaving(false);
+    }
+  }
+
   return (
     <section className="panelCard" style={{ background: "#fff" }}>
       <div className="panelHead">
@@ -132,6 +245,7 @@ export default function AccountSettingsPanel({
             }}
           >
             <button type="button" style={chipStyle(section === "general")} onClick={() => setSection("general")}>General Settings</button>
+            <button type="button" style={chipStyle(section === "notifications")} onClick={() => setSection("notifications")}>Notifications</button>
             <button type="button" style={chipStyle(section === "integrations")} onClick={() => setSection("integrations")}>Integrations</button>
             <button type="button" style={chipStyle(section === "ai_access")} onClick={() => setSection("ai_access")}>AI Access</button>
           </div>
@@ -152,6 +266,92 @@ export default function AccountSettingsPanel({
                     </i>
                     {theme === "dark" ? "Switch To Day" : "Switch To Night"}
                   </button>
+                </div>
+              </div>
+            )}
+
+            {section === "notifications" && (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ border: "1px solid #e6edf2", borderRadius: 16, padding: 14, display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontWeight: 900, color: "#0f172a" }}>Notification preferences</div>
+                      <div style={{ fontSize: 12, color: "#607d8b", marginTop: 4 }}>
+                        Control what reaches your bell and your inbox. These settings apply across social review, update reminders, and future notification types.
+                      </div>
+                    </div>
+                    <button type="button" className="accBtn subtle" onClick={() => navigate("/account/notifications")}>
+                      <i className="material-icons" style={{ fontSize: 18 }}>notifications</i>
+                      Open Notifications
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1fr) repeat(4, minmax(120px, 180px))", gap: 10, alignItems: "center" }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#64748b" }}>Category</div>
+                    <div style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#64748b" }}>Bell</div>
+                    <div style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#64748b" }}>Email</div>
+                    <div style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#64748b" }}>Discord DM</div>
+                    <div style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: "#64748b" }}>Discord Channel</div>
+
+                    {[
+                      { key: "mentions", label: "Mentions" },
+                      { key: "social_media", label: "Social media" },
+                      { key: "weekly_updates", label: "Weekly updates" },
+                      { key: "applicants", label: "Applicants / admin" },
+                      { key: "system", label: "System" },
+                    ].map((row) => (
+                      <div key={row.key} style={{ display: "contents" }}>
+                        <div style={{ color: "#0f172a", fontWeight: 800 }}>{row.label}</div>
+                        {preferenceCheckbox(
+                          !!notificationPrefs.in_app?.[row.key as keyof typeof notificationPrefs.in_app],
+                          (checked) =>
+                            setNotificationPrefs((prev: any) => ({
+                              ...prev,
+                              in_app: { ...prev.in_app, [row.key]: checked },
+                            })),
+                          "In-app"
+                        )}
+                        {preferenceCheckbox(
+                          !!notificationPrefs.email?.[row.key as keyof typeof notificationPrefs.email],
+                          (checked) =>
+                            setNotificationPrefs((prev: any) => ({
+                              ...prev,
+                              email: { ...prev.email, [row.key]: checked },
+                            })),
+                          "Email"
+                        )}
+                        {preferenceCheckbox(
+                          !!notificationPrefs.discord_dm?.[row.key as keyof typeof notificationPrefs.discord_dm],
+                          (checked) =>
+                            setNotificationPrefs((prev: any) => ({
+                              ...prev,
+                              discord_dm: { ...prev.discord_dm, [row.key]: checked },
+                            })),
+                          "DM"
+                        )}
+                        {preferenceCheckbox(
+                          !!notificationPrefs.discord_channel?.[row.key as keyof typeof notificationPrefs.discord_channel],
+                          (checked) =>
+                            setNotificationPrefs((prev: any) => ({
+                              ...prev,
+                              discord_channel: { ...prev.discord_channel, [row.key]: checked },
+                            })),
+                          "Feed"
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ fontSize: 12, color: "#64748b" }}>
+                    Discord DMs use your connected bot-linked account. Discord Channel posts use the notifications webhook when an event involving you is echoed into the team feed.
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button type="button" className="accBtn" onClick={() => void saveNotificationPreferences()} disabled={notificationSaving}>
+                      <i className="material-icons" style={{ fontSize: 18 }}>{notificationSaving ? "hourglass_empty" : "save"}</i>
+                      {notificationSaving ? "Saving..." : "Save Preferences"}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
