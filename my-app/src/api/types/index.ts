@@ -7,3 +7,7 @@ export * from "./applicants";
 export * from "./gamification";
 export * from "./endpoints";
 export * from "./customers";
+export * from "./wallet";
+export * from "./store";
+export * from "./requests";
+export * from "./notifications";

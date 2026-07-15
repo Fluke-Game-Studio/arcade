@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import type { ApiApplicantDetails } from "../api";
 import { API_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
+import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
 import type { ApplicantRowLite, Stage } from "./ApplicantComposerModal";
 
 declare const M: any;
@@ -262,6 +263,9 @@ type ApplicantDetailsView = {
   formVersion: string;
   sourceIp: string;
   userAgent: string;
+  shortlistRating: string;
+  shortlistUpdatedAt: string;
+  shortlistUpdatedBy: string;
 
   googleName: string;
   googleEmail: string;
@@ -365,6 +369,9 @@ function normalizeDetails(d: ApiApplicantDetails): ApplicantDetailsView {
 
     sourceIp: safeStr((d as any).sourceIp),
     userAgent: safeStr((d as any).userAgent),
+    shortlistRating: safeStr((d as any).shortlistRating || payload?.shortlistRating || payload?.applicant?.shortlistRating).toLowerCase(),
+    shortlistUpdatedAt: safeStr((d as any).shortlistUpdatedAt),
+    shortlistUpdatedBy: safeStr((d as any).shortlistUpdatedBy),
 
     googleName: safeStr(google?.name),
     googleEmail: safeStr(google?.email),
@@ -466,22 +473,6 @@ function renderMetaTable(details: ApplicantDetailsView) {
   );
 }
 
-function repairModalScrollLock() {
-  window.setTimeout(() => {
-    try {
-      const anyOpen = Array.from(document.querySelectorAll(".modal")).some((el) =>
-        el.classList.contains("open")
-      );
-      if (anyOpen) return;
-
-      document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
-      document.body.classList.remove("modal-open");
-      if (document.body.style.overflow === "hidden") document.body.style.overflow = "";
-      if (document.body.style.paddingRight) document.body.style.paddingRight = "";
-    } catch {}
-  }, 0);
-}
-
 function LazyRawJson({ value }: { value: any }) {
   const [open, setOpen] = useState(false);
 
@@ -501,24 +492,31 @@ export default function ApplicantDetailsModal({
   loading,
   detailsRaw,
   onClose,
+  onClosed,
   onOpenComposer,
 }: {
   open: boolean;
   loading: boolean;
   detailsRaw: ApiApplicantDetails | null;
   onClose: () => void;
+  onClosed?: () => void;
   onOpenComposer: (lite: ApplicantRowLite, prefill?: { address?: string; city?: string }) => void;
 }) {
-  const { user } = useAuth() as any;
+  const { user, api } = useAuth() as any;
   const token = String(user?.token || "");
   const modalRef = useRef<HTMLDivElement | null>(null);
   const instRef = useRef<any>(null);
+  const onClosedRef = useRef(onClosed);
 
   // keep latest onClose without re-init loops
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  useEffect(() => {
+    onClosedRef.current = onClosed;
+  }, [onClosed]);
 
   const details = useMemo(() => (open && detailsRaw ? normalizeDetails(detailsRaw) : null), [open, detailsRaw]);
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -528,6 +526,9 @@ export default function ApplicantDetailsModal({
   const [aiResponse, setAiResponse] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [shortlistRating, setShortlistRating] = useState("");
+  const [shortlistBusy, setShortlistBusy] = useState(false);
+  const [shortlistError, setShortlistError] = useState("");
 
   useEffect(() => {
     setAvatarFailed(false);
@@ -538,7 +539,12 @@ export default function ApplicantDetailsModal({
     setAiResponse("");
     setAiError("");
     setDetailTab("details");
+    setShortlistError("");
   }, [details?.id]);
+
+  useEffect(() => {
+    setShortlistRating(details?.shortlistRating || "");
+  }, [details?.id, details?.shortlistRating]);
 
   useEffect(() => {
     if (detailTab === "ai" && details) {
@@ -630,6 +636,32 @@ export default function ApplicantDetailsModal({
     }
   }
 
+  async function handleShortlistChange(nextRating: string) {
+    if (!details || shortlistBusy) return;
+    const rating = String(nextRating || "").trim().toLowerCase();
+    if (!rating) return;
+
+    const previous = shortlistRating;
+    setShortlistBusy(true);
+    setShortlistError("");
+    setShortlistRating(rating);
+    try {
+      const result = await api.shortlistApplicant(details.id, { shortlistRating: rating as "strong" | "maybe" | "weak" });
+      setShortlistRating(String((result as any)?.shortlistRating || rating).toLowerCase());
+      M?.toast?.({
+        html: `Applicant rated ${rating[0].toUpperCase() + rating.slice(1)}`,
+        classes: "green",
+      });
+    } catch (e: any) {
+      setShortlistRating(previous);
+      const message = String(e?.message || "Failed to update shortlist");
+      setShortlistError(message);
+      M?.toast?.({ html: message, classes: "red" });
+    } finally {
+      setShortlistBusy(false);
+    }
+  }
+
 
   // init ONCE
   useEffect(() => {
@@ -645,7 +677,10 @@ export default function ApplicantDetailsModal({
         try {
           onCloseRef.current?.();
         } catch {}
-        repairModalScrollLock();
+        try {
+          onClosedRef.current?.();
+        } catch {}
+        syncMaterializeModalState();
       },
       onOpenStart: () => {
         try {
@@ -667,7 +702,7 @@ export default function ApplicantDetailsModal({
         instRef.current?.destroy?.();
       } catch {}
       instRef.current = null;
-      repairModalScrollLock();
+      syncMaterializeModalState();
     };
   }, []);
 
@@ -693,12 +728,7 @@ export default function ApplicantDetailsModal({
   }, [open]);
 
   function requestClose() {
-    try {
-      instRef.current?.close?.();
-      return;
-    } catch {}
-    onCloseRef.current?.();
-    repairModalScrollLock();
+    closeMaterializeModal(instRef.current, onCloseRef.current);
   }
 
   const Css = (
@@ -744,6 +774,33 @@ export default function ApplicantDetailsModal({
       .fg-tab { padding: 9px 18px; font-weight: 900; font-size: 13px; cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; color: rgba(0,0,0,0.55); transition: color 0.15s, border-color 0.15s; }
       .fg-tab.active { color: #1565c0; border-bottom-color: #1565c0; }
       .fg-ai-resp { background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.08); border-radius: 14px; padding: 14px; white-space: pre-wrap; font-size: 14px; line-height: 1.6; min-height: 80px; }
+      .fg-shortlist-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 160px;
+      }
+      .fg-shortlist-label {
+        font-size: 11px;
+        font-weight: 1000;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: rgba(0,0,0,0.58);
+      }
+      .fg-shortlist-select {
+        height: 42px;
+        border-radius: 12px;
+        border: 1px solid rgba(0,0,0,0.14);
+        background: #fff;
+        padding: 0 12px;
+        font-weight: 900;
+        color: rgba(0,0,0,0.84);
+        min-width: 160px;
+      }
+      .fg-shortlist-select:disabled {
+        opacity: 0.72;
+        cursor: not-allowed;
+      }
     `}</style>
   );
 
@@ -763,6 +820,10 @@ export default function ApplicantDetailsModal({
               <button className={`fg-tab ${detailTab === "details" ? "active" : ""}`} onClick={() => setDetailTab("details")}>Details</button>
               <button className={`fg-tab ${detailTab === "ai" ? "active" : ""}`} onClick={() => setDetailTab("ai")}>AI Assist</button>
             </div>
+
+            {shortlistError ? (
+              <div style={{ marginBottom: 10, color: "#b91c1c", fontWeight: 800 }}>{shortlistError}</div>
+            ) : null}
 
             {detailTab === "ai" ? (
               <div>
@@ -800,7 +861,24 @@ export default function ApplicantDetailsModal({
                 <div className="fg-card">
                   <div className="fg-card-h"><div style={{ fontWeight: 1000 }}>Quick Actions</div></div>
                   <div className="fg-card-b">
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                      <div className="fg-shortlist-wrap">
+                        <span className="fg-shortlist-label">Shortlist</span>
+                        <select
+                          className="browser-default fg-shortlist-select"
+                          value={shortlistRating}
+                          disabled={shortlistBusy}
+                          onChange={(e) => handleShortlistChange(e.target.value)}
+                        >
+                          <option value="" disabled>
+                            {shortlistBusy ? "Saving..." : "Set rating"}
+                          </option>
+                          <option value="strong">Strong</option>
+                          <option value="maybe">Maybe</option>
+                          <option value="weak">Weak</option>
+                        </select>
+                      </div>
+
                       <button
                         className="btn fg-btn"
                         onClick={() => {
@@ -889,23 +967,42 @@ export default function ApplicantDetailsModal({
 
                   <span style={{ flex: "1 1 auto" }} />
 
-                  <button
-                    className="btn fg-btn"
-                    type="button"
-                    onClick={() => {
-                      const lite: ApplicantRowLite = {
-                        id: details.id,
-                        name: details.fullName,
-                        email: details.email,
-                        roleTitle: details.roleTitle,
-                        roleId: details.roleId,
-                      };
-                      onOpenComposer(lite, { address: details.address, city: details.city });
-                    }}
-                  >
-                    <i className="material-icons left">send</i>
-                    Open Composer
-                  </button>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+                    <div className="fg-shortlist-wrap">
+                      <span className="fg-shortlist-label">Shortlist</span>
+                      <select
+                        className="browser-default fg-shortlist-select"
+                        value={shortlistRating}
+                        disabled={shortlistBusy}
+                        onChange={(e) => handleShortlistChange(e.target.value)}
+                      >
+                        <option value="" disabled>
+                          {shortlistBusy ? "Saving..." : "Set rating"}
+                        </option>
+                        <option value="strong">Strong</option>
+                        <option value="maybe">Maybe</option>
+                        <option value="weak">Weak</option>
+                      </select>
+                    </div>
+
+                    <button
+                      className="btn fg-btn"
+                      type="button"
+                      onClick={() => {
+                        const lite: ApplicantRowLite = {
+                          id: details.id,
+                          name: details.fullName,
+                          email: details.email,
+                          roleTitle: details.roleTitle,
+                          roleId: details.roleId,
+                        };
+                        onOpenComposer(lite, { address: details.address, city: details.city });
+                      }}
+                    >
+                      <i className="material-icons left">send</i>
+                      Open Composer
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ApiApplicantDetails, ApiUser } from "../api";
+import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
 
 declare const M: any;
 
@@ -133,6 +134,7 @@ export default function ApplicantShareModal({
         try {
           onCloseRef.current?.();
         } catch {}
+        syncMaterializeModalState();
       },
       onOpenEnd: () =>
         setTimeout(() => {
@@ -146,6 +148,7 @@ export default function ApplicantShareModal({
       try {
         instance?.destroy?.();
       } catch {}
+      syncMaterializeModalState();
     };
   }, []);
 
@@ -221,7 +224,7 @@ export default function ApplicantShareModal({
       });
 
       M?.toast?.({ html: "Applicant shared.", classes: "green" });
-      onClose();
+      closeMaterializeModal(M?.Modal?.getInstance?.(modalRef.current), onCloseRef.current);
     } catch (error: any) {
       M?.toast?.({ html: error?.message || "Failed to share applicant", classes: "red" });
     } finally {
@@ -298,7 +301,7 @@ export default function ApplicantShareModal({
       </div>
 
       <div className="modal-footer">
-        <a className="btn-flat" href="#!" onClick={onClose}>
+        <a className="btn-flat" href="#!" onClick={() => closeMaterializeModal(M?.Modal?.getInstance?.(modalRef.current), onCloseRef.current)}>
           Cancel
         </a>
         <button className={`btn ${sending ? "disabled" : ""}`} disabled={sending || loading} onClick={sendNow}>

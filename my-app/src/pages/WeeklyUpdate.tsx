@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import TimeSheet from "../components/Timesheet";
+import FgcAmount from "../components/credits/FgcAmount";
 import { useUpdates, startOfWeekMonday, toISODate } from "./UpdatesContext";
 import { useAuth } from "../auth/AuthContext";
 import type { UpdateSubmission } from "./UpdatesContext";
 import type { ApiProject } from "../api/types/projects";
+import type { ApiCreditConfig } from "../api/types/gamification";
 import type {
   PresignedUploadItem,
   SubmitUpdateResponse,
@@ -85,7 +87,7 @@ function MetaChip({
 }: {
   icon: string;
   label: string;
-  value: string;
+  value: React.ReactNode;
   tint: string;
   color: string;
 }) {
@@ -224,6 +226,7 @@ export default function WeeklyUpdate() {
   const [submitting, setSubmitting] = useState(false);
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [projectId, setProjectId] = useState<string>("");
+  const [creditConfig, setCreditConfig] = useState<ApiCreditConfig | null>(null);
   const [jiraTickets, setJiraTickets] = useState<
     Array<{ key: string; summary?: string; status?: string; assignee?: string; updated?: string }>
   >([]);
@@ -237,6 +240,31 @@ export default function WeeklyUpdate() {
     (a, b) => a + (Number(b) || 0),
     0
   );
+
+  const weeklyCreditPreview = useMemo(() => {
+    const cfg = creditConfig?.weeklyUpdate || {};
+    const base = Number(cfg.base ?? 10) || 0;
+    const retro = Number(cfg.retro ?? 10) || 0;
+    const fileUpload = Number(cfg.fileUpload ?? 10) || 0;
+    const timesheet = Number(cfg.timesheet ?? 5) || 0;
+    const webrtcBonus = Number(cfg.webrtcBonus ?? 25);
+    const missingUpdatePenalty = Number(cfg.missingUpdatePenalty ?? 20);
+
+    const retroCount = [worked, didnt, improve].reduce((sum, list) => {
+      return sum + list.map((x) => String(x || "").trim()).filter(Boolean).length;
+    }, 0);
+    const hasFiles = selectedFiles.length > 0;
+    const hasTimesheet = Object.values(hours).some((h) => Number(h) > 0);
+
+    const items: Array<{ label: string; amount: number }> = [];
+    if (base > 0) items.push({ label: "Weekly update", amount: base });
+    if (retroCount > 0 && retro > 0) items.push({ label: "Retro", amount: retro });
+    if (hasFiles && fileUpload > 0) items.push({ label: "File upload", amount: fileUpload });
+    if (hasTimesheet && timesheet > 0) items.push({ label: "Timesheet", amount: timesheet });
+
+    const total = items.reduce((sum, item) => sum + item.amount, 0);
+    return { items, total, webrtcBonus, missingUpdatePenalty };
+  }, [creditConfig, worked, didnt, improve, selectedFiles, hours]);
 
   useEffect(() => {
     try {
@@ -266,6 +294,21 @@ export default function WeeklyUpdate() {
       }
     })();
   }, [api, user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await api.getCreditConfig?.();
+        if (!cancelled) setCreditConfig(cfg || null);
+      } catch {
+        if (!cancelled) setCreditConfig(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   useEffect(() => {
     const pid = String(projectId || "").trim();
@@ -533,6 +576,7 @@ export default function WeeklyUpdate() {
         accomplishments,
         blockers,
         next,
+        submissionSource: "manual",
         retrospective: submission.retrospective,
         timesheet,
         uploadedFiles,
@@ -681,6 +725,85 @@ export default function WeeklyUpdate() {
                   tint="rgba(34,197,94,.12)"
                   color="#166534"
                 />
+                <MetaChip
+                  icon="stars"
+                  label="Credits"
+                  value={<FgcAmount amount={weeklyCreditPreview.total} divisor={1} fractionDigits={0} style={{ fontSize: 12, fontWeight: 900, color: "#b45309" }} iconSize={30} />}
+                  tint="rgba(245,158,11,.14)"
+                  color="#b45309"
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                padding: 14,
+                borderRadius: 18,
+                border: "1px solid rgba(148,163,184,.16)",
+                background: "rgba(255,255,255,.84)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 950, color: "#0f172a" }}>Estimated reward</div>
+                <div style={{ fontWeight: 1000, color: "#b45309" }}>
+                  <FgcAmount amount={weeklyCreditPreview.total} divisor={1} fractionDigits={0} style={{ fontWeight: 1000, color: "#b45309" }} iconSize={30} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                {weeklyCreditPreview.items.map((item) => (
+                  <span
+                    key={item.label}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "7px 11px",
+                      borderRadius: 999,
+                      background: "rgba(245,158,11,.10)",
+                      color: "#92400e",
+                      fontWeight: 900,
+                      fontSize: 12,
+                    }}
+                  >
+                    {item.label}
+                    <strong>
+                      <FgcAmount amount={item.amount} divisor={1} fractionDigits={0} style={{ fontWeight: 900, color: "#92400e" }} iconSize={30} />
+                    </strong>
+                  </span>
+                ))}
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "7px 11px",
+                    borderRadius: 999,
+                    background: "rgba(37,99,235,.10)",
+                    color: "#1d4ed8",
+                    fontWeight: 900,
+                    fontSize: 12,
+                  }}
+                >
+                  <span>WebRTC bonus in AI intake +</span>
+                  <FgcAmount amount={weeklyCreditPreview.webrtcBonus} divisor={1} fractionDigits={0} style={{ fontWeight: 900, color: "#1d4ed8" }} iconSize={30} />
+                </span>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "7px 11px",
+                    borderRadius: 999,
+                    background: "rgba(248,113,113,.10)",
+                    color: "#b91c1c",
+                    fontWeight: 900,
+                    fontSize: 12,
+                  }}
+                >
+                  <span>Missing weekly update penalty</span>
+                  <FgcAmount amount={weeklyCreditPreview.missingUpdatePenalty} divisor={1} fractionDigits={0} style={{ fontWeight: 900, color: "#b91c1c" }} iconSize={30} />
+                </span>
               </div>
             </div>
 

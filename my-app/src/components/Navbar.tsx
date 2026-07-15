@@ -159,6 +159,7 @@ export default function Navbar() {
       { to: "/organisation/org-chart", label: "Org Chart" },
       { to: "/organisation/employees", label: "Employees" },
       { to: "/organisation/social-media", label: "Social Media" },
+      { to: "/store", label: "Fluke Boutique" },
     ];
 
     if (teamCheckReady && hasTeamMembers) {
@@ -197,9 +198,7 @@ export default function Navbar() {
       items: [
         { to: "/super", label: "Super Console" },
         { to: "/super/ai", label: "Super AI" },
-        { to: "/super/awards", label: "Awards Console" },
         { to: "/super/social-media", label: "Social Media" },
-        { to: "/admin/endpoints", label: "Endpoint Access" },
         { to: "/super/ai-character-training", label: "AI Character Training" },
         { to: "/super/talking-head-page", label: "Talking Head Training" },
         { to: "/super/manager-agent-builder", label: "Agent Builder" },

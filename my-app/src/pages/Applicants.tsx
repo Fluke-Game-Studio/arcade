@@ -181,6 +181,22 @@ type SortKey = "submitted" | "name" | "role" | "status";
 type SortDir = "asc" | "desc";
 type PipelineFilter = "All" | "Active" | "Rejected" | "Converted";
 
+type MonthGroup = {
+  key: string;
+  label: string;
+  items: ApplicantRow[];
+  count: number;
+  latestTs: number;
+};
+
+type YearGroup = {
+  key: string;
+  label: string;
+  items: MonthGroup[];
+  count: number;
+  latestTs: number;
+};
+
 function sortTriangle(active: boolean, dir: SortDir) {
   return (
     <span style={{ display: "inline-flex", flexDirection: "column", marginLeft: 6, opacity: active ? 1 : 0.35 }}>
@@ -201,9 +217,6 @@ export default function Applicants() {
   const [totalMatches, setTotalMatches] = useState<number | null>(null);
 
   const [pageSize, setPageSize] = useState<number>(25);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [cursorStack, setCursorStack] = useState<string[]>([]);
-  const [pageIndex, setPageIndex] = useState<number>(0);
 
   // filters
   const [pipeline, setPipeline] = useState<PipelineFilter>("Active");
@@ -217,6 +230,7 @@ export default function Applicants() {
   // sort
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [selectedYear, setSelectedYear] = useState<string>("");
 
   // details modal (now separate component)
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -232,6 +246,7 @@ export default function Applicants() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerApplicant, setComposerApplicant] = useState<ApplicantRowLite | null>(null);
   const [composerPrefill, setComposerPrefill] = useState<{ address?: string; city?: string }>({});
+  const [composerQueued, setComposerQueued] = useState(false);
 
   const Css = (
     <style>{`
@@ -315,6 +330,103 @@ export default function Applicants() {
         display: flex;
         justify-content: flex-end;
       }
+      .fg-month-list {
+        display: grid;
+        gap: 14px;
+      }
+      .fg-year-strip {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .fg-year-chip {
+        height: 36px;
+        padding: 0 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(15,23,42,0.14);
+        background: rgba(15,23,42,0.04);
+        color: #0f172a;
+        font-weight: 1000;
+        font-size: 13px;
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease, color 120ms ease;
+      }
+      .fg-year-chip:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 18px rgba(0,0,0,0.08);
+      }
+      .fg-year-chip.active {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #fff;
+        border-color: rgba(29,78,216,0.22);
+      }
+      .fg-year-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: rgba(37,99,235,0.06);
+        color: #1e3a8a;
+        font-weight: 900;
+        font-size: 13px;
+      }
+      .fg-month-panel {
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid rgba(0,0,0,0.08);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,251,253,0.98));
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+      }
+      .fg-month-summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 14px 16px;
+        cursor: pointer;
+        user-select: none;
+        background: linear-gradient(180deg, rgba(37,99,235,0.08), rgba(37,99,235,0.03));
+        border-bottom: 1px solid rgba(0,0,0,0.06);
+      }
+      .fg-month-summary::-webkit-details-marker { display: none; }
+      .fg-month-title {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .fg-month-title .label {
+        font-size: 16px;
+        font-weight: 1100;
+        color: #0f172a;
+      }
+      .fg-month-title .meta {
+        font-size: 12px;
+        font-weight: 800;
+        color: #64748b;
+      }
+      .fg-month-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 40px;
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: rgba(15,23,42,0.08);
+        color: #0f172a;
+        font-weight: 1000;
+        font-size: 12px;
+      }
+      .fg-month-body {
+        padding: 0;
+      }
+      .fg-month-table-wrap {
+        overflow-x: auto;
+      }
       @media (max-width: 1000px) {
         .fg-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
@@ -347,35 +459,104 @@ export default function Applicants() {
     return { total, active, rejected, converted };
   }, [rows]);
 
-  async function loadApplicantsPage(cursor?: string | null, resetPaging?: boolean, limitOverride?: number) {
+  const yearGroups = useMemo<YearGroup[]>(() => {
+    const buckets = new Map<string, YearGroup>();
+
+    for (const row of filtered) {
+      const submitted = parseDateSafe(row.submittedAt || row.createdAt);
+      const created = parseDateSafe(row.createdAt);
+      const monthDate = submitted || created;
+      const yearKey = monthDate ? String(monthDate.getFullYear()) : "unknown";
+      const yearLabel = monthDate ? String(monthDate.getFullYear()) : "Unknown year";
+      const monthKey = monthDate
+        ? `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, "0")}`
+        : "unknown";
+      const monthLabel = monthDate
+        ? monthDate.toLocaleString(undefined, { year: "numeric", month: "long" })
+        : "Unknown month";
+      const latestTs = monthDate ? monthDate.getTime() : 0;
+
+      let yearGroup = buckets.get(yearKey);
+      if (!yearGroup) {
+        yearGroup = { key: yearKey, label: yearLabel, items: [], count: 0, latestTs };
+        buckets.set(yearKey, yearGroup);
+      }
+      yearGroup.count += 1;
+      yearGroup.latestTs = Math.max(yearGroup.latestTs, latestTs);
+
+      const existingMonth = yearGroup.items.find((month) => month.key === monthKey);
+      if (!existingMonth) {
+        yearGroup.items.push({ key: monthKey, label: monthLabel, items: [row], count: 1, latestTs });
+      } else {
+        existingMonth.items.push(row);
+        existingMonth.count += 1;
+        existingMonth.latestTs = Math.max(existingMonth.latestTs, latestTs);
+      }
+    }
+
+    return Array.from(buckets.values())
+      .map((year) => ({
+        ...year,
+        items: year.items.sort((a, b) => b.latestTs - a.latestTs),
+      }))
+      .sort((a, b) => b.latestTs - a.latestTs);
+  }, [filtered]);
+
+  const activeYearGroup = useMemo(() => {
+    if (!yearGroups.length) return null;
+    return yearGroups.find((group) => group.key === selectedYear) || yearGroups[0];
+  }, [yearGroups, selectedYear]);
+
+  useEffect(() => {
+    if (!yearGroups.length) {
+      if (selectedYear) setSelectedYear("");
+      return;
+    }
+
+    const currentYear = String(new Date().getFullYear());
+    const nextSelected =
+      yearGroups.find((group) => group.key === selectedYear)?.key ||
+      yearGroups.find((group) => group.key === currentYear)?.key ||
+      yearGroups[0].key;
+
+    if (nextSelected !== selectedYear) {
+      setSelectedYear(nextSelected);
+    }
+  }, [yearGroups, selectedYear]);
+
+  async function loadApplicantsPage(limitOverride?: number) {
     setLoading(true);
     try {
-      const page = await (api as any).getApplicantsPage({
-        limit: limitOverride || pageSize,
-        cursor: cursor || undefined,
-        query: query.trim() || undefined,
-        pipeline,
-        role: roleFilter === "All" ? undefined : roleFilter,
-        gender: genderFilter === "All" ? undefined : genderFilter,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        sortKey,
-        sortDir,
-      });
+      const limit = limitOverride || pageSize;
+      const collected: ApplicantRow[] = [];
+      let cursor: string | undefined = undefined;
+      let nextPage: any = null;
+      let guard = 0;
 
-      const items = page?.items || [];
-      const next = page?.nextCursor ?? null;
+      do {
+        nextPage = await (api as any).getApplicantsPage({
+          limit,
+          cursor,
+          query: query.trim() || undefined,
+          pipeline,
+          role: roleFilter === "All" ? undefined : roleFilter,
+          gender: genderFilter === "All" ? undefined : genderFilter,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          sortKey,
+          sortDir,
+        });
 
-      setRows((items || []).map(normalizeListItem).filter((x: any) => !!x.id));
-      setNextCursor(next);
-      setTotalMatches(Number.isFinite(Number(page?.count)) ? Number(page.count) : null);
-      setRoleOptions(Array.isArray(page?.roleOptions) ? page.roleOptions : []);
-      setGenderOptions(Array.isArray(page?.genderOptions) ? page.genderOptions : []);
+        const items = Array.isArray(nextPage?.items) ? nextPage.items : [];
+        collected.push(...items.map(normalizeListItem).filter((x: any) => !!x.id));
+        cursor = typeof nextPage?.nextCursor === "string" && nextPage.nextCursor ? nextPage.nextCursor : undefined;
+        guard += 1;
+      } while (cursor && guard < 100);
 
-      if (resetPaging) {
-        setCursorStack([]);
-        setPageIndex(0);
-      }
+      setRows(collected);
+      setTotalMatches(Number.isFinite(Number(nextPage?.count)) ? Number(nextPage.count) : collected.length);
+      setRoleOptions(Array.isArray(nextPage?.roleOptions) ? nextPage.roleOptions : []);
+      setGenderOptions(Array.isArray(nextPage?.genderOptions) ? nextPage.genderOptions : []);
     } catch (e: any) {
       M?.toast?.({ html: e?.message || "Failed to load applicants", classes: "red" });
     } finally {
@@ -385,7 +566,7 @@ export default function Applicants() {
 
   useEffect(() => {
     const delay = query.trim() ? 300 : 0;
-    const id = window.setTimeout(() => loadApplicantsPage(null, true), delay);
+    const id = window.setTimeout(() => loadApplicantsPage(), delay);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, pipeline, roleFilter, genderFilter, dateFrom, dateTo, sortKey, sortDir, pageSize]);
@@ -460,14 +641,14 @@ export default function Applicants() {
             <p className="grey-text" style={{ marginTop: 6, fontWeight: 800 }}>
               {loading
                 ? "Loading…"
-                : `${totalMatches ?? kpis.total} matching applicants • ${filtered.length} shown • Page ${pageIndex + 1}`}
+                : `${totalMatches ?? kpis.total} matching applicants • ${filtered.length} shown`}
             </p>
           </div>
 
           <div className="col s12 m4 right-align" style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
             <button
               className={`btn fg-btn ${loading ? "disabled" : ""}`}
-              onClick={() => loadApplicantsPage(cursorStack[pageIndex - 1] || null, pageIndex === 0)}
+              onClick={() => loadApplicantsPage()}
               disabled={loading}
             >
               <i className="material-icons left">refresh</i>
@@ -504,7 +685,7 @@ export default function Applicants() {
                 <div className="v">{kpis.converted}</div>
               </div>
               <div className="box">
-                <div className="k">Page size</div>
+                <div className="k">Batch size</div>
                 <div className="v">{pageSize}</div>
                 <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {[25, 50, 100].map((n) => (
@@ -532,12 +713,12 @@ export default function Applicants() {
         {/* Filters */}
         <div className="fg-card">
           <div className="fg-card-b" style={{ paddingBottom: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 1100, fontSize: 18 }}>Filters</div>
-              <div className="grey-text" style={{ fontWeight: 900, fontSize: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 1100, fontSize: 18 }}>Filters</div>
+                  <div className="grey-text" style={{ fontWeight: 900, fontSize: 12 }}>
                 {totalMatches ?? filtered.length} matching applicants
-              </div>
-            </div>
+                  </div>
+                </div>
 
             <div className="fg-filter-grid" style={{ marginTop: 12 }}>
               <div className="fg-filter-field">
@@ -628,128 +809,130 @@ export default function Applicants() {
           </div>
         </div>
 
-        {/* Pagination controls */}
-        <div className="fg-card" style={{ marginTop: 14 }}>
-          <div className="fg-card-b" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-            <div className="grey-text" style={{ fontWeight: 900 }}>
-              Page <b>{pageIndex + 1}</b> • Showing <b>{rows.length}</b> items (API page)
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
-                className={`btn-small grey darken-2 fg-btn ${pageIndex === 0 || loading ? "disabled" : ""}`}
-                disabled={pageIndex === 0 || loading}
-                onClick={() => {
-                  const prevCursor = cursorStack[pageIndex - 1] || null;
-                  setPageIndex((p) => Math.max(0, p - 1));
-                  loadApplicantsPage(prevCursor, false);
-                }}
-              >
-                <i className="material-icons left">chevron_left</i>Prev
-              </button>
-
-              <button
-                className={`btn-small fg-btn ${!nextCursor || loading ? "disabled" : ""}`}
-                disabled={!nextCursor || loading}
-                onClick={() => {
-                  const currentCursor = cursorStack[pageIndex] || null;
-                  const newStack = [...cursorStack];
-                  newStack[pageIndex] = currentCursor || "";
-                  newStack[pageIndex + 1] = nextCursor || "";
-                  setCursorStack(newStack);
-                  setPageIndex((p) => p + 1);
-                  loadApplicantsPage(nextCursor, false);
-                }}
-              >
-                Next<i className="material-icons right">chevron_right</i>
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* List */}
         <div className="fg-card" style={{ marginTop: 14 }}>
           <div className="fg-card-b">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 1100, fontSize: 18 }}>Applicant List</div>
+              <div style={{ fontWeight: 1100, fontSize: 18 }}>Applicant Timeline</div>
               <div className="grey-text" style={{ fontWeight: 900, fontSize: 12 }}>
-                Share sends a full applicant email to a current employee.
+                Applicants are grouped by year first, then by month.
               </div>
             </div>
 
-            <table className="highlight responsive-table" style={{ marginTop: 10 }}>
-              <thead>
-                <tr>
-                  <th className="fg-th" onClick={() => toggleSort("name")}>Name {sortTriangle(sortKey === "name", sortDir)}</th>
-                  <th>Email</th>
-                  <th className="fg-th" onClick={() => toggleSort("role")}>Role {sortTriangle(sortKey === "role", sortDir)}</th>
-                  <th>Gender</th>
-                  <th className="fg-th" onClick={() => toggleSort("status")}>Status {sortTriangle(sortKey === "status", sortDir)}</th>
-                  <th className="fg-th" onClick={() => toggleSort("submitted")}>Submitted {sortTriangle(sortKey === "submitted", sortDir)}</th>
-                  <th className="right-align">Actions</th>
-                </tr>
-              </thead>
+            {loading ? (
+              <div className="center grey-text" style={{ padding: "24px 0" }}>Loadingâ€¦</div>
+            ) : !filtered.length ? (
+              <div className="center grey-text" style={{ padding: "24px 0" }}>No applicants found.</div>
+            ) : (
+              <div style={{ marginTop: 10 }}>
+                <div className="fg-year-strip">
+                  {yearGroups.map((group) => (
+                    <button
+                      key={group.key}
+                      type="button"
+                      className={`fg-year-chip ${activeYearGroup?.key === group.key ? "active" : ""}`}
+                      onClick={() => setSelectedYear(group.key)}
+                    >
+                      {group.label}
+                    </button>
+                  ))}
+                </div>
 
-              <tbody>
-                {loading && (
-                  <tr>
-                    <td colSpan={7} className="center grey-text">Loading…</td>
-                  </tr>
-                )}
+                {activeYearGroup ? (
+                  <div className="fg-year-meta">
+                    <i className="material-icons" style={{ fontSize: 18 }}>event</i>
+                    <span>
+                      {activeYearGroup.label} • {activeYearGroup.count} applicant{activeYearGroup.count !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                ) : null}
 
-                {!loading &&
-                  filtered.map((r) => {
-                    const stageGuess = guessStageFromStatus(r.status);
-                    return (
-                      <tr key={r.id} className="fg-row">
-                        <td><b style={{ fontWeight: 1100 }}>{r.name || "—"}</b></td>
-                        <td><code>{r.email || "—"}</code></td>
-                        <td>
-                          <div style={{ fontWeight: 1000 }}>{r.roleTitle || "—"}</div>
-                          {r.roleId ? <div className="grey-text" style={{ fontSize: 12 }}>{r.roleId}</div> : null}
-                        </td>
-                        <td className="grey-text" style={{ fontWeight: 900 }}>{r.gender || "—"}</td>
-                        <td><StatusPill status={r.status || "—"} stageGuess={stageGuess} /></td>
-                        <td className="grey-text" style={{ whiteSpace: "nowrap", fontWeight: 900 }}>
-                          {fmtDate(r.submittedAt || r.createdAt)}
-                        </td>
-                        <td className="right-align" style={{ minWidth: 120 }}>
-                          <div style={{ display: "inline-flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                            <button
-                              className="btn-small grey darken-2 fg-btn"
-                              onClick={() => onView(r)}
-                              title="View applicant"
-                              aria-label="View applicant"
-                              style={{ width: 42, padding: 0, display: "inline-flex", justifyContent: "center" }}
-                            >
-                              <i className="material-icons" style={{ fontSize: 18 }}>visibility</i>
-                            </button>
-                            <button
-                              className="btn-small blue darken-2 fg-btn"
-                              onClick={() => {
-                                setShareApplicantId(r.id);
-                                setShareApplicantName(r.name);
-                                setShareApplicantEmail(r.email);
-                                setShareOpen(true);
-                              }}
-                              title="Share applicant"
-                              aria-label="Share applicant"
-                              style={{ width: 42, padding: 0, display: "inline-flex", justifyContent: "center" }}
-                            >
-                              <i className="material-icons" style={{ fontSize: 18 }}>share</i>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                <div className="fg-month-list" style={{ marginTop: 12 }}>
+                  {(activeYearGroup?.items || []).map((group, idx) => (
+                  <details key={group.key} className="fg-month-panel" open={idx === 0}>
+                    <summary className="fg-month-summary">
+                      <div className="fg-month-title">
+                        <div className="label">{group.label}</div>
+                        <div className="meta">
+                          {group.count} applicant{group.count !== 1 ? "s" : ""} in this month
+                        </div>
+                      </div>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                        <span className="fg-month-count">{group.count}</span>
+                        <i className="material-icons" style={{ color: "#334155" }}>expand_more</i>
+                      </div>
+                    </summary>
 
-                {!loading && !filtered.length && (
-                  <tr>
-                    <td colSpan={7} className="center grey-text">No applicants found.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                    <div className="fg-month-body">
+                      <div className="fg-month-table-wrap">
+                        <table className="highlight responsive-table" style={{ margin: 0 }}>
+                          <thead>
+                            <tr>
+                              <th className="fg-th" onClick={() => toggleSort("name")}>Name {sortTriangle(sortKey === "name", sortDir)}</th>
+                              <th>Email</th>
+                              <th className="fg-th" onClick={() => toggleSort("role")}>Role {sortTriangle(sortKey === "role", sortDir)}</th>
+                              <th>Gender</th>
+                              <th className="fg-th" onClick={() => toggleSort("status")}>Status {sortTriangle(sortKey === "status", sortDir)}</th>
+                              <th className="fg-th" onClick={() => toggleSort("submitted")}>Submitted {sortTriangle(sortKey === "submitted", sortDir)}</th>
+                              <th className="right-align">Actions</th>
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {group.items.map((r) => {
+                              const stageGuess = guessStageFromStatus(r.status);
+                              return (
+                                <tr key={r.id} className="fg-row">
+                                  <td><b style={{ fontWeight: 1100 }}>{r.name || "â€”"}</b></td>
+                                  <td><code>{r.email || "â€”"}</code></td>
+                                  <td>
+                                    <div style={{ fontWeight: 1000 }}>{r.roleTitle || "â€”"}</div>
+                                    {r.roleId ? <div className="grey-text" style={{ fontSize: 12 }}>{r.roleId}</div> : null}
+                                  </td>
+                                  <td className="grey-text" style={{ fontWeight: 900 }}>{r.gender || "â€”"}</td>
+                                  <td><StatusPill status={r.status || "â€”"} stageGuess={stageGuess} /></td>
+                                  <td className="grey-text" style={{ whiteSpace: "nowrap", fontWeight: 900 }}>
+                                    {fmtDate(r.submittedAt || r.createdAt)}
+                                  </td>
+                                  <td className="right-align" style={{ minWidth: 120 }}>
+                                    <div style={{ display: "inline-flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                      <button
+                                        className="btn-small grey darken-2 fg-btn"
+                                        onClick={() => onView(r)}
+                                        title="View applicant"
+                                        aria-label="View applicant"
+                                        style={{ width: 42, padding: 0, display: "inline-flex", justifyContent: "center" }}
+                                      >
+                                        <i className="material-icons" style={{ fontSize: 18 }}>visibility</i>
+                                      </button>
+                                      <button
+                                        className="btn-small blue darken-2 fg-btn"
+                                        onClick={() => {
+                                          setShareApplicantId(r.id);
+                                          setShareApplicantName(r.name);
+                                          setShareApplicantEmail(r.email);
+                                          setShareOpen(true);
+                                        }}
+                                        title="Share applicant"
+                                        aria-label="Share applicant"
+                                        style={{ width: 42, padding: 0, display: "inline-flex", justifyContent: "center" }}
+                                      >
+                                        <i className="material-icons" style={{ fontSize: 18 }}>share</i>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </details>
+                ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -760,11 +943,16 @@ export default function Applicants() {
         loading={detailsLoading}
         detailsRaw={detailsRaw}
         onClose={closeDetails}
+        onClosed={() => {
+          if (!composerQueued) return;
+          setComposerQueued(false);
+          setComposerOpen(true);
+        }}
         onOpenComposer={(lite, prefill) => {
           setComposerApplicant(lite);
           setComposerPrefill(prefill || {});
+          setComposerQueued(true);
           setDetailsOpen(false);
-          window.setTimeout(() => setComposerOpen(true), 160);
         }}
       />
 

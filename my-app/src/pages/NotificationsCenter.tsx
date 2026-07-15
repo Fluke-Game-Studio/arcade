@@ -2,23 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import type { ApiNotificationItem } from "../api";
+import { notificationChips, notificationDetailHref, notificationIcon, notificationIconChipStyle, notificationIconStyle, notificationLabel, notificationTone } from "../lib/notifications";
 
 declare const M: any;
-
-type NotificationItem = {
-  recipientUsername?: string;
-  notificationId?: string;
-  type?: string;
-  category?: string;
-  title?: string;
-  body?: string;
-  href?: string;
-  actorUsername?: string;
-  read?: boolean;
-  readAt?: string;
-  createdAt?: string;
-  meta?: Record<string, any>;
-};
 
 function safeStr(v: any) {
   return String(v ?? "").trim();
@@ -40,40 +27,6 @@ function relativeTime(value?: string) {
   return date.toLocaleString();
 }
 
-function categoryTone(category?: string) {
-  const value = safeStr(category).toLowerCase();
-  if (value === "social_media") return { dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Social" };
-  if (value === "weekly_updates") return { dot: "#0f766e", chip: "rgba(15,118,110,.12)", text: "#0f766e", label: "Weekly" };
-  if (value === "applicants") return { dot: "#9333ea", chip: "rgba(147,51,234,.12)", text: "#7e22ce", label: "Applicants" };
-  if (value === "mentions") return { dot: "#db2777", chip: "rgba(219,39,119,.12)", text: "#be185d", label: "Mentions" };
-  return { dot: "#475569", chip: "rgba(148,163,184,.12)", text: "#475569", label: "System" };
-}
-
-function typeIcon(type?: string, category?: string) {
-  const value = safeStr(type).toLowerCase();
-  const group = safeStr(category).toLowerCase();
-  if (value.includes("mention")) return "alternate_email";
-  if (value.includes("changes_requested")) return "edit_note";
-  if (value.includes("published")) return "campaign";
-  if (value.includes("review")) return "rate_review";
-  if (group === "weekly_updates") return "event_note";
-  if (group === "applicants") return "group_add";
-  return "notifications";
-}
-
-function renderMetaChips(item: NotificationItem) {
-  const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
-  const chips: Array<{ key: string; label: string }> = [];
-  const channels = Array.isArray(meta.channels) ? meta.channels.map((x) => safeStr(x)).filter(Boolean) : [];
-  channels.forEach((channel) => chips.push({ key: `channel-${channel}`, label: channel }));
-  if (safeStr(item.actorUsername)) chips.push({ key: "actor", label: safeStr(item.actorUsername) });
-  if (safeStr(meta.weekStart)) chips.push({ key: "week", label: `Week ${safeStr(meta.weekStart)}` });
-  if (safeStr(meta.projectId)) chips.push({ key: "project", label: safeStr(meta.projectId) });
-  if (safeStr(meta.scheduledAt)) chips.push({ key: "scheduled", label: `Scheduled ${safeStr(meta.scheduledAt).replace("T", " ")}` });
-  if (safeStr(meta.publishedAt)) chips.push({ key: "published", label: `Published ${safeStr(meta.publishedAt).replace("T", " ")}` });
-  return chips;
-}
-
 const actionButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -90,7 +43,7 @@ const actionButtonStyle: CSSProperties = {
 export default function NotificationsCenter() {
   const { api } = useAuth();
   const navigate = useNavigate();
-  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [items, setItems] = useState<ApiNotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -125,7 +78,7 @@ export default function NotificationsCenter() {
     return items.filter((item) => safeStr(item.category).toLowerCase() === category);
   }, [category, items]);
 
-  async function openItem(item: NotificationItem) {
+  async function openItem(item: ApiNotificationItem) {
     try {
       if (safeStr(item.notificationId) && !item.read) {
         await api.markNotificationsRead({ notificationId: safeStr(item.notificationId) });
@@ -138,7 +91,7 @@ export default function NotificationsCenter() {
         );
       }
     } catch {}
-    navigate(safeStr(item.href) || "/");
+    navigate(safeStr(item.notificationId) ? notificationDetailHref(item.notificationId) : (safeStr(item.href) || "/"));
   }
 
   async function markAllRead() {
@@ -190,6 +143,7 @@ export default function NotificationsCenter() {
             { key: "mentions", label: "Mentions" },
             { key: "weekly_updates", label: "Weekly" },
             { key: "applicants", label: "Applicants" },
+            { key: "commerce", label: "Commerce" },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -222,9 +176,9 @@ export default function NotificationsCenter() {
           ) : null}
 
           {filtered.map((item) => {
-            const tone = categoryTone(item.category);
+            const tone = notificationTone(item.category);
             const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
-            const chips = renderMetaChips(item);
+            const chips = notificationChips(item);
             const comment = safeStr(meta.comment);
             return (
               <button
@@ -248,18 +202,13 @@ export default function NotificationsCenter() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                     <span
                       style={{
-                        width: 34,
-                        height: 34,
-                        borderRadius: 12,
                         background: tone.chip,
                         color: tone.text,
-                        display: "inline-grid",
-                        placeItems: "center",
                         boxShadow: !item.read ? `0 0 0 4px ${tone.chip}` : "none",
-                        flex: "0 0 auto",
+                        ...notificationIconChipStyle,
                       }}
                     >
-                      <i className="material-icons" style={{ fontSize: 18 }}>{typeIcon(item.type, item.category)}</i>
+                      <i className="material-icons" style={{ fontSize: 18, ...notificationIconStyle }}>{notificationIcon(item.type, item.category, item.meta)}</i>
                     </span>
                     <div style={{ minWidth: 0, display: "grid", gap: 4 }}>
                       <span style={{ fontWeight: 900, color: "#0f172a", fontSize: 16 }}>{safeStr(item.title) || "Notification"}</span>
@@ -268,7 +217,7 @@ export default function NotificationsCenter() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ color: tone.text, background: tone.chip, borderRadius: 999, padding: "6px 10px", fontWeight: 800, fontSize: 11 }}>
-                      {tone.label}
+                      {notificationLabel(item)}
                     </span>
                     {!item.read ? (
                       <span style={{ color: "#1d4ed8", background: "rgba(37,99,235,.10)", borderRadius: 999, padding: "6px 10px", fontWeight: 900, fontSize: 11 }}>

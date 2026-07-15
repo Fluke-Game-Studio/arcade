@@ -13,11 +13,10 @@ import MyTeam from "./pages/MyTeam";
 import AdminWorkspace from "./pages/AdminWorkspace";
 import SuperUser from "./pages/SuperUser";
 import SuperAI from "./pages/SuperAI";
-import SuperAwards from "./pages/SuperAwards";
 import Account from "./pages/Account";
 import Login from "./pages/Login";
+import Store from "./pages/Store";
 import JobsAdmin from "./pages/JobsAdmin";
-import ApiEndpoints from "./pages/ApiEndpoints";
 import ApiEndpointsReadOnly from "./pages/ApiEndpointsReadOnly";
 import WeeklyUpdate from "./pages/WeeklyUpdate";
 import RealtimeIntakePage from "./pages/RealtimeIntakePage";
@@ -29,6 +28,7 @@ import SocialPostStudio from "./pages/SocialPostStudio";
 import SocialMediaReviewAdmin from "./pages/SocialMediaReviewAdmin";
 import SocialMediaOrgHub from "./pages/SocialMediaOrgHub";
 import NotificationsCenter from "./pages/NotificationsCenter";
+import NotificationDetailPage from "./pages/NotificationDetailPage";
 import AppErrorPage from "./pages/AppErrorPage";
 import { UpdatesProvider } from "./pages/UpdatesContext";
 import CharacterTutorialPage from "./pages/CharacterTutorialPage";
@@ -146,6 +146,14 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: "/account/notifications/:notificationId",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <NotificationDetailPage />
+          </Protected>
+        ),
+      },
+      {
         path: "/organisation/my-team",
         element: (
           <Protected roles={["employee", "admin", "super"]}>
@@ -154,6 +162,14 @@ const router = createBrowserRouter([
         ),
       },
       { path: "/account", element: <Account /> },
+      {
+        path: "/store",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <Store />
+          </Protected>
+        ),
+      },
       { path: "/social/posts", element: <Navigate to="/organisation/social-media" replace /> },
 
       {
@@ -213,7 +229,7 @@ const router = createBrowserRouter([
         path: "/admin/endpoints",
         element: (
           <Protected roles={["super"]}>
-            <ApiEndpoints />
+            <SuperUser initialTab="endpoints" />
           </Protected>
         ),
       },
@@ -302,7 +318,15 @@ const router = createBrowserRouter([
         path: "/super/awards",
         element: (
           <Protected roles={["super"]}>
-            <SuperAwards />
+            <SuperUser initialTab="awards" />
+          </Protected>
+        ),
+      },
+      {
+        path: "/super/wallet",
+        element: (
+          <Protected roles={["super"]}>
+            <SuperUser initialTab="wallet" />
           </Protected>
         ),
       },

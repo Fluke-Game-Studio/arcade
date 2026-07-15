@@ -6,6 +6,7 @@ export type ApiAwardRuleAchievement = {
   metric?: string;
   setKey?: string;
   threshold?: number;
+  creditAmount?: number;
   isActive?: boolean;
 };
 
@@ -18,7 +19,32 @@ export type ApiAwardRuleTrophy = {
   imageUrl?: string;
   achievementSetKey?: string;
   achievementThreshold?: number;
+  creditAmount?: number;
   isActive?: boolean;
+};
+
+export type ApiCreditConfig = {
+  id?: string;
+  type?: "credit_config";
+  weeklyUpdate?: {
+    base?: number;
+    retro?: number;
+    fileUpload?: number;
+    timesheet?: number;
+    webrtcBonus?: number;
+    missingUpdatePenalty?: number;
+    [k: string]: any;
+  };
+  connections?: {
+    linkedin?: number;
+    discord?: number;
+    jira?: number;
+    [k: string]: any;
+  };
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  [k: string]: any;
 };
 
 export type ApiMvpRule = {
@@ -192,6 +218,7 @@ export type AwardAchievementBody = {
   metric?: string;
   threshold?: number;
   setKey?: string;
+  creditAmount?: number;
 };
 
 export type PublicAwardAchievementResponse = {
@@ -222,6 +249,7 @@ export type AwardTrophyBody = {
   tier?: string;
   imageUrl?: string;
   achievementSetKey?: string;
+  creditAmount?: number;
 };
 
 export type AwardTrophyResponse = {
@@ -321,6 +349,7 @@ export type CreateAwardAchievementRuleBody = {
   metric: string;
   setKey?: string;
   threshold: number;
+  creditAmount?: number;
   isActive?: boolean;
 };
 
@@ -330,6 +359,7 @@ export type UpdateAwardAchievementRuleBody = {
   metric?: string;
   setKey?: string;
   threshold?: number;
+  creditAmount?: number;
   isActive?: boolean;
 };
 
@@ -346,6 +376,7 @@ export type CreateAwardTrophyRuleBody = {
   imageUrl?: string;
   achievementSetKey?: string;
   achievementThreshold: number;
+  creditAmount?: number;
   isActive?: boolean;
 };
 
@@ -356,6 +387,7 @@ export type UpdateAwardTrophyRuleBody = {
   imageUrl?: string;
   achievementSetKey?: string;
   achievementThreshold?: number;
+  creditAmount?: number;
   isActive?: boolean;
 };
 
@@ -390,6 +422,8 @@ export type GamificationApiClient = {
   ) => Promise<DeleteAwardTrophyRuleResponse>;
 
   getMvpRule?: () => Promise<ApiMvpRule>;
+  getCreditConfig?: () => Promise<ApiCreditConfig>;
+  updateCreditConfig?: (body: ApiCreditConfig) => Promise<ApiCreditConfig>;
   getProgressAdmin?: (username: string) => Promise<GetProgressAdminResponse>;
   getAllProgress?: () => Promise<GetAllProgressResponse>;
   getAllProgressSummary?: () => Promise<GetAllProgressSummaryResponse>;
@@ -473,6 +507,16 @@ export function createGamificationAPI(api: GamificationApiClient) {
     getMvpRule: async () => {
       if (!api.getMvpRule) missing("getMvpRule");
       return api.getMvpRule();
+    },
+
+    getCreditConfig: async () => {
+      if (!api.getCreditConfig) missing("getCreditConfig");
+      return api.getCreditConfig();
+    },
+
+    updateCreditConfig: async (body: ApiCreditConfig) => {
+      if (!api.updateCreditConfig) missing("updateCreditConfig");
+      return api.updateCreditConfig(body);
     },
 
     getProgressAdmin: async (username: string) => {

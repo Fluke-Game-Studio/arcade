@@ -32,6 +32,8 @@ export type SessionUser = {
   notification_preferences?: string | {
     email?: Record<string, boolean>;
     in_app?: Record<string, boolean>;
+    discord_dm?: Record<string, boolean>;
+    discord_channel?: Record<string, boolean>;
   };
   last_seen_release_version?: string;
 };

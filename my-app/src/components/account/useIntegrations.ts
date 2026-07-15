@@ -111,6 +111,16 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
         M?.toast?.({ html: "Discord connected.", classes: "green" });
       } else if (type === "jira-connected") {
         setLoading("jira", false);
+        if (api.awardAchievement) {
+          void api.awardAchievement({
+            achievementId: "jira_connect",
+            title: "Connect Jira",
+            description: "Connect Jira to sync project tickets.",
+            metric: "jiraSocials",
+            setKey: "connectSocials",
+            threshold: 1,
+          }).catch(() => {});
+        }
         void opts?.onConnected?.();
         void refreshJiraStatus();
         M?.toast?.({ html: "Jira connected.", classes: "green" });

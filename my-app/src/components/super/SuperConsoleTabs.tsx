@@ -1,4 +1,14 @@
-export type SuperTab = "users" | "projects" | "releases" | "arcade_release" | "storage";
+export type SuperTab =
+  | "users"
+  | "projects"
+  | "releases"
+  | "awards"
+  | "wallet"
+  | "requests"
+  | "inventory"
+  | "endpoints"
+  | "arcade_release"
+  | "storage";
 
 type Props = {
   tab: SuperTab;
@@ -16,6 +26,21 @@ export default function SuperConsoleTabs({ tab, onChange }: Props) {
       </button>
       <button type="button" className={`suTabBtn ${tab === "releases" ? "active" : ""}`} onClick={() => onChange("releases")}>
         Releases & Products
+      </button>
+      <button type="button" className={`suTabBtn ${tab === "awards" ? "active" : ""}`} onClick={() => onChange("awards")}>
+        Awards
+      </button>
+      <button type="button" className={`suTabBtn ${tab === "wallet" ? "active" : ""}`} onClick={() => onChange("wallet")}>
+        Wallet
+      </button>
+      <button type="button" className={`suTabBtn ${tab === "requests" ? "active" : ""}`} onClick={() => onChange("requests")}>
+        Requests
+      </button>
+      <button type="button" className={`suTabBtn ${tab === "inventory" ? "active" : ""}`} onClick={() => onChange("inventory")}>
+        Inventory
+      </button>
+      <button type="button" className={`suTabBtn ${tab === "endpoints" ? "active" : ""}`} onClick={() => onChange("endpoints")}>
+        Endpoint Access
       </button>
       <button type="button" className={`suTabBtn ${tab === "arcade_release" ? "active" : ""}`} onClick={() => onChange("arcade_release")}>
         Arcade Release

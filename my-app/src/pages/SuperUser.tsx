@@ -8,6 +8,11 @@ import SuperArcadeReleaseTab from "../components/super/SuperArcadeReleaseTab";
 import SuperReleasesTab from "../components/super/SuperReleasesTab";
 import SuperStorageTab from "../components/super/SuperStorageTab";
 import SuperUsersTab from "../components/super/SuperUsersTab";
+import SuperAwards from "./SuperAwards";
+import SuperWalletTab from "../components/super/SuperWalletTab";
+import SuperRequestsTab from "../components/super/SuperRequestsTab";
+import SuperInventoryTab from "../components/super/SuperInventoryTab";
+import ApiEndpoints from "./ApiEndpoints";
 
 declare const M: any;
 
@@ -63,9 +68,9 @@ function visibleByStatus(status: string) {
   return !(s === "inactive" || s === "archived" || s === "disabled" || s === "hidden");
 }
 
-export default function SuperUser() {
+export default function SuperUser({ initialTab = "users" }: { initialTab?: SuperTab } = {}) {
   const { api, user } = useAuth();
-  const [tab, setTab] = useState<SuperTab>("users");
+  const [tab, setTab] = useState<SuperTab>(initialTab);
   const [rows, setRows] = useState<ApiUser[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -97,6 +102,10 @@ export default function SuperUser() {
   const [customPlatform, setCustomPlatform] = useState("");
   const isSuperUser = normalizeRole((user as any)?.employee_role || (user as any)?.role) === "super";
   const releaseData = useReleaseProductsData(api as any);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   const [projectForm, setProjectForm] = useState<ProjectForm>({
     name: "",
@@ -587,6 +596,16 @@ export default function SuperUser() {
           safeStr={safeStr}
         />
       )}
+
+      {tab === "awards" && <SuperAwards />}
+
+      {tab === "wallet" && <SuperWalletTab />}
+
+      {tab === "requests" && <SuperRequestsTab />}
+
+      {tab === "inventory" && <SuperInventoryTab />}
+
+      {tab === "endpoints" && <ApiEndpoints />}
 
       {tab === "arcade_release" && (
         <SuperArcadeReleaseTab

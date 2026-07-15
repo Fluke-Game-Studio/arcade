@@ -5,6 +5,9 @@ export type ApiApplicantListItem = {
   roleId?: string;
   roleTitle?: string;
   status?: string;
+  shortlistRating?: string;
+  shortlistUpdatedAt?: string;
+  shortlistUpdatedBy?: string;
   source?: string;
   formVersion?: string;
   submittedAt?: string;

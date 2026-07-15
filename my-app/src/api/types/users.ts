@@ -66,6 +66,7 @@ export type ApiUser = {
     in_app?: Record<string, boolean>;
     discord_dm?: Record<string, boolean>;
     discord_channel?: Record<string, boolean>;
+    commerce?: Record<string, boolean>;
   };
   last_seen_release_version?: string;
   [k: string]: any;

@@ -12,12 +12,17 @@ import type {
   ApiUser,
   GetEndpointCatalogResponse,
   UpdateEndpointAccessBody,
-  UpdateEndpointAccessResponse,
-  CreateUserBody,
-  CreateWeeklyUpdateUploadUrlsBody,
-  CreateWeeklyUpdateUploadUrlsResponse,
-  DeleteStorageFileResponse,
-  SaveProjectBody,
+    UpdateEndpointAccessResponse,
+    CreateUserBody,
+    CreateWeeklyUpdateUploadUrlsBody,
+    CreateWeeklyUpdateUploadUrlsResponse,
+    CreateStoreImageUploadUrlsBody,
+    CreateStoreImageUploadUrlsResponse,
+    CreateRequestBody,
+    ReviewRequestBody,
+    ApiRequestRecord,
+    DeleteStorageFileResponse,
+    SaveProjectBody,
   SaveQuestionBankBody,
   SendApplicantDocEmailBody,
   SendApplicantRichEmailBody,
@@ -51,11 +56,24 @@ import type {
     LinkedInOrgStatus,
     DiscordStatusResponse,
     ListStorageFilesResponse,
+    ApiWalletResponse,
+    ApiWalletSessionResponse,
+    ApiWalletCreditBody,
+    ApiWalletCreditResponse,
+    ApiStoreItem,
+    ApiStoreItemsResponse,
+    ApiStoreOrder,
+    ApiStorePurchaseBody,
+    ApiStorePurchaseResponse,
+    ApiStoreSaveBody,
+    ApiNotificationDetailResponse,
+    ApiNotificationsResponse,
 } from "./types";
 
 import type {
   ApiAwardRuleAchievement,
   ApiAwardRuleTrophy,
+  ApiCreditConfig,
   ApiMvpRule,
   AwardAchievementBody,
   AwardAchievementResponse,
@@ -1379,7 +1397,7 @@ export class ApiClient {
     limit?: number;
     cursor?: string;
     unreadOnly?: boolean;
-  }): Promise<{ ok: boolean; items: any[]; nextCursor?: string | null; unreadCount?: number }> {
+  }): Promise<ApiNotificationsResponse> {
     const query = new URLSearchParams();
     if (params?.limit) query.set("limit", String(params.limit));
     if (params?.cursor) query.set("cursor", params.cursor);
@@ -1393,7 +1411,7 @@ export class ApiClient {
     if (!r.ok) {
       throw new Error(`getNotifications failed: ${this.extractErrorMessage(payload, r.status)}`);
     }
-    return payload as { ok: boolean; items: any[]; nextCursor?: string | null; unreadCount?: number };
+    return payload as ApiNotificationsResponse;
   }
 
   async getNotificationUnreadCount(): Promise<{ ok: boolean; unreadCount: number }> {
@@ -1424,6 +1442,20 @@ export class ApiClient {
       throw new Error(`markNotificationsRead failed: ${this.extractErrorMessage(payload, r.status)}`);
     }
     return payload as { ok: boolean; unreadCount?: number };
+  }
+
+  async getNotificationDetail(notificationId: string): Promise<ApiNotificationDetailResponse> {
+    const qs = new URLSearchParams();
+    qs.set("notificationId", notificationId);
+    const r = await fetch(`${API_BASE}/notifications/detail?${qs.toString()}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getNotificationDetail failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiNotificationDetailResponse;
   }
 
   async getNotificationPreferences(): Promise<{ ok: boolean; preferences: any }> {
@@ -1463,6 +1495,167 @@ export class ApiClient {
       );
     }
     return payload as { customer: any; entitlements: any[]; items: any[] };
+  }
+
+  async getWalletMe(): Promise<ApiWalletResponse> {
+    const r = await fetch(`${API_BASE}/wallet/me`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getWalletMe failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiWalletResponse;
+  }
+
+  async createWalletSession(): Promise<ApiWalletSessionResponse> {
+    const r = await fetch(`${API_BASE}/wallet/session`, {
+      method: "POST",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`createWalletSession failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiWalletSessionResponse;
+  }
+
+  async getWalletMeWithToken(walletToken: string): Promise<ApiWalletResponse> {
+    const headers: HeadersInit = {
+      Accept: "*/*",
+      Connection: "keep-alive",
+      Authorization: `Bearer ${walletToken}`,
+    };
+    const r = await fetch(`${API_BASE}/wallet/me`, {
+      method: "GET",
+      headers,
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getWalletMeWithToken failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiWalletResponse;
+  }
+
+  async getWalletTransactionsWithToken(walletToken: string): Promise<{ ok: boolean; items: any[] }> {
+    const headers: HeadersInit = {
+      Accept: "*/*",
+      Connection: "keep-alive",
+      Authorization: `Bearer ${walletToken}`,
+    };
+    const r = await fetch(`${API_BASE}/wallet/me/transactions`, {
+      method: "GET",
+      headers,
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getWalletTransactionsWithToken failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as { ok: boolean; items: any[] };
+  }
+
+  async creditWallet(body: ApiWalletCreditBody): Promise<ApiWalletCreditResponse> {
+    const r = await fetch(`${API_BASE}/wallet/admin/credit`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`creditWallet failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiWalletCreditResponse;
+  }
+
+  async rewardAllActiveMembers(body: { amount_cents: number; reason?: string; transaction_id?: string }): Promise<{ ok: boolean; rewarded: number; skipped: number; errors?: any[] }> {
+    const r = await fetch(`${API_BASE}/wallet/admin/reward-active`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`rewardAllActiveMembers failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; rewarded: number; skipped: number; errors?: any[] };
+  }
+
+  async getStoreItems(): Promise<ApiStoreItem[]> {
+    const r = await fetch(`${API_BASE}/store/items`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getStoreItems failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    const data = payload as ApiStoreItemsResponse;
+    return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  async getMyStoreOrders(): Promise<ApiStoreOrder[]> {
+    const r = await fetch(`${API_BASE}/store/me/orders`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getMyStoreOrders failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return Array.isArray(payload?.items) ? payload.items : [];
+  }
+
+  async purchaseStoreItem(body: ApiStorePurchaseBody): Promise<ApiStorePurchaseResponse> {
+    const r = await fetch(`${API_BASE}/store/purchase`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`purchaseStoreItem failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiStorePurchaseResponse;
+  }
+
+  async getStoreAdminItems(): Promise<ApiStoreItem[]> {
+    const r = await fetch(`${API_BASE}/store/admin/items`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getStoreAdminItems failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return Array.isArray(payload?.items) ? payload.items : [];
+  }
+
+  async getStoreAdminOrders(): Promise<ApiStoreOrder[]> {
+    const r = await fetch(`${API_BASE}/store/admin/orders`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getStoreAdminOrders failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return Array.isArray(payload?.items) ? payload.items : [];
+  }
+
+  async saveStoreItem(body: ApiStoreSaveBody): Promise<{ ok: boolean; item: ApiStoreItem }> {
+    const r = await fetch(`${API_BASE}/store/admin/items`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`saveStoreItem failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; item: ApiStoreItem };
   }
 
   async syncProductFromProject(body: {
@@ -1584,6 +1777,97 @@ export class ApiClient {
     }
     return {
       files: Array.isArray(payload?.files) ? payload.files : [],
+    };
+  }
+
+  async createStoreImageUploadUrls(
+    body: CreateStoreImageUploadUrlsBody
+  ): Promise<CreateStoreImageUploadUrlsResponse> {
+    const r = await fetch(`${API_BASE}/store/upload-urls`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `createStoreImageUploadUrls failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      files: Array.isArray(payload?.files) ? payload.files : [],
+    };
+  }
+
+  async createRequest(body: CreateRequestBody): Promise<{ ok: boolean; request?: ApiRequestRecord }> {
+    const r = await fetch(`${API_BASE}/requests`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`createRequest failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      request: payload?.request,
+    };
+  }
+
+  async listRequests(query: { status?: string; kind?: string; limit?: number } = {}): Promise<{ ok: boolean; count: number; requests: ApiRequestRecord[] }> {
+    const qs = new URLSearchParams();
+    if (query.status) qs.set("status", query.status);
+    if (query.kind) qs.set("kind", query.kind);
+    if (typeof query.limit === "number") qs.set("limit", String(query.limit));
+    const r = await fetch(`${API_BASE}/admin/requests${qs.toString() ? `?${qs.toString()}` : ""}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`listRequests failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      count: Number(payload?.count) || 0,
+      requests: Array.isArray(payload?.requests) ? payload.requests : [],
+    };
+  }
+
+  async listMyRequests(query: { status?: string; kind?: string; limit?: number } = {}): Promise<{ ok: boolean; count: number; requests: ApiRequestRecord[] }> {
+    const qs = new URLSearchParams();
+    if (query.status) qs.set("status", query.status);
+    if (query.kind) qs.set("kind", query.kind);
+    if (typeof query.limit === "number") qs.set("limit", String(query.limit));
+    const r = await fetch(`${API_BASE}/requests${qs.toString() ? `?${qs.toString()}` : ""}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`listMyRequests failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      count: Number(payload?.count) || 0,
+      requests: Array.isArray(payload?.requests) ? payload.requests : [],
+    };
+  }
+
+  async reviewRequest(body: ReviewRequestBody): Promise<{ ok: boolean; request?: ApiRequestRecord }> {
+    const r = await fetch(`${API_BASE}/admin/requests/review`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`reviewRequest failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      request: payload?.request,
     };
   }
 
@@ -1843,6 +2127,27 @@ export class ApiClient {
       );
     }
     return payload as ApiApplicantDetails;
+  }
+
+  async shortlistApplicant(
+    applicantId: string,
+    body: { shortlistRating: "strong" | "maybe" | "weak" }
+  ): Promise<ApiApplicantDetails> {
+    const r = await fetch(
+      `${API_BASE}/admin/applicants/${encodeURIComponent(applicantId)}/shortlist`,
+      {
+        method: "POST",
+        headers: this.headers(true),
+        body: JSON.stringify(body || {}),
+      }
+    );
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `shortlistApplicant failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return (payload?.applicant || payload) as ApiApplicantDetails;
   }
 
   async sendApplicantRichEmail(
@@ -2241,6 +2546,35 @@ export class ApiClient {
       );
     }
     return payload as ApiMvpRule;
+  }
+
+  async getCreditConfig(): Promise<ApiCreditConfig> {
+    const r = await fetch(`${API_BASE}/gamification/rules/credits`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getCreditConfig failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as ApiCreditConfig;
+  }
+
+  async updateCreditConfig(body: ApiCreditConfig): Promise<ApiCreditConfig> {
+    const r = await fetch(`${API_BASE}/gamification/rules/credits`, {
+      method: "PUT",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `updateCreditConfig failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload as ApiCreditConfig;
   }
 
   async getProgressAdmin(username: string): Promise<GetProgressAdminResponse> {
