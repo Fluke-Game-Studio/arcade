@@ -33,6 +33,7 @@ function normalizePreferences(value: any) {
       weekly_updates: true,
       applicants: true,
       mentions: true,
+      commerce: true,
       system: true,
     },
     in_app: {
@@ -40,6 +41,7 @@ function normalizePreferences(value: any) {
       weekly_updates: true,
       applicants: true,
       mentions: true,
+      commerce: true,
       system: true,
     },
     discord_dm: {
@@ -47,6 +49,7 @@ function normalizePreferences(value: any) {
       weekly_updates: true,
       applicants: false,
       mentions: true,
+      commerce: true,
       system: false,
     },
     discord_channel: {
@@ -54,6 +57,7 @@ function normalizePreferences(value: any) {
       weekly_updates: true,
       applicants: false,
       mentions: false,
+      commerce: false,
       system: false,
     },
   };
@@ -298,6 +302,7 @@ export default function AccountSettingsPanel({
                       { key: "social_media", label: "Social media" },
                       { key: "weekly_updates", label: "Weekly updates" },
                       { key: "applicants", label: "Applicants / admin" },
+                      { key: "commerce", label: "Commerce / wallet" },
                       { key: "system", label: "System" },
                     ].map((row) => (
                       <div key={row.key} style={{ display: "contents" }}>

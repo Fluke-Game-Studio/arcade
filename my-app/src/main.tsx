@@ -13,11 +13,10 @@ import MyTeam from "./pages/MyTeam";
 import AdminWorkspace from "./pages/AdminWorkspace";
 import SuperUser from "./pages/SuperUser";
 import SuperAI from "./pages/SuperAI";
-import SuperAwards from "./pages/SuperAwards";
 import Account from "./pages/Account";
 import Login from "./pages/Login";
+import Store from "./pages/Store";
 import JobsAdmin from "./pages/JobsAdmin";
-import ApiEndpoints from "./pages/ApiEndpoints";
 import ApiEndpointsReadOnly from "./pages/ApiEndpointsReadOnly";
 import WeeklyUpdate from "./pages/WeeklyUpdate";
 import RealtimeIntakePage from "./pages/RealtimeIntakePage";
@@ -27,8 +26,9 @@ import CustomersAdmin from "./pages/CustomersAdmin";
 import SocialMediaAdmin from "./pages/SocialMediaAdmin";
 import SocialPostStudio from "./pages/SocialPostStudio";
 import SocialMediaReviewAdmin from "./pages/SocialMediaReviewAdmin";
-import SocialMediaOrgHub from "./pages/SocialMediaOrgHub";
+import SocialMediaEntry from "./pages/SocialMediaEntry";
 import NotificationsCenter from "./pages/NotificationsCenter";
+import NotificationDetailPage from "./pages/NotificationDetailPage";
 import AppErrorPage from "./pages/AppErrorPage";
 import { UpdatesProvider } from "./pages/UpdatesContext";
 import CharacterTutorialPage from "./pages/CharacterTutorialPage";
@@ -119,21 +119,56 @@ const router = createBrowserRouter([
   {
     errorElement: <AppErrorPage />,
     element: (
-      <Protected roles={["employee", "admin", "super"]}>
+      // "test" is included here (only) so the app shell/navbar still renders
+      // for the test role - each nested page route below keeps its own
+      // roles array, so a "test" user sees a request-access prompt on every
+      // page that doesn't explicitly list "test".
+      <Protected roles={["employee", "admin", "super", "test"]}>
         <App />
       </Protected>
     ),
     children: [
-      { index: true, element: <Home /> },
-      { path: "/employees", element: <Employees /> },
+      {
+        index: true,
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <Home />
+          </Protected>
+        ),
+      },
+      {
+        path: "/employees",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <Employees />
+          </Protected>
+        ),
+      },
       { path: "/organisation", element: <Navigate to="/organisation/employees" replace /> },
-      { path: "/organisation/employees", element: <Employees initialView="list" /> },
-      { path: "/organisation/org-chart", element: <Employees initialView="org" /> },
+      {
+        path: "/organisation/employees",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <Employees initialView="list" />
+          </Protected>
+        ),
+      },
+      {
+        path: "/organisation/org-chart",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <Employees initialView="org" />
+          </Protected>
+        ),
+      },
       {
         path: "/organisation/social-media",
         element: (
-          <Protected roles={["employee", "admin", "super"]}>
-            <SocialMediaOrgHub />
+          // "test" included temporarily for the LinkedIn API review demo -
+          // SocialMediaEntry shows a minimal post-only page for that role
+          // instead of the full hub. Remove "test" here once done.
+          <Protected roles={["employee", "admin", "super", "test"]}>
+            <SocialMediaEntry />
           </Protected>
         ),
       },
@@ -146,6 +181,14 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: "/account/notifications/:notificationId",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <NotificationDetailPage />
+          </Protected>
+        ),
+      },
+      {
         path: "/organisation/my-team",
         element: (
           <Protected roles={["employee", "admin", "super"]}>
@@ -153,7 +196,22 @@ const router = createBrowserRouter([
           </Protected>
         ),
       },
-      { path: "/account", element: <Account /> },
+      {
+        path: "/account",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <Account />
+          </Protected>
+        ),
+      },
+      {
+        path: "/store",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <Store />
+          </Protected>
+        ),
+      },
       { path: "/social/posts", element: <Navigate to="/organisation/social-media" replace /> },
 
       {
@@ -213,7 +271,7 @@ const router = createBrowserRouter([
         path: "/admin/endpoints",
         element: (
           <Protected roles={["super"]}>
-            <ApiEndpoints />
+            <SuperUser initialTab="endpoints" />
           </Protected>
         ),
       },
@@ -226,8 +284,22 @@ const router = createBrowserRouter([
         ),
       },
 
-      { path: "/updates/new", element: <WeeklyUpdate /> },
-      { path: "/updates/ai-intake", element: <RealtimeIntakePage /> },
+      {
+        path: "/updates/new",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <WeeklyUpdate />
+          </Protected>
+        ),
+      },
+      {
+        path: "/updates/ai-intake",
+        element: (
+          <Protected roles={["employee", "admin", "super"]}>
+            <RealtimeIntakePage />
+          </Protected>
+        ),
+      },
 
       {
         path: "/updates/board",
@@ -302,7 +374,15 @@ const router = createBrowserRouter([
         path: "/super/awards",
         element: (
           <Protected roles={["super"]}>
-            <SuperAwards />
+            <SuperUser initialTab="awards" />
+          </Protected>
+        ),
+      },
+      {
+        path: "/super/wallet",
+        element: (
+          <Protected roles={["super"]}>
+            <SuperUser initialTab="wallet" />
           </Protected>
         ),
       },

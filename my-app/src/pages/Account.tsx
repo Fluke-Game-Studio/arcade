@@ -5,11 +5,13 @@ import AccountProfileSecurity from "../components/account/AccountProfileSecurity
 import AccountMyUpdates from "../components/account/AccountMyUpdates";
 import AccountGamification from "../components/account/AccountGamification";
 import AccountSettingsPanel from "../components/account/AccountSettingsPanel";
+import AccountWallet from "../components/account/AccountWallet";
+import AccountMyOrders from "../components/account/AccountMyOrders";
 import AwardUnlockModal from "../components/account/AwardUnlockModal";
 
 declare const M: any;
 
-type AccountTabKey = "updates" | "details" | "password" | "gamification" | "downloads" | "settings";
+type AccountTabKey = "updates" | "details" | "password" | "gamification" | "downloads" | "wallet" | "orders" | "settings";
 
 export default function Account() {
   const { user, api, refreshSession } = useAuth();
@@ -200,44 +202,6 @@ export default function Account() {
     window.addEventListener("message", onDiscordMessage);
     return () => window.removeEventListener("message", onDiscordMessage);
   }, [api, refreshSession]);
-
-  function TabButton({
-    tab,
-    icon,
-    label,
-  }: {
-    tab: AccountTabKey;
-    icon: string;
-    label: string;
-  }) {
-    const active = activeTab === tab;
-    return (
-      <button
-        type="button"
-        onClick={() => setActiveTab(tab)}
-        style={{
-          border: active ? "1px solid rgba(37,99,235,0.22)" : "1px solid #dbe5ec",
-          background: active
-            ? "linear-gradient(135deg, rgba(37,99,235,0.10), rgba(255,255,255,1))"
-            : "#fff",
-          color: active ? "#1d4ed8" : "#334155",
-          borderRadius: 14,
-          padding: "10px 14px",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          fontWeight: 900,
-          cursor: "pointer",
-          boxShadow: active ? "0 10px 20px rgba(37,99,235,0.08)" : "none",
-        }}
-      >
-        <i className="material-icons" style={{ fontSize: 18 }}>
-          {icon}
-        </i>
-        {label}
-      </button>
-    );
-  }
 
   return (
     <main className="container" style={{ paddingTop: 22, maxWidth: 1080 }}>
@@ -686,22 +650,46 @@ export default function Account() {
 
         .accountTabBar{
           display:flex;
+          align-items:center;
+          justify-content:flex-start;
           gap:10px;
           flex-wrap:wrap;
           margin: 0 0 14px 0;
+          padding: 6px;
+          border: 1px solid #dbe5ef;
+          border-radius: 999px;
+          background: #f8fbff;
+          width: fit-content;
+          max-width: 100%;
+        }
+        .suTabBtn {
+          border: 0;
+          border-radius: 999px;
+          padding: 9px 14px;
+          font-weight: 900;
+          font-size: 13px;
+          cursor: pointer;
+          color: #334155;
+          background: transparent;
+          transition: all .15s ease;
+        }
+        .suTabBtn.active {
+          background: rgba(59,130,246,.16);
+          color: #1d4ed8;
+          box-shadow: inset 0 0 0 1px rgba(59,130,246,.12);
         }
       `}</style>
 
       <div className="accWrap">
-        <div className="accountTabBar" style={{ alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
-            <TabButton tab="updates" icon="history" label="My Updates" />
-            <TabButton tab="details" icon="badge" label="Edit Details" />
-            <TabButton tab="password" icon="lock" label="Edit Password" />
-            <TabButton tab="gamification" icon="emoji_events" label="Achievements" />
-            <TabButton tab="downloads" icon="download" label="Customer Downloads" />
-            <TabButton tab="settings" icon="settings" label="Settings" />
-          </div>
+        <div className="accountTabBar" role="tablist" aria-label="Account tabs">
+          <button type="button" className={`suTabBtn ${activeTab === "updates" ? "active" : ""}`} onClick={() => setActiveTab("updates")}>My Updates</button>
+          <button type="button" className={`suTabBtn ${activeTab === "details" ? "active" : ""}`} onClick={() => setActiveTab("details")}>Edit Details</button>
+          <button type="button" className={`suTabBtn ${activeTab === "password" ? "active" : ""}`} onClick={() => setActiveTab("password")}>Edit Password</button>
+          <button type="button" className={`suTabBtn ${activeTab === "gamification" ? "active" : ""}`} onClick={() => setActiveTab("gamification")}>Achievements</button>
+          <button type="button" className={`suTabBtn ${activeTab === "downloads" ? "active" : ""}`} onClick={() => setActiveTab("downloads")}>Customer Downloads</button>
+          <button type="button" className={`suTabBtn ${activeTab === "wallet" ? "active" : ""}`} onClick={() => setActiveTab("wallet")}>Wallet</button>
+          <button type="button" className={`suTabBtn ${activeTab === "orders" ? "active" : ""}`} onClick={() => setActiveTab("orders")}>My Orders</button>
+          <button type="button" className={`suTabBtn ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>Settings</button>
         </div>
 
         {activeTab === "updates" && <AccountMyUpdates api={api} />}
@@ -805,6 +793,10 @@ export default function Account() {
             </div>
           </section>
         )}
+
+        {activeTab === "wallet" && <AccountWallet api={api} user={user} />}
+
+        {activeTab === "orders" && <AccountMyOrders api={api} />}
 
         {activeTab === "settings" && (
           <AccountSettingsPanel

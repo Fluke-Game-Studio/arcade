@@ -1,10 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import TimeSheet from "../components/Timesheet";
+import FgcAmount from "../components/credits/FgcAmount";
+import FrozenFgcAmount from "../components/credits/FrozenFgcAmount";
 import { useUpdates, startOfWeekMonday, toISODate } from "./UpdatesContext";
 import { useAuth } from "../auth/AuthContext";
 import type { UpdateSubmission } from "./UpdatesContext";
 import type { ApiProject } from "../api/types/projects";
+import type { ApiCreditConfig } from "../api/types/gamification";
 import type {
   PresignedUploadItem,
   SubmitUpdateResponse,
@@ -85,7 +88,7 @@ function MetaChip({
 }: {
   icon: string;
   label: string;
-  value: string;
+  value: React.ReactNode;
   tint: string;
   color: string;
 }) {
@@ -210,6 +213,7 @@ export default function WeeklyUpdate() {
 
   const mondayISO = useMemo(() => toISODate(startOfWeekMonday(new Date())), []);
   const [weekStart, setWeekStart] = useState(mondayISO);
+  const isBackdatedWeek = Boolean(weekStart && mondayISO && weekStart !== mondayISO);
 
   const [accomplishments, setAccomplishments] = useState("");
   const [blockers, setBlockers] = useState("");
@@ -222,8 +226,14 @@ export default function WeeklyUpdate() {
   const [hours, setHours] = useState<Record<string, number>>({});
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [submissionPhase, setSubmissionPhase] = useState<"idle" | "validating" | "success" | "error">("idle");
+  const [, setSubmissionTick] = useState(0);
+  const [, setSubmissionMessage] = useState("");
+  const validationTimerRef = useRef<number | null>(null);
+  const successTimerRef = useRef<number | null>(null);
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [projectId, setProjectId] = useState<string>("");
+  const [creditConfig, setCreditConfig] = useState<ApiCreditConfig | null>(null);
   const [jiraTickets, setJiraTickets] = useState<
     Array<{ key: string; summary?: string; status?: string; assignee?: string; updated?: string }>
   >([]);
@@ -231,12 +241,140 @@ export default function WeeklyUpdate() {
   const [jiraLoading, setJiraLoading] = useState(false);
   const [jiraError, setJiraError] = useState("");
   const [jiraInfo, setJiraInfo] = useState("");
+  const [weeklyBlockOpen, setWeeklyBlockOpen] = useState(false);
+  const [bonusBlockOpen, setBonusBlockOpen] = useState(false);
+  const [penaltyBlockOpen, setPenaltyBlockOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0);
   const ALL_ASSIGNED_PROJECTS = "__all_assigned__";
+  const wizardSteps = [
+    { title: "Welcome & Details", icon: "info", subtitle: "Review the reward summary and the submission context before you start." },
+    { title: "Activity Update", icon: "assignment_turned_in", subtitle: "Capture accomplishments, blockers, Jira links, and supporting files." },
+    { title: "TimeSheet Update", icon: "schedule", subtitle: "Log the day-by-day hours for the selected week." },
+    { title: "Retro Update", icon: "history_edu", subtitle: "Add worked, didn’t work, and improve notes before submitting." },
+    { title: "Review & Submit", icon: "send", subtitle: "Confirm everything and send the weekly update." },
+  ] as const;
+  const currentWizardStep = wizardSteps[wizardStep] || wizardSteps[0];
+  const lastWizardStep = wizardSteps.length - 1;
 
   const totalHours = Object.values(hours).reduce(
     (a, b) => a + (Number(b) || 0),
     0
   );
+
+  function goNextStep() {
+    setWizardStep((current) => Math.min(wizardSteps.length - 1, current + 1));
+  }
+
+  function goBackStep() {
+    setWizardStep((current) => Math.max(0, current - 1));
+  }
+
+  const weeklyCreditPreview = useMemo(() => {
+    const cfg = creditConfig?.weeklyUpdate || {};
+    const base = Number(cfg.base ?? 20) || 0;
+    const retro = Number(cfg.retro ?? 20) || 0;
+    const fileUpload = Number(cfg.fileUpload ?? 10) || 0;
+    const timesheet = Number(cfg.timesheet ?? 10) || 0;
+    const aiBonus = Number(cfg.aiBonus ?? cfg.webrtcBonus ?? 25) || 0;
+    const awardsBonus = Number(
+      (cfg as any).awardsBonus ??
+        (cfg as any).awardBonus ??
+        (cfg as any).awards?.creditAmount ??
+        (cfg as any).awards?.amount ??
+        0
+    ) || 0;
+    const missingUpdatePenalty = Number(cfg.missingUpdatePenalty ?? 200);
+
+    const retroCount = [worked, didnt, improve].reduce((sum, list) => {
+      return sum + list.map((x) => String(x || "").trim()).filter(Boolean).length;
+    }, 0);
+    const hasFiles = selectedFiles.length > 0;
+    const hasTimesheet = Object.values(hours).some((h) => Number(h) > 0);
+
+    const updateItems: Array<{ label: string; amount: number }> = [
+      { label: "Weekly update", amount: base },
+      { label: "Retro", amount: retroCount > 0 ? retro : 0 },
+      { label: "Timesheet", amount: hasTimesheet ? timesheet : 0 },
+    ];
+    const extraFrozenItems: Array<{ label: string; amount: number }> = [
+      { label: "AI submit", amount: aiBonus },
+      { label: "File upload", amount: hasFiles ? fileUpload : 0 },
+      { label: "Awards won", amount: awardsBonus },
+    ];
+
+    const updateTotal = updateItems.reduce((sum, item) => sum + item.amount, 0);
+    const extraFrozenTotal = extraFrozenItems.reduce((sum, item) => sum + item.amount, 0);
+    const frozenTotal = updateTotal + extraFrozenTotal;
+    return {
+      updateItems,
+      extraFrozenItems,
+      updateTotal,
+      extraFrozenTotal,
+      frozenTotal,
+      total: updateTotal,
+      spendableItems: updateItems,
+      spendableTotal: updateTotal,
+      frozenItems: extraFrozenItems,
+      aiBonus,
+      awardsBonus,
+      missingUpdatePenalty,
+    };
+  }, [creditConfig, worked, didnt, improve, selectedFiles, hours]);
+
+  const weeklyRuleSummary = useMemo(() => {
+    const cfg = creditConfig?.weeklyUpdate || {};
+    const base = Number(cfg.base ?? 20) || 0;
+    const retro = Number(cfg.retro ?? 20) || 0;
+    const fileUpload = Number(cfg.fileUpload ?? 10) || 0;
+    const timesheet = Number(cfg.timesheet ?? 10) || 0;
+    const aiBonus = Number(cfg.aiBonus || cfg.webrtcBonus || 25) || 0;
+    const awardsBonus = Number(
+      (cfg as any).awardsBonus ??
+        (cfg as any).awardBonus ??
+        (cfg as any).awards?.creditAmount ??
+        (cfg as any).awards?.amount ??
+        0
+    ) || 0;
+    const missingUpdatePenalty = Number(cfg.missingUpdatePenalty ?? 200);
+    return {
+      weeklyRows: [
+        { label: "Weekly update", amount: base, note: "Frozen weekly reward" },
+        { label: "Retro", amount: retro, note: "Frozen when the retro step is completed" },
+        { label: "Timesheet", amount: timesheet, note: "Frozen when the timesheet step is completed" },
+      ],
+      frozenBonusRows: [
+        { label: "AI submit", amount: aiBonus, note: "Frozen bonus for AI-assisted submission" },
+        { label: "File upload", amount: fileUpload, note: "Frozen bonus for supporting files" },
+      ],
+      awardRows: [
+        { label: "Awards won", amount: awardsBonus, note: "Spendable reward from awards and achievements" },
+      ],
+      weeklyTotal: base + retro + timesheet,
+      frozenBonusTotal: aiBonus + fileUpload,
+      awardTotal: awardsBonus,
+      missingUpdatePenalty,
+    };
+  }, [creditConfig]);
+
+  const displayedCreditPreview = useMemo(() => {
+    if (!isBackdatedWeek) return weeklyCreditPreview;
+    const lateMultiplier = 0.4;
+    const scaleAmount = (value: number) => Math.max(1, Math.round(Number(value || 0) * lateMultiplier));
+    return {
+      ...weeklyCreditPreview,
+      updateItems: weeklyCreditPreview.updateItems
+        .map((item) => ({ ...item, amount: scaleAmount(item.amount) }))
+        .filter((item) => item.amount > 0),
+      extraFrozenItems: weeklyCreditPreview.extraFrozenItems
+        .map((item) => ({ ...item, amount: scaleAmount(item.amount) }))
+        .filter((item) => item.amount > 0),
+      updateTotal: scaleAmount(weeklyCreditPreview.updateTotal),
+      extraFrozenTotal: scaleAmount(weeklyCreditPreview.extraFrozenTotal),
+      frozenTotal: scaleAmount(weeklyCreditPreview.frozenTotal),
+      total: scaleAmount(weeklyCreditPreview.total),
+      spendableTotal: scaleAmount(weeklyCreditPreview.spendableTotal),
+    };
+  }, [isBackdatedWeek, weeklyCreditPreview]);
 
   useEffect(() => {
     try {
@@ -266,6 +404,21 @@ export default function WeeklyUpdate() {
       }
     })();
   }, [api, user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await api.getCreditConfig?.();
+        if (!cancelled) setCreditConfig(cfg || null);
+      } catch {
+        if (!cancelled) setCreditConfig(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   useEffect(() => {
     const pid = String(projectId || "").trim();
@@ -494,9 +647,7 @@ export default function WeeklyUpdate() {
     return uploadedFiles;
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
+  async function performWeeklyUpdateSubmission() {
     if (!weekStart) {
       M?.toast?.({ html: "Please select week start (Monday)." });
       return;
@@ -523,16 +674,14 @@ export default function WeeklyUpdate() {
       createdAt: new Date().toISOString(),
     };
 
-    try {
-      setSubmitting(true);
+    const uploadedFiles = await uploadSelectedFilesToS3();
 
-      const uploadedFiles = await uploadSelectedFilesToS3();
-
-      const submitResp: SubmitUpdateResponse = await api.submitUpdate({
+    const submitResp: SubmitUpdateResponse = await api.submitUpdate({
         weekStart,
         accomplishments,
         blockers,
         next,
+        submissionSource: "manual",
         retrospective: submission.retrospective,
         timesheet,
         uploadedFiles,
@@ -549,50 +698,113 @@ export default function WeeklyUpdate() {
           })),
       });
 
-      save({
-        ...submission,
-        attachments: uploadedFiles,
-        uploadStatus:
-          submitResp?.uploadStatus || (uploadedFiles.length ? "queued" : "none"),
-        driveFolderLink: submitResp?.driveFolderLink || "",
-      } as any);
+    save({
+      ...submission,
+      attachments: uploadedFiles,
+      uploadStatus:
+        submitResp?.uploadStatus || (uploadedFiles.length ? "queued" : "none"),
+      driveFolderLink: submitResp?.driveFolderLink || "",
+    } as any);
 
-      if (user) {
-        try {
-          await api.updateUser({
-            username: user.username,
-            employee_last_update_week: weekStart,
-            employee_last_update_hours: String(totalHours),
-            employee_last_update_summary: accomplishments.slice(0, 140),
-          });
-        } catch (err) {
-          console.warn("Profile update failed:", err);
-        }
+    if (user) {
+      try {
+        await api.updateUser({
+          username: user.username,
+          employee_last_update_week: weekStart,
+          employee_last_update_hours: String(totalHours),
+          employee_last_update_summary: accomplishments.slice(0, 140),
+        });
+      } catch (err) {
+        console.warn("Profile update failed:", err);
       }
-
-      M?.toast?.({
-        html:
-          submitResp?.uploadStatus === "queued"
-            ? "Update submitted. Files are being processed in background."
-            : "Update submitted!",
-      });
-
-      setAccomplishments("");
-      setBlockers("");
-      setNext("");
-      setWorked([""]);
-      setDidnt([""]);
-      setImprove([""]);
-      setHours({});
-      setSelectedFiles([]);
-    } catch (err: any) {
-      console.error("submitUpdate failed", err);
-      M?.toast?.({
-        html: `Failed to submit. ${err?.message || "Please try again."}`,
-      });
-    } finally {
-      setSubmitting(false);
     }
+
+    M?.toast?.({
+      html:
+        submitResp?.uploadStatus === "queued"
+          ? "Update submitted. Files are being processed in background."
+          : "Update submitted!",
+    });
+
+    setAccomplishments("");
+    setBlockers("");
+    setNext("");
+    setWorked([""]);
+    setDidnt([""]);
+    setImprove([""]);
+    setHours({});
+    setSelectedFiles([]);
+  }
+
+  function clearSubmissionTimers() {
+    if (validationTimerRef.current) {
+      window.clearInterval(validationTimerRef.current);
+      validationTimerRef.current = null;
+    }
+    if (successTimerRef.current) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      clearSubmissionTimers();
+    };
+  }, []);
+
+  async function submitWeeklyUpdate() {
+    if (submitting || submissionPhase !== "idle") return;
+    if (!weekStart) {
+      M?.toast?.({ html: "Please select week start (Monday)." });
+      return;
+    }
+
+    setSubmitting(true);
+    setSubmissionPhase("validating");
+    setSubmissionTick(0);
+    setSubmissionMessage("AI is validating your update.");
+    clearSubmissionTimers();
+
+    const validationDuration = 5000 + Math.floor(Math.random() * 5001);
+    const validationStepCount = 4;
+    const tickDuration = Math.max(900, Math.floor(validationDuration / validationStepCount));
+
+    validationTimerRef.current = window.setInterval(() => {
+      setSubmissionTick((current) => Math.min(validationStepCount - 1, current + 1));
+    }, tickDuration);
+
+    successTimerRef.current = window.setTimeout(async () => {
+      clearSubmissionTimers();
+      setSubmissionPhase("success");
+      setSubmissionMessage("AI validated your update. Granting rewards now...");
+
+      try {
+      await new Promise((resolve) => window.setTimeout(resolve, 800));
+      await performWeeklyUpdateSubmission();
+      setWizardStep(0);
+      setSubmissionMessage("Success. Your update has been saved and rewards have been granted.");
+    } catch (err: any) {
+        console.error("submitUpdate failed", err);
+        setSubmissionPhase("error");
+        setSubmissionMessage(`Failed to submit. ${err?.message || "Please try again."}`);
+        M?.toast?.({
+          html: `Failed to submit. ${err?.message || "Please try again."}`,
+        });
+      } finally {
+        setSubmitting(false);
+        window.setTimeout(() => {
+          setSubmissionPhase("idle");
+          setSubmissionTick(0);
+          setSubmissionMessage("");
+        }, 2200);
+      }
+    }, validationDuration);
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await submitWeeklyUpdate();
   }
 
   const totalFileBytes = selectedFiles.reduce(
@@ -681,497 +893,998 @@ export default function WeeklyUpdate() {
                   tint="rgba(34,197,94,.12)"
                   color="#166534"
                 />
-              </div>
-            </div>
-
-            <div className="row" style={{ marginBottom: 0, marginTop: 14 }}>
-              <div className="col s12 m6">
-                <div className="input-field" style={{ marginTop: 0 }}>
-                  <input
-                    id="weekStart"
-                    type="date"
-                    value={weekStart}
-                    onChange={(e) => setWeekStart(e.target.value)}
-                    style={{ borderRadius: 12 }}
-                  />
-                  <label className="active" htmlFor="weekStart">
-                    Week Start (Monday)
-                  </label>
-                  <span className="helper-text">
-                    Choose the Monday of the week you are reporting
-                  </span>
-                </div>
-              </div>
-
-              <div className="col s12 m6">
-                <div className="input-field" style={{ marginTop: 0 }}>
-                  <input
-                    id="employeeName"
-                    value={user?.name || user?.username || ""}
-                    readOnly
-                  />
-                  <label className="active" htmlFor="employeeName">
-                    Employee
-                  </label>
-                </div>
-              </div>
-
-              <div className="col s12 m6">
-                <div className="input-field" style={{ marginTop: 0 }}>
-                  <select
-                    className="browser-default"
-                    value={projectId}
-                    onChange={(e) => setProjectId(String(e.target.value || ""))}
-                    style={{ borderRadius: 12 }}
-                  >
-                    <option value="">Select project</option>
-                    <option value={ALL_ASSIGNED_PROJECTS}>All Assigned Projects</option>
-                    {projects.map((p) => (
-                      <option key={String(p.projectId)} value={String(p.projectId)}>
-                        {String(p.name || p.projectId)} ({String(p.projectId)})
-                      </option>
-                    ))}
-                  </select>
-                  <span className="helper-text">Project used for update and Jira ticket lookup.</span>
-                </div>
+                <MetaChip
+                  icon="stars"
+                  label="Frozen award"
+                  value={
+                    <FgcAmount
+                      amount={displayedCreditPreview.updateTotal}
+                      divisor={1}
+                      fractionDigits={0}
+                      style={{ fontSize: 12, fontWeight: 900, color: "#b45309" }}
+                      iconSize={30}
+                    />
+                  }
+                  tint="rgba(245,158,11,.14)"
+                  color="#b45309"
+                />
               </div>
             </div>
           </div>
 
           <div className="card-content" style={{ padding: 18 }}>
-            <div style={sectionCard}>
-              <SectionHeader
-                icon="assignment_turned_in"
-                title="Activity Summary"
-                subtitle="These appear in Activity Report. Keep them crisp, scannable, and manager-friendly."
-              />
-
-              <div className="row" style={{ marginBottom: 10 }}>
-                <div className="col s12">
-                  <label style={{ fontWeight: 800, color: "#0f172a", display: "block", marginBottom: 8 }}>
-                    Jira Tickets (optional)
-                  </label>
-                  <div
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${wizardSteps.length}, minmax(0, 1fr))`,
+                gap: 10,
+                marginBottom: 14,
+              }}
+            >
+              {wizardSteps.map((step, index) => {
+                const active = index === wizardStep;
+                const done = index < wizardStep;
+                return (
+                  <button
+                    key={step.title}
+                    type="button"
+                    onClick={() => setWizardStep(index)}
                     style={{
-                      border: "1px solid rgba(148,163,184,.25)",
-                      borderRadius: 12,
-                      padding: 10,
-                      minHeight: 56,
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 8,
-                      background: "#fff",
+                      textAlign: "left",
+                      borderRadius: 18,
+                      border: `1px solid ${
+                        active
+                          ? "rgba(37,99,235,.36)"
+                          : done
+                          ? "rgba(16,185,129,.30)"
+                          : "rgba(148,163,184,.18)"
+                      }`,
+                      background: active
+                        ? "linear-gradient(180deg, rgba(239,246,255,.98) 0%, rgba(255,255,255,.98) 100%)"
+                        : done
+                        ? "linear-gradient(180deg, rgba(240,253,244,.96) 0%, rgba(255,255,255,.98) 100%)"
+                        : "rgba(255,255,255,.96)",
+                      padding: 14,
+                      cursor: "pointer",
+                      boxShadow: active ? "0 10px 26px rgba(37,99,235,.10)" : "none",
+                      minHeight: 104,
                     }}
                   >
-                    {jiraTickets.map((t) => {
-                      const key = String(t.key || "").trim().toUpperCase();
-                      if (!key) return null;
-                      const selected = selectedJiraTicketKeys.includes(key);
-                      const summary = String(t.summary || "").trim();
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          title={summary || key}
-                          onClick={() => {
-                            toggleJiraTicket(key);
-                            tagJiraInAccomplishments(key);
-                          }}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 999,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: active
+                            ? "#2563eb"
+                            : done
+                            ? "#16a34a"
+                            : "#e2e8f0",
+                          color: active || done ? "#fff" : "#475569",
+                          fontWeight: 1000,
+                          fontSize: 12,
+                          flex: "0 0 auto",
+                        }}
+                      >
+                        {done ? <i className="material-icons" style={{ fontSize: 16 }}>check</i> : index + 1}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <div
                           style={{
-                            border: selected
-                              ? "1px solid rgba(16,185,129,.45)"
-                              : "1px solid rgba(59,130,246,.32)",
-                            background: selected
-                              ? "rgba(16,185,129,.14)"
-                              : "rgba(59,130,246,.08)",
-                            color: selected ? "#065f46" : "#1d4ed8",
-                            borderRadius: 999,
-                            padding: "6px 10px",
-                            fontWeight: 900,
-                            fontSize: 12,
-                            lineHeight: 1,
-                            cursor: "pointer",
+                            fontSize: 11,
+                            fontWeight: 1000,
+                            letterSpacing: ".08em",
+                            textTransform: "uppercase",
+                            color: active ? "#1d4ed8" : done ? "#166534" : "#64748b",
                           }}
                         >
-                          {key}
-                        </button>
-                      );
-                    })}
-                    {!jiraLoading && !jiraTickets.length && (
-                      <span style={{ color: "#64748b", fontSize: 12 }}>
-                        No tickets available.
-                      </span>
+                          Step {index + 1} of {wizardSteps.length}
+                        </div>
+                        <div style={{ fontSize: 15, fontWeight: 950, color: "#0f172a", marginTop: 2 }}>
+                          {step.title}
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        color: "#64748b",
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {step.subtitle}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {isBackdatedWeek ? (
+              <div
+                style={{
+                  marginBottom: 14,
+                  padding: "12px 14px",
+                  borderRadius: 16,
+                  border: "1px solid rgba(245,158,11,.28)",
+                  background: "rgba(255,247,237,.95)",
+                  color: "#92400e",
+                  fontWeight: 800,
+                  lineHeight: 1.5,
+                }}
+              >
+                This update is for an earlier week. It will still save, but it only earns 40% of the normal update credits and does not add to streak release for that week.
+              </div>
+            ) : null}
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: ".08em", textTransform: "uppercase", color: "#64748b" }}>
+                  {currentWizardStep.title}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color: "#0f172a" }}>
+                  {currentWizardStep.subtitle}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => navigate("/updates/ai-intake?ctx=weekly_update")}
+                style={{ borderRadius: 999, fontWeight: 800 }}
+              >
+                <i className="material-icons left">headset_mic</i>
+                Try The AI Way To Submit
+              </button>
+            </div>
+
+            {wizardStep === 0 && (
+              <>
+                <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+                  <div
+                    style={{
+                      borderRadius: 18,
+                      border: "1px solid rgba(245,158,11,.18)",
+                      background: "linear-gradient(180deg, rgba(255,251,235,.98) 0%, rgba(255,255,255,.98) 100%)",
+                      padding: 14,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setWeeklyBlockOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: ".08em", textTransform: "uppercase", color: "#b45309" }}>
+                            Block 1
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color: "#92400e" }}>
+                            Current weekly reward split
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                            Weekly update rewards move into Frozen FGC first.
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 1000, color: "#b45309" }}>
+                          <FrozenFgcAmount
+                            amount={displayedCreditPreview.updateTotal}
+                            divisor={1}
+                            fractionDigits={0}
+                            style={{ fontWeight: 1000, color: "#b45309" }}
+                            iconSize={26}
+                          />
+                          <i className="material-icons" style={{ color: "#b45309" }}>
+                            {weeklyBlockOpen ? "expand_less" : "expand_more"}
+                          </i>
+                        </div>
+                      </div>
+                    </button>
+                    {weeklyBlockOpen && (
+                      <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                        {displayedCreditPreview.updateItems.map((item) => (
+                          <div
+                            key={item.label}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr auto",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "10px 12px",
+                              borderRadius: 12,
+                              background: "rgba(255,255,255,.92)",
+                              border: "1px solid rgba(245,158,11,.10)",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#7c2d12", fontWeight: 900, minWidth: 0 }}>
+                              <span style={{ width: 10, height: 10, borderRadius: 999, background: "#f59e0b", flex: "0 0 auto" }} />
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ minWidth: 0 }}>{item.label}</div>
+                                <div style={{ fontSize: 11, color: "#8a4a11", fontWeight: 700, marginTop: 2 }}>
+                                  {item.label === "Weekly update"
+                                    ? "Base weekly reward"
+                                    : item.label === "Retro"
+                                    ? "Added when the retro step is completed"
+                                    : "Added when the timesheet step is completed"}
+                                </div>
+                              </div>
+                            </div>
+                            <FrozenFgcAmount
+                              amount={item.amount}
+                              divisor={1}
+                              fractionDigits={0}
+                              style={{ fontWeight: 1000, color: "#b45309", justifySelf: "end" }}
+                              iconSize={22}
+                            />
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <div className="helper-text">
-                    {jiraLoading
-                      ? "Loading Jira tickets..."
-                      : jiraError
-                      ? jiraError
-                      : jiraTickets.length
-                      ? `${jiraTickets.length} ticket(s) available. Click chips to select and auto-tag in Accomplishments.${jiraInfo ? ` ${jiraInfo}` : ""}`
-                      : "No Jira tickets found or Jira not configured for this project."}
-                  </div>
-                </div>
-              </div>
 
-              <div className="row" style={{ marginBottom: 0 }}>
-                <div className="col s12">
-                  <div className="input-field">
-                    <textarea
-                      id="accomplishments"
-                      className="materialize-textarea"
-                      data-length={600}
-                      value={accomplishments}
-                      onChange={(e) => setAccomplishments(e.target.value)}
-                      placeholder="- Merged PR #142: combat tweaks&#10;- Completed EQS heatmap prototype"
+                  <div
+                    style={{
+                      borderRadius: 18,
+                      border: "1px solid rgba(59,130,246,.18)",
+                      background: "linear-gradient(180deg, rgba(239,246,255,.98) 0%, rgba(255,255,255,.98) 100%)",
+                      padding: 14,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setBonusBlockOpen((v) => !v)}
                       style={{
-                        minHeight: 120,
-                        borderRadius: 14,
+                        width: "100%",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        textAlign: "left",
                       }}
-                    />
-                    <label className="active" htmlFor="accomplishments">
-                      Accomplishments
-                    </label>
-                    <span className="helper-text">
-                      What did you complete?
-                    </span>
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: ".08em", textTransform: "uppercase", color: "#1d4ed8" }}>
+                            Block 2
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color: "#1e40af" }}>
+                            Bonus reward
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                            AI submit and file upload go to Frozen FGC. Awards won go to spendable FGC.
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 1000, color: "#1d4ed8" }}>
+                          <FrozenFgcAmount
+                            amount={weeklyRuleSummary.frozenBonusTotal}
+                            divisor={1}
+                            fractionDigits={0}
+                            style={{ fontWeight: 1000, color: "#1d4ed8" }}
+                            iconSize={26}
+                          />
+                          <i className="material-icons" style={{ color: "#1d4ed8" }}>
+                            {bonusBlockOpen ? "expand_less" : "expand_more"}
+                          </i>
+                        </div>
+                      </div>
+                    </button>
+                    {bonusBlockOpen && (
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {weeklyRuleSummary.frozenBonusRows.map((item) => (
+                          <div
+                            key={item.label}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr auto",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "10px 12px",
+                              borderRadius: 12,
+                              background: "rgba(255,255,255,.92)",
+                              border: "1px solid rgba(59,130,246,.10)",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#1e40af", fontWeight: 900, minWidth: 0 }}>
+                              <span style={{ width: 10, height: 10, borderRadius: 999, background: "#3b82f6", flex: "0 0 auto" }} />
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ minWidth: 0 }}>{item.label}</div>
+                                <div style={{ fontSize: 11, color: "#5973b9", fontWeight: 700, marginTop: 2 }}>{item.note}</div>
+                              </div>
+                            </div>
+                            <FrozenFgcAmount
+                              amount={item.amount}
+                              divisor={1}
+                              fractionDigits={0}
+                              style={{ fontWeight: 1000, color: "#1d4ed8", justifySelf: "end" }}
+                              iconSize={22}
+                            />
+                          </div>
+                        ))}
+                        {weeklyRuleSummary.awardRows.map((item) => (
+                          <div
+                            key={item.label}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr auto",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "10px 12px",
+                              borderRadius: 12,
+                              background: "rgba(239,246,255,.95)",
+                              border: "1px solid rgba(37,99,235,.14)",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#1d4ed8", fontWeight: 900, minWidth: 0 }}>
+                              <span style={{ width: 10, height: 10, borderRadius: 999, background: "#2563eb", flex: "0 0 auto" }} />
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ minWidth: 0 }}>{item.label}</div>
+                                <div style={{ fontSize: 11, color: "#5973b9", fontWeight: 700, marginTop: 2 }}>{item.note}</div>
+                              </div>
+                            </div>
+                            <FgcAmount
+                              amount={item.amount}
+                              divisor={1}
+                              fractionDigits={0}
+                              style={{ fontWeight: 1000, color: "#1d4ed8", justifySelf: "end" }}
+                              iconSize={22}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 18,
+                      border: "1px solid rgba(248,113,113,.20)",
+                      background: "linear-gradient(180deg, rgba(254,242,242,.98) 0%, rgba(255,255,255,.98) 100%)",
+                      padding: 14,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPenaltyBlockOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: ".08em", textTransform: "uppercase", color: "#b91c1c" }}>
+                            Block 3
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color: "#991b1b" }}>
+                            Penalty
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700, lineHeight: 1.55 }}>
+                            Late submissions only receive 40% of the weekly reward split. Missed weeks are deducted from live FGC first, then Frozen FGC if needed.
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 1000, color: "#b91c1c" }}>
+                          <FgcAmount
+                            amount={-weeklyRuleSummary.missingUpdatePenalty}
+                            divisor={1}
+                            fractionDigits={0}
+                            style={{ fontWeight: 1000, color: "#b91c1c" }}
+                            iconSize={26}
+                          />
+                          <i className="material-icons" style={{ color: "#b91c1c" }}>
+                            {penaltyBlockOpen ? "expand_less" : "expand_more"}
+                          </i>
+                        </div>
+                      </div>
+                    </button>
+                    {penaltyBlockOpen && (
+                      <div style={{ marginTop: 12, borderRadius: 14, padding: 12, background: "rgba(255,255,255,.92)", border: "1px solid rgba(248,113,113,.12)", display: "grid", gap: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontWeight: 900, color: "#7f1d1d", fontSize: 13, flexWrap: "wrap" }}>
+                          <span>Late submission rule</span>
+                          <span>40% of weekly rewards</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontWeight: 900, color: "#7f1d1d", fontSize: 13, flexWrap: "wrap" }}>
+                          <span>Missing weekly update penalty</span>
+                          <FgcAmount amount={weeklyRuleSummary.missingUpdatePenalty} divisor={1} fractionDigits={0} style={{ fontWeight: 1000, color: "#b91c1c" }} iconSize={22} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="col s12 m6">
-                  <div className="input-field">
-                    <textarea
-                      id="blockers"
-                      className="materialize-textarea"
-                      data-length={400}
-                      value={blockers}
-                      onChange={(e) => setBlockers(e.target.value)}
-                      placeholder="- Waiting on art export&#10;- Build pipeline flaky on Mac"
-                      style={{ minHeight: 110 }}
-                    />
-                    <label className="active" htmlFor="blockers">
-                      Blockers
+                <div className="row" style={{ marginBottom: 0, marginTop: 14 }}>
+                  <div className="col s12 m6">
+                    <div className="input-field" style={{ marginTop: 0 }}>
+                      <input
+                        id="weekStart"
+                        type="date"
+                        value={weekStart}
+                        onChange={(e) => setWeekStart(e.target.value)}
+                        style={{ borderRadius: 12 }}
+                      />
+                      <label className="active" htmlFor="weekStart">
+                        Week Start (Monday)
+                      </label>
+                      <span className="helper-text">
+                        Choose the Monday of the week you are reporting. Same-week submissions earn full rewards; late submissions earn 40% and do not advance the streak.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="col s12 m6">
+                    <div className="input-field" style={{ marginTop: 0 }}>
+                      <input
+                        id="employeeName"
+                        value={user?.name || user?.username || ""}
+                        readOnly
+                      />
+                      <label className="active" htmlFor="employeeName">
+                        Employee
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="col s12 m6">
+                    <div className="input-field" style={{ marginTop: 0 }}>
+                      <select
+                        className="browser-default"
+                        value={projectId}
+                        onChange={(e) => setProjectId(String(e.target.value || ""))}
+                        style={{ borderRadius: 12 }}
+                      >
+                        <option value="">Select project</option>
+                        <option value={ALL_ASSIGNED_PROJECTS}>All Assigned Projects</option>
+                        {projects.map((p) => (
+                          <option key={String(p.projectId)} value={String(p.projectId)}>
+                            {String(p.name || p.projectId)} ({String(p.projectId)})
+                          </option>
+                        ))}
+                      </select>
+                      <span className="helper-text">Project used for update and Jira ticket lookup.</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {wizardStep === 1 && (
+              <div style={sectionCard}>
+                <SectionHeader
+                  icon="assignment_turned_in"
+                  title="Activity Summary"
+                  subtitle="These appear in Activity Report. Keep them crisp, scannable, and manager-friendly."
+                />
+
+                <div className="row" style={{ marginBottom: 10 }}>
+                  <div className="col s12">
+                    <label style={{ fontWeight: 800, color: "#0f172a", display: "block", marginBottom: 8 }}>
+                      Jira Tickets (optional)
                     </label>
+                    <div
+                      style={{
+                        border: "1px solid rgba(148,163,184,.25)",
+                        borderRadius: 12,
+                        padding: 10,
+                        minHeight: 56,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        background: "#fff",
+                      }}
+                    >
+                      {jiraTickets.map((t) => {
+                        const key = String(t.key || "").trim().toUpperCase();
+                        if (!key) return null;
+                        const selected = selectedJiraTicketKeys.includes(key);
+                        const summary = String(t.summary || "").trim();
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            title={summary || key}
+                            onClick={() => {
+                              toggleJiraTicket(key);
+                              tagJiraInAccomplishments(key);
+                            }}
+                            style={{
+                              border: selected
+                                ? "1px solid rgba(16,185,129,.45)"
+                                : "1px solid rgba(59,130,246,.32)",
+                              background: selected
+                                ? "rgba(16,185,129,.14)"
+                                : "rgba(59,130,246,.08)",
+                              color: selected ? "#065f46" : "#1d4ed8",
+                              borderRadius: 999,
+                              padding: "6px 10px",
+                              fontWeight: 900,
+                              fontSize: 12,
+                              lineHeight: 1,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {key}
+                          </button>
+                        );
+                      })}
+                      {!jiraLoading && !jiraTickets.length && (
+                        <span style={{ color: "#64748b", fontSize: 12 }}>
+                          No tickets available.
+                        </span>
+                      )}
+                    </div>
+                    <div className="helper-text">
+                      {jiraLoading
+                        ? "Loading Jira tickets..."
+                        : jiraError
+                        ? jiraError
+                        : jiraTickets.length
+                        ? `${jiraTickets.length} ticket(s) available. Click chips to select and auto-tag in Accomplishments.${jiraInfo ? ` ${jiraInfo}` : ""}`
+                        : "No Jira tickets found or Jira not configured for this project."}
+                    </div>
                   </div>
                 </div>
 
-                <div className="col s12 m6">
-                  <div className="input-field">
-                    <textarea
-                      id="next"
-                      className="materialize-textarea"
-                      data-length={400}
-                      value={next}
-                      onChange={(e) => setNext(e.target.value)}
-                      placeholder="- Refactor AI budget director&#10;- Write regression tests"
-                      style={{ minHeight: 110 }}
-                    />
-                    <label className="active" htmlFor="next">
-                      Next Week
-                    </label>
+                <div className="row" style={{ marginBottom: 0 }}>
+                  <div className="col s12">
+                    <div className="input-field">
+                      <textarea
+                        id="accomplishments"
+                        className="materialize-textarea"
+                        data-length={600}
+                        value={accomplishments}
+                        onChange={(e) => setAccomplishments(e.target.value)}
+                        placeholder="- Merged PR #142: combat tweaks&#10;- Completed EQS heatmap prototype"
+                        style={{
+                          minHeight: 120,
+                          borderRadius: 14,
+                        }}
+                      />
+                      <label className="active" htmlFor="accomplishments">
+                        Accomplishments
+                      </label>
+                      <span className="helper-text">
+                        What did you complete?
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="col s12 m6">
+                    <div className="input-field">
+                      <textarea
+                        id="blockers"
+                        className="materialize-textarea"
+                        data-length={400}
+                        value={blockers}
+                        onChange={(e) => setBlockers(e.target.value)}
+                        placeholder="- Waiting on art export&#10;- Build pipeline flaky on Mac"
+                        style={{ minHeight: 110 }}
+                      />
+                      <label className="active" htmlFor="blockers">
+                        Blockers
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="col s12 m6">
+                    <div className="input-field">
+                      <textarea
+                        id="next"
+                        className="materialize-textarea"
+                        data-length={400}
+                        value={next}
+                        onChange={(e) => setNext(e.target.value)}
+                        placeholder="- Refactor AI budget director&#10;- Write regression tests"
+                        style={{ minHeight: 110 }}
+                      />
+                      <label className="active" htmlFor="next">
+                        Next Week
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 6 }}>
+                  <SectionHeader
+                    icon="attach_file"
+                    title="Attachments"
+                    subtitle="Files upload directly to S3 from the browser, then the update stores their S3 references for background Drive processing."
+                  />
+
+                  <div
+                    style={{
+                      border: "1px dashed rgba(148,163,184,.35)",
+                      borderRadius: 16,
+                      padding: 16,
+                      background: "rgba(248,250,252,.8)",
+                    }}
+                    onPaste={handleAttachmentPaste}
+                    tabIndex={0}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 12,
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontWeight: 900,
+                            color: "#0f172a",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Add supporting files
+                        </div>
+                        <div style={{ color: "#64748b", fontSize: 13 }}>
+                          Screenshots, docs, videos, zips, builds, or other weekly
+                          evidence.
+                        </div>
+                        <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+                          Tip: click this box and press Ctrl/Cmd+V to paste copied screenshots.
+                        </div>
+                      </div>
+
+                      <label
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          borderRadius: 999,
+                          padding: "10px 14px",
+                          background: "#eff6ff",
+                          color: "#1d4ed8",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          border: "1px solid rgba(59,130,246,.18)",
+                        }}
+                      >
+                        <i className="material-icons" style={{ fontSize: 18 }}>
+                          upload_file
+                        </i>
+                        Choose files
+                        <input
+                          type="file"
+                          multiple
+                          onChange={handleFilePick}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "flex",
+                        gap: 10,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <MetaChip
+                        icon="folder"
+                        label="Files"
+                        value={String(selectedFiles.length)}
+                        tint="rgba(59,130,246,.10)"
+                        color="#1d4ed8"
+                      />
+                      <MetaChip
+                        icon="storage"
+                        label="Total Size"
+                        value={formatBytes(totalFileBytes)}
+                        tint="rgba(34,197,94,.10)"
+                        color="#166534"
+                      />
+                    </div>
+
+                    {!!selectedFiles.length && (
+                      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                        {selectedFiles.map((item) => (
+                          <div
+                            key={item.id}
+                            style={{
+                              borderRadius: 14,
+                              border: "1px solid rgba(148,163,184,.16)",
+                              background: "rgba(255,255,255,.92)",
+                              padding: 12,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 12,
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div
+                                  style={{
+                                    fontWeight: 900,
+                                    color: "#0f172a",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {item.file.name}
+                                </div>
+                                <div
+                                  style={{
+                                    color: "#64748b",
+                                    fontSize: 12,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  {normalizeMimeType(item.file)} •{" "}
+                                  {formatBytes(item.file.size)}
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 10,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontWeight: 800,
+                                    fontSize: 12,
+                                    color:
+                                      item.status === "uploaded"
+                                        ? "#166534"
+                                        : item.status === "failed"
+                                        ? "#b91c1c"
+                                        : item.status === "uploading"
+                                        ? "#1d4ed8"
+                                        : "#475569",
+                                  }}
+                                >
+                                  {item.status === "pending" && "Pending"}
+                                  {item.status === "uploading" &&
+                                    `Uploading ${item.progress}%`}
+                                  {item.status === "uploaded" && "Uploaded to S3"}
+                                  {item.status === "failed" && "Failed"}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() => removeSelectedFile(item.id)}
+                                  disabled={
+                                    submitting || item.status === "uploading"
+                                  }
+                                  style={{
+                                    border: "none",
+                                    background: "rgba(255,255,255,.72)",
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 999,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                    boxShadow:
+                                      "0 6px 14px rgba(15,23,42,.06)",
+                                  }}
+                                >
+                                  <i
+                                    className="material-icons"
+                                    style={{ color: "#dc2626" }}
+                                  >
+                                    close
+                                  </i>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 10,
+                                height: 8,
+                                borderRadius: 999,
+                                background: "rgba(148,163,184,.18)",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${item.progress}%`,
+                                  height: "100%",
+                                  borderRadius: 999,
+                                  background:
+                                    item.status === "failed"
+                                      ? "#ef4444"
+                                      : item.status === "uploaded"
+                                      ? "#22c55e"
+                                      : "#3b82f6",
+                                  transition: "width .18s ease",
+                                }}
+                              />
+                            </div>
+
+                            {item.error && (
+                              <div
+                                style={{
+                                  marginTop: 8,
+                                  color: "#b91c1c",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {item.error}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+            )}
 
-              <div style={{ marginTop: 6 }}>
+            {wizardStep === 2 && (
+              <div style={sectionCard}>
                 <SectionHeader
-                  icon="attach_file"
-                  title="Attachments"
-                  subtitle="Files upload directly to S3 from the browser, then the update stores their S3 references for background Drive processing."
+                  icon="schedule"
+                  title="Timesheet"
+                  subtitle="Capture the actual hours you logged for each day of the selected week."
+                />
+                <TimeSheet
+                  weekStartISO={weekStart}
+                  value={hours}
+                  onChange={setHours}
+                />
+              </div>
+            )}
+
+            {wizardStep === 3 && (
+              <div style={sectionCard}>
+                <SectionHeader
+                  icon="sticky_note_2"
+                  title="Retrospective"
+                  subtitle="Add concise points. These will appear as cards on the Retro Board."
+                />
+
+                <RetroList
+                  title="What worked"
+                  icon="check_circle"
+                  accent="#166534"
+                  tint="linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)"
+                  items={worked}
+                  onChange={setWorked}
+                  onAdd={() => addRow(worked, setWorked)}
+                  onRemove={(i) => removeRow(worked, i, setWorked)}
+                />
+
+                <RetroList
+                  title="What didn’t work"
+                  icon="cancel"
+                  accent="#be123c"
+                  tint="linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%)"
+                  items={didnt}
+                  onChange={setDidnt}
+                  onAdd={() => addRow(didnt, setDidnt)}
+                  onRemove={(i) => removeRow(didnt, i, setDidnt)}
+                />
+
+                <RetroList
+                  title="Improve"
+                  icon="build"
+                  accent="#92400e"
+                  tint="linear-gradient(135deg, #fef9c3 0%, #fde68a 100%)"
+                  items={improve}
+                  onChange={setImprove}
+                  onAdd={() => addRow(improve, setImprove)}
+                  onRemove={(i) => removeRow(improve, i, setImprove)}
+                />
+              </div>
+            )}
+
+            {wizardStep === 4 && (
+              <div style={sectionCard}>
+                <SectionHeader
+                  icon="fact_check"
+                  title="Review & Submit"
+                  subtitle="Check the summary below before sending the weekly update."
                 />
 
                 <div
                   style={{
-                    border: "1px dashed rgba(148,163,184,.35)",
-                    borderRadius: 16,
-                    padding: 16,
-                    background: "rgba(248,250,252,.8)",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 12,
                   }}
-                  onPaste={handleAttachmentPaste}
-                  tabIndex={0}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 12,
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontWeight: 900,
-                          color: "#0f172a",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Add supporting files
-                      </div>
-                      <div style={{ color: "#64748b", fontSize: 13 }}>
-                        Screenshots, docs, videos, zips, builds, or other weekly
-                        evidence.
-                      </div>
-                      <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
-                        Tip: click this box and press Ctrl/Cmd+V to paste copied screenshots.
-                      </div>
-                    </div>
-
-                    <label
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
-                        borderRadius: 999,
-                        padding: "10px 14px",
-                        background: "#eff6ff",
-                        color: "#1d4ed8",
-                        fontWeight: 900,
-                        cursor: "pointer",
-                        border: "1px solid rgba(59,130,246,.18)",
-                      }}
-                    >
-                      <i className="material-icons" style={{ fontSize: 18 }}>
-                        upload_file
-                      </i>
-                      Choose files
-                      <input
-                        type="file"
-                        multiple
-                        onChange={handleFilePick}
-                        style={{ display: "none" }}
+                  <MetaChip
+                    icon="event"
+                    label="Week"
+                    value={weekStart || "—"}
+                    tint="rgba(59,130,246,.10)"
+                    color="#1d4ed8"
+                  />
+                  <MetaChip
+                    icon="schedule"
+                    label="Hours"
+                    value={String(totalHours)}
+                    tint="rgba(34,197,94,.12)"
+                    color="#166534"
+                  />
+                  <MetaChip
+                    icon="folder"
+                    label="Files"
+                    value={String(selectedFiles.length)}
+                    tint="rgba(59,130,246,.10)"
+                    color="#1d4ed8"
+                  />
+                  <MetaChip
+                    icon="stars"
+                    label="Frozen award"
+                    value={
+                      <FgcAmount
+                        amount={displayedCreditPreview.updateTotal}
+                        divisor={1}
+                        fractionDigits={0}
+                        style={{ fontSize: 12, fontWeight: 900, color: "#b45309" }}
+                        iconSize={28}
                       />
-                    </label>
+                    }
+                    tint="rgba(245,158,11,.14)"
+                    color="#b45309"
+                  />
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 14,
+                    borderRadius: 16,
+                    border: "1px solid rgba(148,163,184,.14)",
+                    background: "rgba(248,250,252,.86)",
+                    padding: 14,
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ fontWeight: 900, color: "#0f172a" }}>
+                    Ready to submit the following:
                   </div>
-
-                  <div
-                    style={{
-                      marginTop: 12,
-                      display: "flex",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <MetaChip
-                      icon="folder"
-                      label="Files"
-                      value={String(selectedFiles.length)}
-                      tint="rgba(59,130,246,.10)"
-                      color="#1d4ed8"
-                    />
-                    <MetaChip
-                      icon="storage"
-                      label="Total Size"
-                      value={formatBytes(totalFileBytes)}
-                      tint="rgba(34,197,94,.10)"
-                      color="#166534"
-                    />
+                  <div style={{ color: "#475569", fontSize: 13, lineHeight: 1.7 }}>
+                    • Activity summary and supporting notes<br />
+                    • TimeSheet entries for the selected week<br />
+                    • Retrospective items for worked, didn’t work, and improve<br />
+                    • Any uploaded evidence files
                   </div>
-
-                  {!!selectedFiles.length && (
-                    <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                      {selectedFiles.map((item) => (
-                        <div
-                          key={item.id}
-                          style={{
-                            borderRadius: 14,
-                            border: "1px solid rgba(148,163,184,.16)",
-                            background: "rgba(255,255,255,.92)",
-                            padding: 12,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 12,
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div
-                                style={{
-                                  fontWeight: 900,
-                                  color: "#0f172a",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {item.file.name}
-                              </div>
-                              <div
-                                style={{
-                                  color: "#64748b",
-                                  fontSize: 12,
-                                  marginTop: 2,
-                                }}
-                              >
-                                {normalizeMimeType(item.file)} •{" "}
-                                {formatBytes(item.file.size)}
-                              </div>
-                            </div>
-
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontWeight: 800,
-                                  fontSize: 12,
-                                  color:
-                                    item.status === "uploaded"
-                                      ? "#166534"
-                                      : item.status === "failed"
-                                      ? "#b91c1c"
-                                      : item.status === "uploading"
-                                      ? "#1d4ed8"
-                                      : "#475569",
-                                }}
-                              >
-                                {item.status === "pending" && "Pending"}
-                                {item.status === "uploading" &&
-                                  `Uploading ${item.progress}%`}
-                                {item.status === "uploaded" && "Uploaded to S3"}
-                                {item.status === "failed" && "Failed"}
-                              </span>
-
-                              <button
-                                type="button"
-                                onClick={() => removeSelectedFile(item.id)}
-                                disabled={
-                                  submitting || item.status === "uploading"
-                                }
-                                style={{
-                                  border: "none",
-                                  background: "rgba(255,255,255,.72)",
-                                  width: 38,
-                                  height: 38,
-                                  borderRadius: 999,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  cursor: "pointer",
-                                  boxShadow:
-                                    "0 6px 14px rgba(15,23,42,.06)",
-                                }}
-                              >
-                                <i
-                                  className="material-icons"
-                                  style={{ color: "#dc2626" }}
-                                >
-                                  close
-                                </i>
-                              </button>
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              marginTop: 10,
-                              height: 8,
-                              borderRadius: 999,
-                              background: "rgba(148,163,184,.18)",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: `${item.progress}%`,
-                                height: "100%",
-                                borderRadius: 999,
-                                background:
-                                  item.status === "failed"
-                                    ? "#ef4444"
-                                    : item.status === "uploaded"
-                                    ? "#22c55e"
-                                    : "#3b82f6",
-                                transition: "width .18s ease",
-                              }}
-                            />
-                          </div>
-
-                          {item.error && (
-                            <div
-                              style={{
-                                marginTop: 8,
-                                color: "#b91c1c",
-                                fontSize: 12,
-                                fontWeight: 700,
-                              }}
-                            >
-                              {item.error}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
-            </div>
-
-            <div style={sectionCard}>
-              <SectionHeader
-                icon="sticky_note_2"
-                title="Retrospective"
-                subtitle="Add concise points. These will appear as cards on the Retro Board."
-              />
-
-              <RetroList
-                title="What worked"
-                icon="check_circle"
-                accent="#166534"
-                tint="linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)"
-                items={worked}
-                onChange={setWorked}
-                onAdd={() => addRow(worked, setWorked)}
-                onRemove={(i) => removeRow(worked, i, setWorked)}
-              />
-
-              <RetroList
-                title="What didn’t work"
-                icon="cancel"
-                accent="#be123c"
-                tint="linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%)"
-                items={didnt}
-                onChange={setDidnt}
-                onAdd={() => addRow(didnt, setDidnt)}
-                onRemove={(i) => removeRow(didnt, i, setDidnt)}
-              />
-
-              <RetroList
-                title="Improve"
-                icon="build"
-                accent="#92400e"
-                tint="linear-gradient(135deg, #fef9c3 0%, #fde68a 100%)"
-                items={improve}
-                onChange={setImprove}
-                onAdd={() => addRow(improve, setImprove)}
-                onRemove={(i) => removeRow(improve, i, setImprove)}
-              />
-            </div>
-
-            <div style={sectionCard}>
-              <SectionHeader
-                icon="schedule"
-                title="Timesheet"
-                subtitle="Capture the actual hours you logged for each day of the selected week."
-              />
-              <TimeSheet
-                weekStartISO={weekStart}
-                value={hours}
-                onChange={setHours}
-              />
-            </div>
+            )}
 
             <div
               style={{
@@ -1189,26 +1902,59 @@ export default function WeeklyUpdate() {
               }}
             >
               <div style={{ color: "#475569", fontWeight: 800 }}>
-                Total this week:{" "}
-                <span style={{ color: "#0f172a" }}>{totalHours}</span> hrs
+                Step {wizardStep + 1} of {wizardSteps.length}
               </div>
 
-              <button
-                className="btn"
-                type="submit"
-                disabled={submitting}
-                style={{
-                  borderRadius: 999,
-                  paddingLeft: 18,
-                  paddingRight: 18,
-                  boxShadow: "0 10px 24px rgba(37,99,235,.20)",
-                }}
-              >
-                <i className="material-icons left">
-                  {submitting ? "hourglass_top" : "send"}
-                </i>
-                {submitting ? "Submitting..." : "Submit Weekly Update"}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                {wizardStep > 0 ? (
+                  <button
+                    className="btn-flat"
+                    type="button"
+                    onClick={goBackStep}
+                    style={{
+                      borderRadius: 999,
+                      fontWeight: 900,
+                    }}
+                  >
+                    <i className="material-icons left">arrow_back</i>
+                    Back
+                  </button>
+                ) : null}
+
+                {wizardStep < lastWizardStep ? (
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={goNextStep}
+                    style={{
+                      borderRadius: 999,
+                      paddingLeft: 18,
+                      paddingRight: 18,
+                      boxShadow: "0 10px 24px rgba(37,99,235,.20)",
+                    }}
+                  >
+                    <i className="material-icons left">arrow_forward</i>
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    className="btn"
+                    type="submit"
+                    disabled={submitting}
+                    style={{
+                      borderRadius: 999,
+                      paddingLeft: 18,
+                      paddingRight: 18,
+                      boxShadow: "0 10px 24px rgba(37,99,235,.20)",
+                    }}
+                  >
+                    <i className="material-icons left">
+                      {submitting ? "hourglass_top" : "send"}
+                    </i>
+                    {submitting ? "Submitting..." : "Submit Weekly Update"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

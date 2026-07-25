@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import FgcAmount from "../components/credits/FgcAmount";
 import AwardsStudioNarrative from "../components/AwardsStudioNarrative";
 import type {
   ApiAwardRuleAchievement,
   ApiAwardRuleTrophy,
+  ApiCreditConfig,
 } from "../api";
 import type { ApiUser } from "../api";
 import { TROPHY_ARTWORK_OPTIONS } from "../generated/awardArtworkManifest";
@@ -17,6 +19,7 @@ type AchievementRuleForm = {
   metric: string;
   setKey: string;
   threshold: string;
+  creditAmount: string;
 };
 
 type TrophyRuleForm = {
@@ -27,6 +30,7 @@ type TrophyRuleForm = {
   imageUrl: string;
   achievementSetKey: string;
   achievementThreshold: string;
+  creditAmount: string;
 };
 
 function safeStr(v: unknown) {
@@ -76,6 +80,67 @@ function CountCard({ label, value }: { label: string; value: number | string }) 
   );
 }
 
+function CreditBadge({ amount }: { amount: number }) {
+  const value = Number(amount || 0);
+  const isPenalty = value < 0;
+  const displayValue = Math.abs(value);
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "7px 11px",
+        borderRadius: 999,
+        background: isPenalty ? "rgba(248,113,113,.14)" : value > 0 ? "rgba(245,158,11,.14)" : "rgba(148,163,184,.12)",
+        color: isPenalty ? "#b91c1c" : value > 0 ? "#b45309" : "#475569",
+        fontWeight: 900,
+        fontSize: 12,
+        border: "1px solid rgba(148,163,184,.15)",
+      }}
+    >
+      {value !== 0 ? (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {isPenalty ? <span>-</span> : null}
+          <FgcAmount
+            amount={displayValue}
+            divisor={1}
+            fractionDigits={0}
+            style={{ fontWeight: 900, color: isPenalty ? "#b91c1c" : "#b45309" }}
+            iconSize={30}
+          />
+        </span>
+      ) : (
+        <span>No credits</span>
+      )}
+    </span>
+  );
+}
+
+function PercentBadge({ base, bonus }: { base: number; bonus: number }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "7px 11px",
+        borderRadius: 999,
+        background: "rgba(59,130,246,.10)",
+        color: "#1d4ed8",
+        fontWeight: 900,
+        fontSize: 12,
+        border: "1px solid rgba(59,130,246,.14)",
+      }}
+    >
+      <i className="material-icons" style={{ fontSize: 16 }}>ac_unit</i>
+      <span>
+        {base}% base + {bonus}% streak
+      </span>
+    </span>
+  );
+}
+
 function emptyAchievementRuleForm(): AchievementRuleForm {
   return {
     id: "",
@@ -84,6 +149,7 @@ function emptyAchievementRuleForm(): AchievementRuleForm {
     metric: "",
     setKey: "",
     threshold: "",
+    creditAmount: "",
   };
 }
 
@@ -96,6 +162,29 @@ function emptyTrophyRuleForm(): TrophyRuleForm {
     imageUrl: "",
     achievementSetKey: "",
     achievementThreshold: "",
+    creditAmount: "",
+  };
+}
+
+function emptyCreditConfig(): ApiCreditConfig {
+  return {
+    weeklyUpdate: {
+      base: 20,
+      retro: 20,
+      fileUpload: 10,
+      timesheet: 10,
+      webrtcBonus: 25,
+      missingUpdatePenalty: 200,
+    },
+    connections: {
+      linkedin: 100,
+      discord: 100,
+      jira: 100,
+    },
+    frozenCredits: {
+      basePercent: 5,
+      streakBonusPercent: 2.5,
+    },
   };
 }
 
@@ -110,21 +199,25 @@ export default function SuperAwards() {
 
   const [achievementRules, setAchievementRules] = useState<ApiAwardRuleAchievement[]>([]);
   const [trophyRules, setTrophyRules] = useState<ApiAwardRuleTrophy[]>([]);
+  const [creditConfig, setCreditConfig] = useState<ApiCreditConfig>(emptyCreditConfig());
 
   const [achievementId, setAchievementId] = useState("");
   const [achievementTitle, setAchievementTitle] = useState("");
   const [achievementDescription, setAchievementDescription] = useState("");
+  const [achievementCreditAmount, setAchievementCreditAmount] = useState("");
 
   const [trophyId, setTrophyId] = useState("");
   const [trophyTitle, setTrophyTitle] = useState("");
   const [trophyDescription, setTrophyDescription] = useState("");
   const [trophyTier, setTrophyTier] = useState("");
+  const [trophyCreditAmount, setTrophyCreditAmount] = useState("");
 
   const [mvpWeekStart, setMvpWeekStart] = useState("");
   const [mvpScore, setMvpScore] = useState("");
   const [mvpNotes, setMvpNotes] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const [savingCreditConfig, setSavingCreditConfig] = useState(false);
 
   const [achievementRuleForm, setAchievementRuleForm] = useState<AchievementRuleForm>(
     emptyAchievementRuleForm()
@@ -171,9 +264,40 @@ export default function SuperAwards() {
     }
   }
 
+  async function loadCreditConfig() {
+    try {
+      const cfg = await (api as any).getCreditConfig?.();
+      if (cfg) {
+        setCreditConfig({
+          weeklyUpdate: {
+            base: Number(cfg?.weeklyUpdate?.base ?? 20),
+            retro: Number(cfg?.weeklyUpdate?.retro ?? 20),
+            fileUpload: Number(cfg?.weeklyUpdate?.fileUpload ?? 10),
+            timesheet: Number(cfg?.weeklyUpdate?.timesheet ?? 10),
+            webrtcBonus: Number(cfg?.weeklyUpdate?.webrtcBonus ?? 25),
+            missingUpdatePenalty: Number(cfg?.weeklyUpdate?.missingUpdatePenalty ?? 200),
+          },
+          connections: {
+            linkedin: Number(cfg?.connections?.linkedin ?? 100),
+            discord: Number(cfg?.connections?.discord ?? 100),
+            jira: Number(cfg?.connections?.jira ?? 100),
+          },
+          frozenCredits: {
+            basePercent: Number(cfg?.frozenCredits?.basePercent ?? 5),
+            streakBonusPercent: Number(cfg?.frozenCredits?.streakBonusPercent ?? 2.5),
+          },
+          isActive: cfg?.isActive !== false,
+        });
+      }
+    } catch (err: any) {
+      M?.toast?.({ html: err?.message || "Failed to load credit config", classes: "red" });
+    }
+  }
+
   useEffect(() => {
     void loadUsers();
     void loadRules();
+    void loadCreditConfig();
   }, []);
 
   useEffect(() => {
@@ -252,6 +376,7 @@ export default function SuperAwards() {
     const rule = achievementRules.find((x) => safeStr((x as any).id) === safeStr(nextId));
     setAchievementTitle(safeStr((rule as any)?.title));
     setAchievementDescription(safeStr((rule as any)?.description));
+    setAchievementCreditAmount(String((rule as any)?.creditAmount ?? ""));
   }
 
   function onTrophyRuleChange(nextId: string) {
@@ -260,6 +385,7 @@ export default function SuperAwards() {
     setTrophyTitle(safeStr((rule as any)?.title));
     setTrophyDescription(safeStr((rule as any)?.description));
     setTrophyTier(safeStr((rule as any)?.tier).toLowerCase());
+    setTrophyCreditAmount(String((rule as any)?.creditAmount ?? ""));
   }
 
   async function handleAwardAchievement(e: React.FormEvent) {
@@ -277,6 +403,7 @@ export default function SuperAwards() {
         achievementId,
         title: safeStr(achievementTitle) || undefined,
         description: safeStr(achievementDescription) || undefined,
+        creditAmount: safeNum(achievementCreditAmount) || undefined,
       });
 
       M?.toast?.({ html: "Achievement awarded", classes: "green" });
@@ -306,6 +433,7 @@ export default function SuperAwards() {
         title: safeStr(trophyTitle) || undefined,
         description: safeStr(trophyDescription) || undefined,
         tier: safeStr(trophyTier).toLowerCase() || undefined,
+        creditAmount: safeNum(trophyCreditAmount) || undefined,
       });
 
       M?.toast?.({ html: "Trophy awarded", classes: "green" });
@@ -356,6 +484,7 @@ export default function SuperAwards() {
       metric: safeStr((rule as any).metric),
       setKey: safeStr((rule as any).setKey),
       threshold: String((rule as any).threshold ?? ""),
+      creditAmount: String((rule as any).creditAmount ?? ""),
     });
   }
 
@@ -369,6 +498,7 @@ export default function SuperAwards() {
       imageUrl: safeStr((rule as any).imageUrl),
       achievementSetKey: safeStr((rule as any).achievementSetKey),
       achievementThreshold: String((rule as any).achievementThreshold ?? ""),
+      creditAmount: String((rule as any).creditAmount ?? ""),
     });
   }
 
@@ -404,6 +534,7 @@ export default function SuperAwards() {
         metric: safeStr(achievementRuleForm.metric),
         setKey: safeStr(achievementRuleForm.setKey) || undefined,
         threshold: safeNum(achievementRuleForm.threshold),
+        creditAmount: safeNum(achievementRuleForm.creditAmount),
       };
 
       if (editingAchievementRuleId) {
@@ -446,6 +577,7 @@ export default function SuperAwards() {
         imageUrl: safeStr(trophyRuleForm.imageUrl) || undefined,
         achievementSetKey: safeStr(trophyRuleForm.achievementSetKey) || undefined,
         achievementThreshold: hasUnlockSet ? 0 : safeNum(trophyRuleForm.achievementThreshold),
+        creditAmount: safeNum(trophyRuleForm.creditAmount),
       };
 
       if (editingTrophyRuleId) {
@@ -462,6 +594,61 @@ export default function SuperAwards() {
       M?.toast?.({ html: err?.message || "Failed to save trophy rule", classes: "red" });
     } finally {
       setSavingRule(false);
+    }
+  }
+
+  async function handleSaveCreditConfig(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingCreditConfig(true);
+    try {
+      const payload = {
+        weeklyUpdate: {
+          base: safeNum((creditConfig as any)?.weeklyUpdate?.base ?? 20),
+          retro: safeNum((creditConfig as any)?.weeklyUpdate?.retro ?? 20),
+          fileUpload: safeNum((creditConfig as any)?.weeklyUpdate?.fileUpload ?? 10),
+          timesheet: safeNum((creditConfig as any)?.weeklyUpdate?.timesheet ?? 10),
+          webrtcBonus: safeNum((creditConfig as any)?.weeklyUpdate?.webrtcBonus ?? 25),
+          missingUpdatePenalty: safeNum((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 200),
+        },
+        connections: {
+          linkedin: safeNum((creditConfig as any)?.connections?.linkedin ?? 100),
+          discord: safeNum((creditConfig as any)?.connections?.discord ?? 100),
+          jira: safeNum((creditConfig as any)?.connections?.jira ?? 100),
+        },
+        frozenCredits: {
+          basePercent: safeNum((creditConfig as any)?.frozenCredits?.basePercent ?? 5),
+          streakBonusPercent: safeNum((creditConfig as any)?.frozenCredits?.streakBonusPercent ?? 2.5),
+        },
+      };
+
+      const saved = await (api as any).updateCreditConfig?.(payload);
+      if (saved) {
+        setCreditConfig({
+          weeklyUpdate: {
+            base: Number(saved?.weeklyUpdate?.base ?? 20),
+            retro: Number(saved?.weeklyUpdate?.retro ?? 20),
+            fileUpload: Number(saved?.weeklyUpdate?.fileUpload ?? 10),
+            timesheet: Number(saved?.weeklyUpdate?.timesheet ?? 10),
+            webrtcBonus: Number(saved?.weeklyUpdate?.webrtcBonus ?? 25),
+            missingUpdatePenalty: Number(saved?.weeklyUpdate?.missingUpdatePenalty ?? 200),
+          },
+          connections: {
+            linkedin: Number(saved?.connections?.linkedin ?? 100),
+            discord: Number(saved?.connections?.discord ?? 100),
+            jira: Number(saved?.connections?.jira ?? 100),
+          },
+          frozenCredits: {
+            basePercent: Number(saved?.frozenCredits?.basePercent ?? 5),
+            streakBonusPercent: Number(saved?.frozenCredits?.streakBonusPercent ?? 2.5),
+          },
+          isActive: saved?.isActive !== false,
+        });
+      }
+      M?.toast?.({ html: "Credit settings saved", classes: "green" });
+    } catch (err: any) {
+      M?.toast?.({ html: err?.message || "Failed to save credit settings", classes: "red" });
+    } finally {
+      setSavingCreditConfig(false);
     }
   }
 
@@ -922,6 +1109,224 @@ export default function SuperAwards() {
         </div>
       </div>
 
+      <div className="card z-depth-1 panelCard" style={{ marginTop: 16 }}>
+        <div className="panelHead">
+          <div>
+            <div className="h">Credit Rewards</div>
+            <div className="p">Edit the store credit amounts for weekly updates and connected services.</div>
+          </div>
+        </div>
+        <div className="card-content" style={{ padding: 16 }}>
+          <form onSubmit={handleSaveCreditConfig}>
+            <div className="rulesGrid">
+              <div className="card" style={{ margin: 0 }}>
+                <div className="card-content">
+                  <span className="card-title">Weekly Update</span>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.weeklyUpdate?.base ?? 10)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          weeklyUpdate: { ...(prev?.weeklyUpdate || {}), base: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Base update credits (Spendable FGC)</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.weeklyUpdate?.retro ?? 10)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          weeklyUpdate: { ...(prev?.weeklyUpdate || {}), retro: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Retro credits (Spendable FGC)</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.weeklyUpdate?.fileUpload ?? 10)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          weeklyUpdate: { ...(prev?.weeklyUpdate || {}), fileUpload: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">File upload credits (Frozen FGC)</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.weeklyUpdate?.timesheet ?? 5)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          weeklyUpdate: { ...(prev?.weeklyUpdate || {}), timesheet: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Timesheet credits (Spendable FGC)</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.weeklyUpdate?.webrtcBonus ?? 25)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          weeklyUpdate: { ...(prev?.weeklyUpdate || {}), webrtcBonus: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">AI submit bonus (Frozen FGC)</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 200)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          weeklyUpdate: {
+                            ...(prev?.weeklyUpdate || {}),
+                            missingUpdatePenalty: Number(e.target.value),
+                          },
+                        }))
+                      }
+                    />
+                    <label className="active">Missing weekly update penalty</label>
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <CreditBadge amount={-Number((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 200)} />
+                    <div className="hintText" style={{ marginTop: 10 }}>
+                      Applied when a weekly update is missed. This is stored as a negative credit rule for admin clarity.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ margin: 0 }}>
+                <div className="card-content">
+                  <span className="card-title">Connections</span>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.connections?.linkedin ?? 100)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          connections: { ...(prev?.connections || {}), linkedin: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">LinkedIn credits</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.connections?.discord ?? 100)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          connections: { ...(prev?.connections || {}), discord: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Discord credits</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String((creditConfig as any)?.connections?.jira ?? 100)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          connections: { ...(prev?.connections || {}), jira: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Jira credits</label>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <CreditBadge amount={Number((creditConfig as any)?.connections?.linkedin ?? 100)} />
+                    <div className="hintText" style={{ marginTop: 10 }}>
+                      Connection credits are granted by the verified OAuth callback and only once per account connection.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ margin: 0 }}>
+                <div className="card-content">
+                  <span className="card-title">Frozen Credits</span>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={String((creditConfig as any)?.frozenCredits?.basePercent ?? 5)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          frozenCredits: { ...(prev?.frozenCredits || {}), basePercent: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Week 1 release percent</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={String((creditConfig as any)?.frozenCredits?.streakBonusPercent ?? 2.5)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          frozenCredits: { ...(prev?.frozenCredits || {}), streakBonusPercent: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Streak bonus percent</label>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <PercentBadge
+                      base={Number((creditConfig as any)?.frozenCredits?.basePercent ?? 5)}
+                      bonus={Number((creditConfig as any)?.frozenCredits?.streakBonusPercent ?? 2.5)}
+                    />
+                    <div className="hintText" style={{ marginTop: 10 }}>
+                      Week 1 releases the base percent. Each consecutive successful week adds the streak bonus. Missing a week resets the streak back to week 1.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 16 }}>
+              <button className="btn" type="submit" disabled={savingCreditConfig}>
+                {savingCreditConfig ? "Saving..." : "Save Credit Rewards"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <ul className="collapsible popout">
         <li className="active">
           <div className="collapsible-header">
@@ -1005,6 +1410,23 @@ export default function SuperAwards() {
                         }
                       />
                       <label className="active">Threshold</label>
+                    </div>
+
+                    <div className="input-field">
+                      <input
+                        type="number"
+                        min="0"
+                        value={achievementRuleForm.creditAmount}
+                        onChange={(e) =>
+                          setAchievementRuleForm((prev) => ({
+                            ...prev,
+                            creditAmount: e.target.value,
+                          }))
+                        }
+                        placeholder="0"
+                      />
+                      <label className="active">Credit Reward (FGC)</label>
+                      <span className="helper-text">This amount is granted when the award is issued.</span>
                     </div>
 
                     <div className="input-field">
@@ -1173,6 +1595,23 @@ export default function SuperAwards() {
                     </div>
 
                     <div className="input-field">
+                      <input
+                        type="number"
+                        min="0"
+                        value={trophyRuleForm.creditAmount}
+                        onChange={(e) =>
+                          setTrophyRuleForm((prev) => ({
+                            ...prev,
+                            creditAmount: e.target.value,
+                          }))
+                        }
+                        placeholder="0"
+                      />
+                      <label className="active">Credit Reward (FGC)</label>
+                      <span className="helper-text">This amount is granted when the trophy is issued.</span>
+                    </div>
+
+                    <div className="input-field">
                       <textarea
                         className="materialize-textarea"
                         value={trophyRuleForm.description}
@@ -1281,6 +1720,16 @@ export default function SuperAwards() {
                             <span className="rulePill">
                               Threshold: {safeNum((rule as any).threshold)}
                             </span>
+                            <span className="rulePill" style={{ color: "#b45309", background: "rgba(245,158,11,.10)" }}>
+                              Credit:{" "}
+                              <FgcAmount
+                                amount={safeNum((rule as any).creditAmount)}
+                                divisor={1}
+                                fractionDigits={0}
+                                style={{ fontWeight: 900, color: "#b45309" }}
+                                iconSize={30}
+                              />
+                            </span>
                           </div>
                         </div>
                       ))
@@ -1345,6 +1794,16 @@ export default function SuperAwards() {
                             )}
                             <span className="rulePill">
                               Achievement Threshold: {safeNum((rule as any).achievementThreshold)}
+                            </span>
+                            <span className="rulePill" style={{ color: "#b45309", background: "rgba(245,158,11,.10)" }}>
+                              Credit:{" "}
+                              <FgcAmount
+                                amount={safeNum((rule as any).creditAmount)}
+                                divisor={1}
+                                fractionDigits={0}
+                                style={{ fontWeight: 900, color: "#b45309" }}
+                                iconSize={30}
+                              />
                             </span>
                           </div>
                         </div>

@@ -8,12 +8,17 @@ import SuperArcadeReleaseTab from "../components/super/SuperArcadeReleaseTab";
 import SuperReleasesTab from "../components/super/SuperReleasesTab";
 import SuperStorageTab from "../components/super/SuperStorageTab";
 import SuperUsersTab from "../components/super/SuperUsersTab";
+import SuperAwards from "./SuperAwards";
+import SuperWalletTab from "../components/super/SuperWalletTab";
+import SuperRequestsTab from "../components/super/SuperRequestsTab";
+import SuperInventoryTab from "../components/super/SuperInventoryTab";
+import ApiEndpoints from "./ApiEndpoints";
 
 declare const M: any;
 
 type ProjectSettingsTab = "details" | "jira";
-type AssignableRole = "employee" | "admin" | "super";
-type ReadScope = "employee" | "admin" | "super";
+type AssignableRole = "employee" | "admin" | "super" | "test";
+type ReadScope = "employee" | "admin" | "super" | "test";
 
 type ProjectForm = {
   name: string;
@@ -63,9 +68,9 @@ function visibleByStatus(status: string) {
   return !(s === "inactive" || s === "archived" || s === "disabled" || s === "hidden");
 }
 
-export default function SuperUser() {
+export default function SuperUser({ initialTab = "users" }: { initialTab?: SuperTab } = {}) {
   const { api, user } = useAuth();
-  const [tab, setTab] = useState<SuperTab>("users");
+  const [tab, setTab] = useState<SuperTab>(initialTab);
   const [rows, setRows] = useState<ApiUser[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -97,6 +102,10 @@ export default function SuperUser() {
   const [customPlatform, setCustomPlatform] = useState("");
   const isSuperUser = normalizeRole((user as any)?.employee_role || (user as any)?.role) === "super";
   const releaseData = useReleaseProductsData(api as any);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   const [projectForm, setProjectForm] = useState<ProjectForm>({
     name: "",
@@ -296,6 +305,17 @@ export default function SuperUser() {
       await api.updateUser({ username, [field]: value } as any);
       setRows((prev) => prev.map((u) => (u.username === username ? ({ ...u, [field]: value } as any) : u)));
       M.toast({ html: "Access updated", classes: "green" });
+    } catch (e: any) {
+      M.toast({ html: e?.message || "Failed", classes: "red" });
+    }
+  }
+
+  async function deleteUser(username: string) {
+    if (!isSuperUser) return;
+    try {
+      await api.deleteUser(username);
+      setRows((prev) => prev.filter((u) => u.username !== username));
+      M.toast({ html: "User deleted", classes: "green" });
     } catch (e: any) {
       M.toast({ html: e?.message || "Failed", classes: "red" });
     }
@@ -522,6 +542,7 @@ export default function SuperUser() {
           onSetRole={setRole}
           onSetReadScope={setReadScope}
           onSetAccessFlag={setUserAccessFlag}
+          onDeleteUser={deleteUser}
           roleFor={normalizeRole}
           readScopeFor={(u) =>
             normalizeRole(
@@ -530,6 +551,8 @@ export default function SuperUser() {
                   ? "super"
                   : normalizeRole(u.employee_role) === "admin"
                   ? "admin"
+                  : normalizeRole(u.employee_role) === "test"
+                  ? "test"
                   : "employee")
             ) as ReadScope
           }
@@ -587,6 +610,16 @@ export default function SuperUser() {
           safeStr={safeStr}
         />
       )}
+
+      {tab === "awards" && <SuperAwards />}
+
+      {tab === "wallet" && <SuperWalletTab />}
+
+      {tab === "requests" && <SuperRequestsTab />}
+
+      {tab === "inventory" && <SuperInventoryTab />}
+
+      {tab === "endpoints" && <ApiEndpoints />}
 
       {tab === "arcade_release" && (
         <SuperArcadeReleaseTab

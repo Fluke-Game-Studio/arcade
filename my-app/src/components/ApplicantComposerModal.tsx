@@ -10,6 +10,7 @@ import type {
 } from "../api";
 import { API_BASE, PUBLIC_WEBSITE_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
+import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
 
 declare const M: any;
 
@@ -202,22 +203,6 @@ function stageIsWired(stage: Stage) {
   return stage === "Welcome" || !!STAGE_TO_RICH_TYPE[stage] || !!STAGE_TO_DOC_TYPE[stage];
 }
 
-function repairModalScrollLock() {
-  window.setTimeout(() => {
-    try {
-      const anyOpen = Array.from(document.querySelectorAll(".modal")).some((el) =>
-        el.classList.contains("open")
-      );
-      if (anyOpen) return;
-
-      document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
-      document.body.classList.remove("modal-open");
-      if (document.body.style.overflow === "hidden") document.body.style.overflow = "";
-      if (document.body.style.paddingRight) document.body.style.paddingRight = "";
-    } catch {}
-  }, 0);
-}
-
 function pickApplicantAddressCity(details: any): { address: string; city: string } {
   const payload = (details as any)?.payload || {};
   const p = typeof payload === "string" ? (() => {
@@ -365,7 +350,7 @@ export default function ApplicantComposerModal({
         try {
           onCloseRef.current?.();
         } catch {}
-        repairModalScrollLock();
+        syncMaterializeModalState();
       },
       onOpenStart: () => {
         try {
@@ -387,7 +372,7 @@ export default function ApplicantComposerModal({
         instRef.current?.destroy?.();
       } catch {}
       instRef.current = null;
-      repairModalScrollLock();
+      syncMaterializeModalState();
     };
   }, []);
 
@@ -625,12 +610,7 @@ export default function ApplicantComposerModal({
   }
 
   function requestClose() {
-    try {
-      instRef.current?.close?.();
-      return;
-    } catch {}
-    onCloseRef.current?.();
-    repairModalScrollLock();
+    closeMaterializeModal(instRef.current, onCloseRef.current);
   }
 
   async function sendNow() {
@@ -680,7 +660,7 @@ export default function ApplicantComposerModal({
 
         const resp = await (api as any).sendApplicantWelcomeEmail(applicantId, body);
         M?.toast?.({ html: String(resp?.message || resp?.status || "Sent"), classes: "green" });
-        onClose();
+        requestClose();
         return;
       }
 
@@ -792,7 +772,7 @@ export default function ApplicantComposerModal({
         // ✅ Cast at boundary (your api typing may not accept CONFIRMATION yet)
         const resp = await (api as any).sendApplicantRichEmail(applicantId, body as any);
         M?.toast?.({ html: String(resp?.message || resp?.status || "Sent"), classes: "green" });
-        onClose();
+        requestClose();
         return;
       }
 
@@ -835,7 +815,7 @@ export default function ApplicantComposerModal({
 
         const resp = await api.sendApplicantDocEmail(applicantId, body);
         M?.toast?.({ html: String(resp?.message || resp?.status || "Sent"), classes: "green" });
-        onClose();
+        requestClose();
         return;
       }
     } catch (e: any) {

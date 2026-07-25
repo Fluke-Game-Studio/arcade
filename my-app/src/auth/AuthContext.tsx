@@ -5,6 +5,7 @@ export type Role =
   | "EMPLOYEE"
   | "ADMIN"
   | "SUPER"
+  | "TEST"
   | "ADMIN_READONLY"
   | "SUPER_READONLY";
 
@@ -27,13 +28,26 @@ export type SessionUser = {
   discord_name?: string;
   discord_email?: string;
   discord_url?: string;
+  jira_connected?: boolean;
+  jira_connected_at?: string;
+  jira_account_id?: string;
+  jira_email?: string;
+  jira_cloud_id?: string;
+  jira_cloud_name?: string;
+  jira_cloud_url?: string;
+  jira_scope?: string;
+  password_reset_required?: boolean;
+  password_reset_at?: string;
   employee_picture?: string;
   employee_profilepicture?: string;
   notification_preferences?: string | {
     email?: Record<string, boolean>;
     in_app?: Record<string, boolean>;
+    discord_dm?: Record<string, boolean>;
+    discord_channel?: Record<string, boolean>;
   };
   last_seen_release_version?: string;
+  onboarding_journey_state?: string;
 };
 
 export type AuthStatus = "checking" | "authenticated" | "unauthenticated";
@@ -41,10 +55,13 @@ export type AuthBootReason = "" | "no_token" | "ok" | "invalid_token" | "network
 
 type AuthCtx = {
   user: SessionUser | null;
+  transientPassword: string;
   status: AuthStatus;
   bootReason: AuthBootReason;
   login: (username: string, password: string) => Promise<boolean>;
   refreshSession: () => Promise<void>;
+  applySessionPatch: (patch: Partial<SessionUser>) => void;
+  clearTransientPassword: () => void;
   logout: () => void;
   // convenient passthroughs
   api: typeof api;
@@ -53,13 +70,14 @@ type AuthCtx = {
 const LS_AUTH = "auth_user";
 const AuthContext = createContext<AuthCtx | null>(null);
 
-type LowerRole = "employee" | "admin" | "super";
+type LowerRole = "employee" | "admin" | "super" | "test";
 
 function normalizeBaseRole(raw: unknown): LowerRole {
   const role = String(raw || "")
     .trim()
     .toLowerCase()
     .replace(/_/g, "-");
+  if (role === "test") return "test";
   if (role === "super" || role === "super-readonly") return "super";
   if (role === "admin" || role === "admin-readonly") return "admin";
   return "employee";
@@ -70,15 +88,21 @@ function normalizeReadScope(raw: unknown): LowerRole {
 }
 
 function toUiRole(role: LowerRole): Role {
+  if (role === "test") return "TEST";
   if (role === "super") return "SUPER";
   if (role === "admin") return "ADMIN";
   return "EMPLOYEE";
 }
 
-function higherRole(a: LowerRole, b: LowerRole): LowerRole {
-  if (a === "super" || b === "super") return "super";
-  if (a === "admin" || b === "admin") return "admin";
-  return "employee";
+const ROLE_RANK: Record<LowerRole, number> = { test: -1, employee: 0, admin: 1, super: 2 };
+
+function higherRole(base: LowerRole, readScope: LowerRole): LowerRole {
+  // Mirrors the backend's getEffectiveRole: only elevate if the read scope's
+  // rank is strictly greater than the base role's rank. The old version only
+  // ever checked for "admin"/"super" and fell back to "employee" otherwise -
+  // which silently promoted every "test" user (base="test", scope="test")
+  // back up to "employee", since neither side was "admin" or "super".
+  return ROLE_RANK[readScope] > ROLE_RANK[base] ? readScope : base;
 }
 
 function buildSessionFromApi(user: any, fallback?: Partial<SessionUser>): SessionUser {
@@ -118,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     api.setToken(session.token);
     return session;
   });
+  const [transientPassword, setTransientPassword] = useState("");
 
   const [status, setStatus] = useState<AuthStatus>(() => (user ? "checking" : "unauthenticated"));
   const [bootReason, setBootReason] = useState<AuthBootReason>(() =>
@@ -142,6 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.login(username, password, "portal");
       const session = buildSessionFromApi(res, { token: res.token, username: res.username, name: res.name });
       setSession(session, "authenticated");
+      setTransientPassword(password);
       return true;
     } catch (e) {
       console.error(e);
@@ -149,7 +175,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  function clearTransientPassword() {
+    setTransientPassword("");
+  }
+
+  function applySessionPatch(patch: Partial<SessionUser>) {
+    if (!user) return;
+    const merged = buildSessionFromApi({ ...user, ...patch }, user);
+    setSession(merged, "authenticated");
+  }
+
   function logout() {
+    clearTransientPassword();
     setSession(null, "unauthenticated");
   }
 
@@ -160,6 +197,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const me: any = await api.getMe();
       const refreshed = buildSessionFromApi(me, user);
       setSession(refreshed, "authenticated");
+      if (!Boolean((refreshed as any)?.password_reset_required)) {
+        clearTransientPassword();
+      }
     } catch {}
   }
 
@@ -187,6 +227,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const refreshed = buildSessionFromApi(me, user);
 
         setSession(refreshed, "authenticated");
+        if (!Boolean((refreshed as any)?.password_reset_required)) {
+          clearTransientPassword();
+        }
         setBootReason("ok");
       } catch (e: any) {
         if (cancelled) return;
@@ -215,8 +258,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.token]);
 
   const value = useMemo(
-    () => ({ user, status, bootReason, login, refreshSession, logout, api }),
-    [user, status, bootReason, refreshSession]
+    () => ({
+      user,
+      transientPassword,
+      status,
+      bootReason,
+      login,
+      refreshSession,
+      applySessionPatch,
+      clearTransientPassword,
+      logout,
+      api,
+    }),
+    [user, transientPassword, status, bootReason, refreshSession]
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

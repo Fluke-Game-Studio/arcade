@@ -8,7 +8,7 @@ import type { ApiUser } from "../api/types/users";
 declare const M: any;
 
 type TopTab = "requests" | "media";
-type RequestTab = "pending" | "approved" | "published";
+type RequestTab = "pending" | "approved" | "rejected" | "published";
 type MediaTab = "discord" | "linkedin" | "instagram" | "facebook";
 
 function safeStr(v: any) {
@@ -242,6 +242,23 @@ function editIconButton(active: boolean) {
   };
 }
 
+function deleteIconButton(active: boolean) {
+  return {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    border: active ? "1px solid rgba(239,68,68,.26)" : "1px solid rgba(148,163,184,.2)",
+    background: active ? "linear-gradient(135deg,rgba(248,113,113,.14),rgba(239,68,68,.08))" : "#fff",
+    color: active ? "#b91c1c" : "#334155",
+    display: "inline-grid",
+    placeItems: "center",
+    cursor: "pointer" as const,
+    fontSize: 16,
+    fontWeight: 900,
+    boxShadow: active ? "0 10px 20px rgba(239,68,68,.12)" : "none",
+  };
+}
+
 export default function SocialMediaReviewAdmin({
   mode = "admin",
   embedded = false,
@@ -261,6 +278,7 @@ export default function SocialMediaReviewAdmin({
   const [editDrafts, setEditDrafts] = useState<Record<string, AdminEditDraft>>({});
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [approvalPrompts, setApprovalPrompts] = useState<Record<string, boolean>>({});
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [topTab, setTopTab] = useState<TopTab>("requests");
   const [requestTab, setRequestTab] = useState<RequestTab>("pending");
   const [mediaTab, setMediaTab] = useState<MediaTab>("discord");
@@ -274,7 +292,7 @@ export default function SocialMediaReviewAdmin({
     if (!isOrgMode && (requestedTop === "requests" || requestedTop === "media")) {
       setTopTab(requestedTop as TopTab);
     }
-    if (requestedRequest === "pending" || requestedRequest === "approved" || requestedRequest === "published") {
+    if (requestedRequest === "pending" || requestedRequest === "approved" || requestedRequest === "rejected" || requestedRequest === "published") {
       setRequestTab(requestedRequest as RequestTab);
     }
     if (requestedMedia === "discord" || requestedMedia === "linkedin" || requestedMedia === "instagram" || requestedMedia === "facebook") {
@@ -474,6 +492,25 @@ export default function SocialMediaReviewAdmin({
     }
   }
 
+  async function deletePost(postId: string) {
+    const post = posts.find((item) => item.post_id === postId);
+    const label = safeStr(post?.title || post?.content || postId);
+    if (!window.confirm(`Delete "${label}"? This will remove the uploaded file and the database entry.`)) {
+      return;
+    }
+
+    setDeletingCardId(postId);
+    try {
+      await api.deleteSocialPost({ postId });
+      toast("Post deleted.", "green");
+      await load();
+    } catch (e: any) {
+      toast(e?.message || "Failed to delete post", "red");
+    } finally {
+      setDeletingCardId((curr) => (curr === postId ? null : curr));
+    }
+  }
+
   async function cancelScheduledPost(postId: string) {
     const post = posts.find((item) => item.post_id === postId);
     if (!post) return;
@@ -540,8 +577,9 @@ export default function SocialMediaReviewAdmin({
         return tagged && (s.includes("pending") || s.includes("request"));
       }
       if (requestTab === "pending") return s.includes("pending") || s.includes("request");
-      if (requestTab === "published") return s.includes("publish");
-      return s.includes("approve") && !s.includes("publish");
+      if (requestTab === "approved") return s.includes("approve") && !s.includes("publish");
+      if (requestTab === "rejected") return s.includes("reject");
+      return s.includes("publish");
     });
   }, [isOrgMode, onlyTaggedUsername, posts, requestTab]);
 
@@ -557,6 +595,7 @@ export default function SocialMediaReviewAdmin({
   const requestTabs: Array<{ key: RequestTab; label: string }> = [
     { key: "pending", label: "Pending" },
     { key: "approved", label: "Approved" },
+    { key: "rejected", label: "Rejected" },
     { key: "published", label: "Published" },
   ];
 
@@ -636,6 +675,11 @@ export default function SocialMediaReviewAdmin({
           <div style={{ display: "grid", gap: 12 }}>
             {requests.map((p) => {
               const tone = statusTone(p.status);
+              const status = safeStr(p.status).toLowerCase();
+              const isApprovedStatus = status.includes("approve");
+              const isRejectedStatus = status.includes("reject");
+              const isPublishedStatus = status.includes("publish");
+              const isFinalDecision = isApprovedStatus || isRejectedStatus || isPublishedStatus;
               const todos = parseTodos(p);
               const draft = noteDrafts[p.post_id] || "";
               const editDraft = editDrafts[p.post_id] || {
@@ -647,7 +691,7 @@ export default function SocialMediaReviewAdmin({
               const needsScheduleDecision = !!approvalPrompts[p.post_id];
               const hasPastSchedule = !!safeStr(p.scheduledAt) && isPastDate(p.scheduledAt) && !safeStr(scheduleDrafts[p.post_id]);
               const isPosted = isPostedPost(p);
-              const canEditApproved = safeStr(p.status).toLowerCase().includes("approve") && !isPosted;
+              const canEditApproved = isApprovedStatus && !isPosted;
               const isInlineEditing = editingCardId === p.post_id;
               const scheduleStatusText = safeStr(scheduleDrafts[p.post_id])
                 ? isFutureDate(scheduleDrafts[p.post_id])
@@ -929,11 +973,38 @@ export default function SocialMediaReviewAdmin({
                       >
                         {canEditApproved ? (
                           <>
-                            <button type="button" onClick={() => void saveApprovedScheduleChanges(p.post_id)} style={tabButton(true)}>Save changes</button>
-                            {safeStr(p.scheduledAt) || safeStr(scheduleDrafts[p.post_id]) ? (
-                              <button type="button" onClick={() => void cancelScheduledPost(p.post_id)} style={tabButton(false)}>Cancel schedule</button>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => void saveApprovedScheduleChanges(p.post_id)} style={tabButton(true)}>Save changes</button>
+                              {safeStr(p.scheduledAt) || safeStr(scheduleDrafts[p.post_id]) ? (
+                                <button type="button" onClick={() => void cancelScheduledPost(p.post_id)} style={tabButton(false)}>Cancel schedule</button>
+                              ) : null}
+                            </div>
+                            {!isOrgMode ? (
+                              <button
+                                type="button"
+                                onClick={() => void deletePost(p.post_id)}
+                                aria-label="Delete post"
+                                title="Delete post"
+                                disabled={deletingCardId === p.post_id}
+                                style={deleteIconButton(deletingCardId === p.post_id)}
+                              >
+                                {deletingCardId === p.post_id ? "…" : "🗑"}
+                              </button>
                             ) : null}
                           </>
+                        ) : isFinalDecision ? (
+                          !isOrgMode ? (
+                            <button
+                              type="button"
+                              onClick={() => void deletePost(p.post_id)}
+                              aria-label="Delete post"
+                              title="Delete post"
+                              disabled={deletingCardId === p.post_id}
+                              style={deleteIconButton(deletingCardId === p.post_id)}
+                            >
+                              {deletingCardId === p.post_id ? "…" : "🗑"}
+                            </button>
+                          ) : null
                         ) : (
                           <div
                             style={{

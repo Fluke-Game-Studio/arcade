@@ -2,6 +2,7 @@ export type ApiRole =
   | "super"
   | "admin"
   | "employee"
+  | "test"
   | "admin-readonly"
   | "super-readonly";
 
@@ -37,6 +38,8 @@ export type ApiUser = {
   discord_member_id?: string;
   discord_name?: string;
   discord_email?: string;
+  password_reset_required?: boolean;
+  password_reset_at?: string;
   jira_connected?: boolean;
   jira_connected_at?: string;
   jira_account_id?: string;
@@ -66,8 +69,10 @@ export type ApiUser = {
     in_app?: Record<string, boolean>;
     discord_dm?: Record<string, boolean>;
     discord_channel?: Record<string, boolean>;
+    commerce?: Record<string, boolean>;
   };
   last_seen_release_version?: string;
+  onboarding_journey_state?: string;
   [k: string]: any;
 };
 
@@ -90,6 +95,8 @@ export type CreateUserBody = {
   discord_member_id?: string;
   discord_name?: string;
   discord_email?: string;
+  password_reset_required?: boolean;
+  password_reset_at?: string;
   jira_connected?: boolean;
   jira_connected_at?: string;
   jira_account_id?: string;

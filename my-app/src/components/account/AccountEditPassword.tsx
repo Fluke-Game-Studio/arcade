@@ -72,9 +72,11 @@ function SmallAction({
 export default function AccountEditPassword({
   user,
   api,
+  onSaved,
 }: {
   user: any;
   api: any;
+  onSaved?: () => void | Promise<void>;
 }) {
   const [pw1, setPw1] = useState("");
   const [pw2, setPw2] = useState("");
@@ -105,6 +107,16 @@ export default function AccountEditPassword({
       setPulse(true);
       setTimeout(() => setPulse(false), 900);
       M.toast({ html: "Password updated.", classes: "green" });
+      if (onSaved) {
+        try {
+          await onSaved();
+        } catch (err: any) {
+          M.toast({
+            html: err?.message || "Password updated, but we could not finish the next step yet.",
+            classes: "orange",
+          });
+        }
+      }
     } catch (err: any) {
       M.toast({ html: err?.message || "Update failed.", classes: "red" });
     } finally {
