@@ -18,7 +18,7 @@ function safeNum(v: unknown) {
 
 function formatAmount(amount: number, divisor: number, fractionDigits: number) {
   const value = safeNum(amount) / (divisor || 1);
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   }).format(value);

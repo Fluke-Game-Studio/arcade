@@ -117,6 +117,30 @@ function CreditBadge({ amount }: { amount: number }) {
   );
 }
 
+function PercentBadge({ base, bonus }: { base: number; bonus: number }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "7px 11px",
+        borderRadius: 999,
+        background: "rgba(59,130,246,.10)",
+        color: "#1d4ed8",
+        fontWeight: 900,
+        fontSize: 12,
+        border: "1px solid rgba(59,130,246,.14)",
+      }}
+    >
+      <i className="material-icons" style={{ fontSize: 16 }}>ac_unit</i>
+      <span>
+        {base}% base + {bonus}% streak
+      </span>
+    </span>
+  );
+}
+
 function emptyAchievementRuleForm(): AchievementRuleForm {
   return {
     id: "",
@@ -145,17 +169,21 @@ function emptyTrophyRuleForm(): TrophyRuleForm {
 function emptyCreditConfig(): ApiCreditConfig {
   return {
     weeklyUpdate: {
-      base: 10,
-      retro: 10,
+      base: 20,
+      retro: 20,
       fileUpload: 10,
-      timesheet: 5,
+      timesheet: 10,
       webrtcBonus: 25,
-      missingUpdatePenalty: 20,
+      missingUpdatePenalty: 200,
     },
     connections: {
       linkedin: 100,
       discord: 100,
       jira: 100,
+    },
+    frozenCredits: {
+      basePercent: 5,
+      streakBonusPercent: 2.5,
     },
   };
 }
@@ -242,17 +270,21 @@ export default function SuperAwards() {
       if (cfg) {
         setCreditConfig({
           weeklyUpdate: {
-            base: Number(cfg?.weeklyUpdate?.base ?? 10),
-            retro: Number(cfg?.weeklyUpdate?.retro ?? 10),
+            base: Number(cfg?.weeklyUpdate?.base ?? 20),
+            retro: Number(cfg?.weeklyUpdate?.retro ?? 20),
             fileUpload: Number(cfg?.weeklyUpdate?.fileUpload ?? 10),
-            timesheet: Number(cfg?.weeklyUpdate?.timesheet ?? 5),
+            timesheet: Number(cfg?.weeklyUpdate?.timesheet ?? 10),
             webrtcBonus: Number(cfg?.weeklyUpdate?.webrtcBonus ?? 25),
-            missingUpdatePenalty: Number(cfg?.weeklyUpdate?.missingUpdatePenalty ?? 20),
+            missingUpdatePenalty: Number(cfg?.weeklyUpdate?.missingUpdatePenalty ?? 200),
           },
           connections: {
             linkedin: Number(cfg?.connections?.linkedin ?? 100),
             discord: Number(cfg?.connections?.discord ?? 100),
             jira: Number(cfg?.connections?.jira ?? 100),
+          },
+          frozenCredits: {
+            basePercent: Number(cfg?.frozenCredits?.basePercent ?? 5),
+            streakBonusPercent: Number(cfg?.frozenCredits?.streakBonusPercent ?? 2.5),
           },
           isActive: cfg?.isActive !== false,
         });
@@ -571,17 +603,21 @@ export default function SuperAwards() {
     try {
       const payload = {
         weeklyUpdate: {
-          base: safeNum((creditConfig as any)?.weeklyUpdate?.base ?? 10),
-          retro: safeNum((creditConfig as any)?.weeklyUpdate?.retro ?? 10),
+          base: safeNum((creditConfig as any)?.weeklyUpdate?.base ?? 20),
+          retro: safeNum((creditConfig as any)?.weeklyUpdate?.retro ?? 20),
           fileUpload: safeNum((creditConfig as any)?.weeklyUpdate?.fileUpload ?? 10),
-          timesheet: safeNum((creditConfig as any)?.weeklyUpdate?.timesheet ?? 5),
+          timesheet: safeNum((creditConfig as any)?.weeklyUpdate?.timesheet ?? 10),
           webrtcBonus: safeNum((creditConfig as any)?.weeklyUpdate?.webrtcBonus ?? 25),
-          missingUpdatePenalty: safeNum((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 20),
+          missingUpdatePenalty: safeNum((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 200),
         },
         connections: {
           linkedin: safeNum((creditConfig as any)?.connections?.linkedin ?? 100),
           discord: safeNum((creditConfig as any)?.connections?.discord ?? 100),
           jira: safeNum((creditConfig as any)?.connections?.jira ?? 100),
+        },
+        frozenCredits: {
+          basePercent: safeNum((creditConfig as any)?.frozenCredits?.basePercent ?? 5),
+          streakBonusPercent: safeNum((creditConfig as any)?.frozenCredits?.streakBonusPercent ?? 2.5),
         },
       };
 
@@ -589,17 +625,21 @@ export default function SuperAwards() {
       if (saved) {
         setCreditConfig({
           weeklyUpdate: {
-            base: Number(saved?.weeklyUpdate?.base ?? 10),
-            retro: Number(saved?.weeklyUpdate?.retro ?? 10),
+            base: Number(saved?.weeklyUpdate?.base ?? 20),
+            retro: Number(saved?.weeklyUpdate?.retro ?? 20),
             fileUpload: Number(saved?.weeklyUpdate?.fileUpload ?? 10),
-            timesheet: Number(saved?.weeklyUpdate?.timesheet ?? 5),
+            timesheet: Number(saved?.weeklyUpdate?.timesheet ?? 10),
             webrtcBonus: Number(saved?.weeklyUpdate?.webrtcBonus ?? 25),
-            missingUpdatePenalty: Number(saved?.weeklyUpdate?.missingUpdatePenalty ?? 20),
+            missingUpdatePenalty: Number(saved?.weeklyUpdate?.missingUpdatePenalty ?? 200),
           },
           connections: {
             linkedin: Number(saved?.connections?.linkedin ?? 100),
             discord: Number(saved?.connections?.discord ?? 100),
             jira: Number(saved?.connections?.jira ?? 100),
+          },
+          frozenCredits: {
+            basePercent: Number(saved?.frozenCredits?.basePercent ?? 5),
+            streakBonusPercent: Number(saved?.frozenCredits?.streakBonusPercent ?? 2.5),
           },
           isActive: saved?.isActive !== false,
         });
@@ -1094,7 +1134,7 @@ export default function SuperAwards() {
                         }))
                       }
                     />
-                    <label className="active">Base update credits</label>
+                    <label className="active">Base update credits (Spendable FGC)</label>
                   </div>
                   <div className="input-field">
                     <input
@@ -1108,7 +1148,7 @@ export default function SuperAwards() {
                         }))
                       }
                     />
-                    <label className="active">Retro credits</label>
+                    <label className="active">Retro credits (Spendable FGC)</label>
                   </div>
                   <div className="input-field">
                     <input
@@ -1122,7 +1162,7 @@ export default function SuperAwards() {
                         }))
                       }
                     />
-                    <label className="active">File upload credits</label>
+                    <label className="active">File upload credits (Frozen FGC)</label>
                   </div>
                   <div className="input-field">
                     <input
@@ -1136,7 +1176,7 @@ export default function SuperAwards() {
                         }))
                       }
                     />
-                    <label className="active">Timesheet credits</label>
+                    <label className="active">Timesheet credits (Spendable FGC)</label>
                   </div>
                   <div className="input-field">
                     <input
@@ -1150,13 +1190,13 @@ export default function SuperAwards() {
                         }))
                       }
                     />
-                    <label className="active">WebRTC bonus</label>
+                    <label className="active">AI submit bonus (Frozen FGC)</label>
                   </div>
                   <div className="input-field">
                     <input
                       type="number"
                       min="0"
-                      value={String((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 20)}
+                      value={String((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 200)}
                       onChange={(e) =>
                         setCreditConfig((prev) => ({
                           ...prev,
@@ -1170,7 +1210,7 @@ export default function SuperAwards() {
                     <label className="active">Missing weekly update penalty</label>
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <CreditBadge amount={-Number((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 20)} />
+                    <CreditBadge amount={-Number((creditConfig as any)?.weeklyUpdate?.missingUpdatePenalty ?? 200)} />
                     <div className="hintText" style={{ marginTop: 10 }}>
                       Applied when a weekly update is missed. This is stored as a negative credit rule for admin clarity.
                     </div>
@@ -1227,6 +1267,51 @@ export default function SuperAwards() {
                     <CreditBadge amount={Number((creditConfig as any)?.connections?.linkedin ?? 100)} />
                     <div className="hintText" style={{ marginTop: 10 }}>
                       Connection credits are granted by the verified OAuth callback and only once per account connection.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ margin: 0 }}>
+                <div className="card-content">
+                  <span className="card-title">Frozen Credits</span>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={String((creditConfig as any)?.frozenCredits?.basePercent ?? 5)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          frozenCredits: { ...(prev?.frozenCredits || {}), basePercent: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Week 1 release percent</label>
+                  </div>
+                  <div className="input-field">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={String((creditConfig as any)?.frozenCredits?.streakBonusPercent ?? 2.5)}
+                      onChange={(e) =>
+                        setCreditConfig((prev) => ({
+                          ...prev,
+                          frozenCredits: { ...(prev?.frozenCredits || {}), streakBonusPercent: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                    <label className="active">Streak bonus percent</label>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <PercentBadge
+                      base={Number((creditConfig as any)?.frozenCredits?.basePercent ?? 5)}
+                      bonus={Number((creditConfig as any)?.frozenCredits?.streakBonusPercent ?? 2.5)}
+                    />
+                    <div className="hintText" style={{ marginTop: 10 }}>
+                      Week 1 releases the base percent. Each consecutive successful week adds the streak bonus. Missing a week resets the streak back to week 1.
                     </div>
                   </div>
                 </div>

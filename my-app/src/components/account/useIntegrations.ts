@@ -16,6 +16,8 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
     jira: false,
   });
   const [jiraStatus, setJiraStatus] = useState<any>(null);
+  const meJiraConnected = Boolean((me as any)?.jira_connected || safeStr((me as any)?.jira_connected_at));
+  const meJiraCloudName = safeStr((me as any)?.jira_cloud_name);
 
   const status = useMemo(
     () => ({
@@ -25,10 +27,13 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
       discord: Boolean(
         (me as any)?.discord_connected || safeStr((me as any)?.discord_connected_at)
       ),
-      jira: Boolean(jiraStatus?.connected),
-      jiraCloudName: safeStr(jiraStatus?.cloudName),
+      jira: jiraStatus === null ? meJiraConnected : Boolean(jiraStatus?.connected),
+      jiraCloudName:
+        jiraStatus === null
+          ? meJiraCloudName
+          : safeStr(jiraStatus?.cloudName) || meJiraCloudName,
     }),
-    [me, jiraStatus]
+    [jiraStatus, meJiraCloudName, meJiraConnected, me]
   );
 
   const setLoading = useCallback((key: IntegrationKey, value: boolean) => {
@@ -45,8 +50,9 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
   }, [api]);
 
   useEffect(() => {
+    setJiraStatus(null);
     void refreshJiraStatus();
-  }, [refreshJiraStatus]);
+  }, [me, refreshJiraStatus]);
 
   const startConnect = useCallback(
     async (key: IntegrationKey) => {

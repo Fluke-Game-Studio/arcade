@@ -674,13 +674,20 @@ export default function ApplicantDetailsModal({
       outDuration: 120,
       // IMPORTANT: don't call prop onClose directly (avoids re-init loops)
       onCloseEnd: () => {
+        // Run the overlay/body-lock cleanup BEFORE onClosed, which (via
+        // Applicants.tsx's queued-composer-reopen flow) may synchronously
+        // schedule another modal to open next. Since that's a React state
+        // update, it hasn't painted yet when this callback runs - if the
+        // cleanup ran after, it would see "no modal open" and rip out the
+        // overlay/body-lock right as the next modal is about to take over,
+        // leaving the page stuck with a half-cleared lock state.
+        syncMaterializeModalState();
         try {
           onCloseRef.current?.();
         } catch {}
         try {
           onClosedRef.current?.();
         } catch {}
-        syncMaterializeModalState();
       },
       onOpenStart: () => {
         try {

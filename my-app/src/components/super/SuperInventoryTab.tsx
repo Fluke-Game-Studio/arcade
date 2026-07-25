@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import FgcAmount from "../credits/FgcAmount";
 import type { ApiStoreItem, ApiStoreOrder } from "../../api";
-import { uploadFileToStoreImages } from "../../lib/storeUploads";
+import { uploadFilesToStoreImages } from "../../lib/storeUploads";
 
 declare const M: any;
 
@@ -11,6 +11,7 @@ type FormState = {
   description: string;
   category: string;
   image_url: string;
+  image_urls: string[];
   price_fgc: string;
   stock: string;
   custom_order: boolean;
@@ -32,6 +33,7 @@ function emptyForm(): FormState {
     description: "",
     category: "",
     image_url: "",
+    image_urls: [],
     price_fgc: "",
     stock: "0",
     custom_order: false,
@@ -47,8 +49,9 @@ export default function SuperInventoryTab() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState("");
-  const [imageUploadFile, setImageUploadFile] = useState<File | null>(null);
-  const [imageUploadName, setImageUploadName] = useState("");
+  const [imageUploadFiles, setImageUploadFiles] = useState<File[]>([]);
+  const [imageUploadNames, setImageUploadNames] = useState<string[]>([]);
+  const [imageUploadPreviews, setImageUploadPreviews] = useState<string[]>([]);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadError, setImageUploadError] = useState("");
@@ -86,6 +89,11 @@ export default function SuperInventoryTab() {
       description: safeStr(item.description),
       category: safeStr(item.category),
       image_url: safeStr(item.image_url),
+      image_urls: Array.isArray((item as any).image_urls)
+        ? (item as any).image_urls.map((url: any) => safeStr(url)).filter(Boolean)
+        : safeStr(item.image_url)
+          ? [safeStr(item.image_url)]
+          : [],
       price_fgc: String(safeNum(item.price_cents) / 100),
       stock: String(safeNum(item.stock)),
       custom_order: Boolean(item.custom_order),
@@ -98,8 +106,13 @@ export default function SuperInventoryTab() {
     setCategoryPreset("__custom__");
     setForm(emptyForm());
     stockBeforeCustomOrderRef.current = "0";
-    setImageUploadFile(null);
-    setImageUploadName("");
+    clearSelectedImages();
+  }
+
+  function clearSelectedImages() {
+    setImageUploadFiles([]);
+    setImageUploadNames([]);
+    setImageUploadPreviews([]);
     setImageUploadProgress(0);
     setImageUploading(false);
     setImageUploadError("");
@@ -108,33 +121,40 @@ export default function SuperInventoryTab() {
     }
   }
 
-  async function uploadImage() {
-    if (!imageUploadFile) {
-      M?.toast?.({ html: "Choose an image file first", classes: "orange" });
-      return;
-    }
-    if (!safeStr(form.name)) {
-      M?.toast?.({ html: "Enter a merch name first so the upload can be grouped", classes: "orange" });
-      return;
+  function setSelectedImages(files: File[]) {
+    const nextFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    setImageUploadFiles(nextFiles);
+    setImageUploadNames(nextFiles.map((file) => file.name));
+    setImageUploadPreviews(nextFiles.map((file) => URL.createObjectURL(file)));
+    setImageUploadProgress(0);
+    setImageUploadError("");
+  }
+
+  useEffect(() => {
+    return () => {
+      imageUploadPreviews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [imageUploadPreviews]);
+
+  async function uploadSelectedImages(itemName: string) {
+    if (!imageUploadFiles.length) return [];
+    if (!safeStr(itemName)) {
+      throw new Error("Enter a merch name first so the upload can be grouped");
     }
 
     setImageUploading(true);
     setImageUploadError("");
     try {
-      const uploaded = await uploadFileToStoreImages(
+      return await uploadFilesToStoreImages(
         api,
-        imageUploadFile,
-        form.name,
+        imageUploadFiles,
+        itemName,
         (pct) => setImageUploadProgress(pct)
       );
-      if (uploaded.publicUrl) {
-        setForm((prev) => ({ ...prev, image_url: uploaded.publicUrl || "" }));
-      }
-      M?.toast?.({ html: "Image uploaded to S3", classes: "green" });
     } catch (err: any) {
       const msg = String(err?.message || "Failed to upload image");
       setImageUploadError(msg);
-      M?.toast?.({ html: msg, classes: "red" });
+      throw new Error(msg);
     } finally {
       setImageUploading(false);
     }
@@ -149,12 +169,22 @@ export default function SuperInventoryTab() {
 
     setSaving(true);
     try {
+      const uploaded = await uploadSelectedImages(form.name);
+      const uploadedUrls = uploaded.map((file) => safeStr(file.publicUrl)).filter(Boolean);
+      const nextImageUrls = Array.from(
+        new Set([
+          safeStr(form.image_url),
+          ...form.image_urls.map((url) => safeStr(url)),
+          ...uploadedUrls,
+        ].filter(Boolean))
+      );
       await api.saveStoreItem({
         item_id: selectedItemId || undefined,
         name: safeStr(form.name),
         description: safeStr(form.description),
         category: safeStr(form.category),
-        image_url: safeStr(form.image_url),
+        image_url: safeStr(form.image_url || nextImageUrls[0] || ""),
+        image_urls: nextImageUrls,
         price_cents: Math.round(Number(form.price_fgc) * 100),
         stock: form.custom_order ? 0 : Math.max(0, Math.round(Number(form.stock))),
         custom_order: Boolean(form.custom_order),
@@ -260,50 +290,65 @@ export default function SuperInventoryTab() {
               <div className="input-field">
                 <input
                   value={form.image_url}
-                  onChange={(e) => setForm((prev) => ({ ...prev, image_url: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => {
+                      const next = e.target.value;
+                      return {
+                        ...prev,
+                        image_url: next,
+                        image_urls: prev.image_urls.length ? prev.image_urls : (next ? [next] : []),
+                      };
+                    })
+                  }
                   placeholder="https://..."
                 />
-                <label className="active">Image URL</label>
+                <label className="active">Primary image URL</label>
               </div>
               <div style={{ border: "1px dashed #cbd5e1", borderRadius: 14, padding: 12, background: "#fff" }}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Upload image to S3</div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Upload images to S3</div>
                 <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                   <input
                     ref={imageInputRef}
                     type="file"
                     accept="image/*"
+                    multiple
                     onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setImageUploadFile(file);
-                      setImageUploadName(file?.name || "");
-                      setImageUploadProgress(0);
-                      setImageUploadError("");
+                      setSelectedImages(Array.from(e.target.files || []));
                     }}
                   />
                   <div style={{ color: "#64748b", fontSize: 12, fontWeight: 700 }}>
-                    {imageUploadName ? `Selected: ${imageUploadName}` : "Choose a merch image, upload it, and the S3 public URL will fill in automatically."}
+                    {imageUploadNames.length
+                      ? `Selected: ${imageUploadNames.slice(0, 3).join(", ")}${imageUploadNames.length > 3 ? ` +${imageUploadNames.length - 3} more` : ""}`
+                      : "Choose one or more merch images. They will preview here now and upload when you save the item."}
                   </div>
+                  {imageUploadPreviews.length ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+                      {imageUploadPreviews.map((url, index) => (
+                        <div key={`${url}-${index}`} style={{ border: "1px solid #e6edf2", borderRadius: 14, padding: 8, background: "#fff" }}>
+                          <div style={{ height: 92, borderRadius: 10, overflow: "hidden", background: "#f8fafc", display: "grid", placeItems: "center" }}>
+                            <img src={url} alt={imageUploadNames[index] || "Selected merch"} style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "cover" }} />
+                          </div>
+                          <div style={{ marginTop: 8, color: "#475569", fontSize: 12, fontWeight: 700, wordBreak: "break-word" }}>
+                            {imageUploadNames[index] || "Selected image"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   {imageUploading ? (
                     <div style={{ color: "#1d4ed8", fontWeight: 800, fontSize: 12 }}>
-                      Uploading {imageUploadName || "image"}... {imageUploadProgress}%
+                      Uploading images during save... {imageUploadProgress}%
                     </div>
                   ) : null}
                   {imageUploadError ? (
                     <div style={{ color: "#b91c1c", fontWeight: 800, fontSize: 12 }}>{imageUploadError}</div>
                   ) : null}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" className="btn-flat" onClick={() => void uploadImage()} disabled={imageUploading || !imageUploadFile}>
-                      {imageUploading ? "Uploading..." : "Upload Image"}
-                    </button>
                     <button
                       type="button"
                       className="btn-flat"
                       onClick={() => {
-                        setImageUploadFile(null);
-                        setImageUploadName("");
-                        setImageUploadProgress(0);
-                        setImageUploadError("");
-                        if (imageInputRef.current) imageInputRef.current.value = "";
+                        clearSelectedImages();
                       }}
                       disabled={imageUploading}
                     >
@@ -312,6 +357,45 @@ export default function SuperInventoryTab() {
                   </div>
                 </div>
               </div>
+              {form.image_urls.length ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>
+                    Uploaded images
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+                    {form.image_urls.map((url) => (
+                      <div key={url} style={{ border: "1px solid #e6edf2", borderRadius: 14, padding: 8, background: "#fff" }}>
+                        <div style={{ height: 92, borderRadius: 10, overflow: "hidden", background: "#f8fafc", display: "grid", placeItems: "center" }}>
+                          <img src={url} alt="Uploaded merch" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "cover" }} />
+                        </div>
+                        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className="btn-flat"
+                            onClick={() => setForm((prev) => ({ ...prev, image_url: url }))}
+                            disabled={form.image_url === url}
+                          >
+                            Primary
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-flat"
+                            onClick={() =>
+                              setForm((prev) => ({
+                                ...prev,
+                                image_urls: prev.image_urls.filter((current) => current !== url),
+                                image_url: prev.image_url === url ? prev.image_urls.find((current) => current !== url) || "" : prev.image_url,
+                              }))
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="input-field">
                 <input
                   type="number"

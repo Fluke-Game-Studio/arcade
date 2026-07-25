@@ -46,6 +46,17 @@ function fulfillmentModeOf(item: ApiStoreItem) {
   return safeStr(item.fulfillment_mode).toLowerCase();
 }
 
+function storeItemImages(item: ApiStoreItem) {
+  const urls = Array.isArray(item.image_urls)
+    ? item.image_urls.map((url) => safeStr(url)).filter(Boolean)
+    : [];
+  const primary = safeStr(item.image_url);
+  if (primary && !urls.includes(primary)) {
+    urls.unshift(primary);
+  }
+  return urls;
+}
+
 export default function Store() {
   const { api } = useAuth();
   const [items, setItems] = useState<ApiStoreItem[]>([]);
@@ -58,6 +69,8 @@ export default function Store() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<"store" | "orders">("store");
   const [activeCategory, setActiveCategory] = useState("all");
+  const [selectedItem, setSelectedItem] = useState<ApiStoreItem | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   async function ensureWalletSession() {
     if (walletToken) return walletToken;
@@ -124,12 +137,32 @@ export default function Store() {
     if (activeCategory === "all") return items;
     return items.filter((item) => safeStr(item.category || "Uncategorized") === activeCategory);
   }, [items, activeCategory]);
+  const selectedItemImages = useMemo(() => (selectedItem ? storeItemImages(selectedItem) : []), [selectedItem]);
 
   useEffect(() => {
     if (activeCategory === "all") return;
     const exists = categories.some((category) => category.name === activeCategory);
     if (!exists) setActiveCategory("all");
   }, [activeCategory, categories]);
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setSelectedImageIndex(0);
+      return;
+    }
+    const images = storeItemImages(selectedItem);
+    setSelectedImageIndex((current) => Math.max(0, Math.min(current, Math.max(images.length - 1, 0))));
+  }, [selectedItem]);
+
+  function openItemModal(item: ApiStoreItem) {
+    setSelectedItem(item);
+    setSelectedImageIndex(0);
+  }
+
+  function closeItemModal() {
+    setSelectedItem(null);
+    setSelectedImageIndex(0);
+  }
 
   async function buyItem(item: ApiStoreItem) {
     const qty = 1;
@@ -225,7 +258,7 @@ export default function Store() {
           `}</style>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: 26, fontWeight: 1000, color: "#0f172a" }}>Fluke Boutique</div>
+              <div style={{ fontSize: 26, fontWeight: 1000, color: "#0f172a" }}>Fluke Store</div>
               <div style={{ color: "#64748b", marginTop: 4 }}>Spend Fluke Game Credits on studio merch.</div>
             </div>
             <div style={{ textAlign: "right" }}>
@@ -236,7 +269,7 @@ export default function Store() {
             </div>
           </div>
 
-          <div className="boutiqueTabs" role="tablist" aria-label="Fluke Boutique tabs">
+          <div className="boutiqueTabs" role="tablist" aria-label="Fluke Store tabs">
             <button
               type="button"
               className={`boutiqueTabBtn ${activeTab === "store" ? "active" : ""}`}
@@ -261,7 +294,7 @@ export default function Store() {
 
           {activeTab === "store" ? (
             <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
-              <div className="boutiqueTabs" role="tablist" aria-label="Fluke Boutique categories" style={{ marginTop: 0 }}>
+              <div className="boutiqueTabs" role="tablist" aria-label="Fluke Store categories" style={{ marginTop: 0 }}>
                 <button
                   type="button"
                   className={`boutiqueTabBtn ${activeCategory === "all" ? "active" : ""}`}
@@ -294,15 +327,27 @@ export default function Store() {
                   const affordable = safeNum(wallet?.balance_cents) >= safeNum(item.price_cents);
                   const stockLabel = requestOnly ? "Request only" : safeNum(item.display_stock ?? item.stock);
                   const requestAffordable = safeNum(wallet?.balance_cents) >= safeNum(item.price_cents);
+                  const itemImages = storeItemImages(item);
                   return (
                     <article
                       key={item.item_id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openItemModal(item)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openItemModal(item);
+                        }
+                      }}
                       style={{
                         border: "1px solid #e6edf2",
                         borderRadius: 18,
                         overflow: "hidden",
                         background: "#fff",
                         boxShadow: "0 10px 24px rgba(15,23,42,.04)",
+                        cursor: "pointer",
+                        position: "relative",
                       }}
                     >
                       <div
@@ -315,9 +360,9 @@ export default function Store() {
                           padding: 16,
                         }}
                       >
-                        {item.image_url ? (
+                        {itemImages.length ? (
                           <img
-                            src={item.image_url}
+                            src={itemImages[0]}
                             alt={item.name}
                             style={{ maxHeight: 112, maxWidth: "100%", objectFit: "contain" }}
                           />
@@ -326,6 +371,11 @@ export default function Store() {
                             storefront
                           </i>
                         )}
+                        {itemImages.length > 1 ? (
+                          <div style={{ position: "absolute", top: 12, right: 12, borderRadius: 999, background: "rgba(15,23,42,.72)", color: "#fff", fontSize: 11, fontWeight: 900, padding: "6px 10px" }}>
+                            {itemImages.length} photos
+                          </div>
+                        ) : null}
                       </div>
                       <div style={{ padding: 14, display: "grid", gap: 10 }}>
                         <div>
@@ -356,7 +406,10 @@ export default function Store() {
                             loading ||
                             busyItemId === item.item_id
                           }
-                          onClick={() => void buyItem(item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void buyItem(item);
+                          }}
                           style={{ width: "100%" }}
                         >
                           {busyItemId === item.item_id
@@ -487,6 +540,176 @@ export default function Store() {
           )}
         </div>
       </div>
+      {selectedItem ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${selectedItem.name} details`}
+          onClick={closeItemModal}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,.58)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 2200,
+            padding: 18,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(980px, 100%)",
+              maxHeight: "90vh",
+              overflow: "auto",
+              background: "#fff",
+              borderRadius: 22,
+              boxShadow: "0 24px 80px rgba(15,23,42,.35)",
+              border: "1px solid rgba(148,163,184,.2)",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, .9fr)", gap: 0 }}>
+              <div style={{ background: "linear-gradient(135deg, rgba(37,99,235,.10), rgba(14,165,233,.10), rgba(168,85,247,.08))", padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: "#475569", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                      Product preview
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 1000, color: "#0f172a", marginTop: 4 }}>{selectedItem.name}</div>
+                    <div style={{ color: "#64748b", marginTop: 6 }}>{selectedItem.description || "No description yet."}</div>
+                  </div>
+                  <button type="button" className="btn-flat" onClick={closeItemModal}>
+                    Close
+                  </button>
+                </div>
+
+                <div style={{ marginTop: 16, borderRadius: 20, overflow: "hidden", background: "#fff", minHeight: 380, display: "grid", placeItems: "center", position: "relative" }}>
+                  {selectedItemImages.length ? (
+                    <img
+                      src={selectedItemImages[selectedImageIndex] || selectedItemImages[0]}
+                      alt={selectedItem.name}
+                      style={{ width: "100%", maxHeight: 420, objectFit: "contain", background: "#fff" }}
+                    />
+                  ) : (
+                    <i className="material-icons" style={{ fontSize: 92, color: "#1d4ed8" }}>storefront</i>
+                  )}
+                  {selectedItemImages.length > 1 ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-flat"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedImageIndex((current) => (current - 1 + selectedItemImages.length) % selectedItemImages.length);
+                        }}
+                        style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-flat"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedImageIndex((current) => (current + 1) % selectedItemImages.length);
+                        }}
+                        style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}
+                      >
+                        Next
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+
+                {selectedItemImages.length > 1 ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))", gap: 10, marginTop: 12 }}>
+                    {selectedItemImages.map((url, index) => (
+                      <button
+                        key={url}
+                        type="button"
+                        onClick={() => setSelectedImageIndex(index)}
+                        style={{
+                          border: index === selectedImageIndex ? "2px solid #2563eb" : "1px solid #dbe5ef",
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          padding: 0,
+                          background: "#fff",
+                          minHeight: 84,
+                        }}
+                      >
+                        <img src={url} alt={`${selectedItem.name} ${index + 1}`} style={{ width: "100%", height: 84, objectFit: "cover" }} />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={{ padding: 18, display: "grid", gap: 14, alignContent: "start" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                    Details
+                  </div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ color: "#64748b", fontWeight: 800 }}>Price</span>
+                      <span style={{ fontWeight: 1000, color: "#0f172a" }}>
+                        <FgcAmount amount={safeNum(selectedItem.price_cents)} style={{ fontWeight: 1000, color: "#0f172a" }} iconSize={30} />
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ color: "#64748b", fontWeight: 800 }}>Category</span>
+                      <span style={{ fontWeight: 900, color: "#0f172a" }}>{safeStr(selectedItem.category || "Uncategorized")}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ color: "#64748b", fontWeight: 800 }}>Stock</span>
+                      <span style={{ fontWeight: 900, color: "#0f172a" }}>
+                        {fulfillmentModeOf(selectedItem) === "request"
+                          ? "Request only"
+                          : safeNum(selectedItem.stock).toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ color: "#64748b", fontWeight: 800 }}>Item ID</span>
+                      <span style={{ fontWeight: 900, color: "#0f172a", wordBreak: "break-word", textAlign: "right" }}>
+                        {selectedItem.item_id}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 16, border: "1px solid #e6edf2", background: "#f8fbff", padding: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>How it works</div>
+                  <div style={{ color: "#475569", marginTop: 8, lineHeight: 1.5 }}>
+                    {fulfillmentModeOf(selectedItem) === "request"
+                      ? "This item is custom-order only. Buying it opens a merch request for super approval."
+                      : "This item is stocked merch and can be purchased directly when in stock."}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={
+                    busyItemId === selectedItem.item_id ||
+                    (fulfillmentModeOf(selectedItem) === "request"
+                      ? safeNum(wallet?.balance_cents) < safeNum(selectedItem.price_cents)
+                      : safeNum(selectedItem.stock) <= 0 || safeNum(wallet?.balance_cents) < safeNum(selectedItem.price_cents))
+                  }
+                  onClick={() => void buyItem(selectedItem)}
+                >
+                  {busyItemId === selectedItem.item_id
+                    ? "Submitting..."
+                    : fulfillmentModeOf(selectedItem) === "request"
+                      ? "Request purchase"
+                      : safeNum(selectedItem.stock) <= 0
+                        ? "Out of stock"
+                        : "Buy now"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

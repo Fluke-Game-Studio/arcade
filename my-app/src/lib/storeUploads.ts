@@ -84,3 +84,54 @@ export async function uploadFileToStoreImages(
     publicUrl: item.publicUrl,
   };
 }
+
+export async function uploadFilesToStoreImages(
+  api: ApiClient,
+  files: File[],
+  itemName: string,
+  onProgress: StoreUploadProgress = () => {}
+): Promise<UploadedStoreImage[]> {
+  const validFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (!validFiles.length) return [];
+
+  const resp = await api.createStoreImageUploadUrls({
+    itemName: safeStr(itemName),
+    files: validFiles.map((file) => ({
+      fileName: safeStr(file.name) || "upload",
+      mimeType: normalizeMimeType(file),
+      size: file.size,
+    })),
+  });
+
+  const items = Array.isArray(resp?.files) ? resp.files : [];
+  if (!items.length) {
+    throw new Error("Failed to create store image upload URL.");
+  }
+
+  const uploads: UploadedStoreImage[] = [];
+  const total = Math.max(1, validFiles.length);
+
+  for (let index = 0; index < validFiles.length; index += 1) {
+    const file = validFiles[index];
+    const item = items[index];
+    if (!item?.uploadUrl || !item?.s3Key) {
+      throw new Error("Failed to create store image upload URL.");
+    }
+
+    await uploadFileWithProgress(item.uploadUrl, file, (pct) => {
+      const overall = Math.min(100, Math.round(((index + pct / 100) / total) * 100));
+      onProgress(overall);
+    });
+
+    uploads.push({
+      name: file.name,
+      mimeType: normalizeMimeType(file),
+      size: file.size,
+      s3Key: item.s3Key,
+      publicUrl: item.publicUrl,
+    });
+  }
+
+  onProgress(100);
+  return uploads;
+}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import FgcAmount from "../credits/FgcAmount";
+import FrozenFgcAmount from "../credits/FrozenFgcAmount";
 import type { ApiUser, ApiWallet } from "../../api";
 
 declare const M: any;
@@ -33,6 +34,7 @@ export default function SuperWalletTab() {
   const [selectedUsername, setSelectedUsername] = useState("");
   const [amountFgc, setAmountFgc] = useState("");
   const [reason, setReason] = useState("");
+  const [creditType, setCreditType] = useState<"spendable" | "frozen">("spendable");
   const [saving, setSaving] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [wallet, setWallet] = useState<ApiWallet | null>(null);
@@ -95,9 +97,13 @@ export default function SuperWalletTab() {
         amount_cents: Math.round(credits * 100),
         reason: safeStr(reason),
         transaction_id: transactionId,
+        credit_type: creditType,
       });
       setWallet(resp?.wallet || null);
-      M?.toast?.({ html: `Credited ${credits.toFixed(2)} FGC to ${username}`, classes: "green" });
+      M?.toast?.({
+        html: `${creditType === "frozen" ? "Frozen credited" : "Credited"} ${credits.toFixed(2)} FGC to ${username}`,
+        classes: "green",
+      });
       setAmountFgc("");
       setReason("");
     } catch (err: any) {
@@ -224,6 +230,44 @@ export default function SuperWalletTab() {
                   <label className="active">Reason</label>
                 </div>
 
+                <div style={{ marginTop: 8 }}>
+                  <label
+                    htmlFor="credit-type-select"
+                    style={{
+                      display: "block",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: "#64748b",
+                      marginBottom: 6,
+                    }}
+                  >
+                    What credits to reward
+                  </label>
+                  <select
+                    id="credit-type-select"
+                    className="browser-default"
+                    value={creditType}
+                    onChange={(e) => setCreditType(e.target.value === "frozen" ? "frozen" : "spendable")}
+                    style={{
+                      width: "100%",
+                      height: 46,
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 12,
+                      background: "#fff",
+                      padding: "0 12px",
+                      color: "#0f172a",
+                      fontWeight: 600,
+                      outline: "none",
+                    }}
+                  >
+                    <option value="spendable">Reward spendable FGC</option>
+                    <option value="frozen">Reward frozen FGC</option>
+                  </select>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+                    Spendable FGC goes into the normal wallet. Frozen FGC vests on weekly release.
+                  </div>
+                </div>
+
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
                     type="submit"
@@ -244,19 +288,30 @@ export default function SuperWalletTab() {
                 </div>
               </form>
 
-              {wallet ? (
-                <div style={{ marginTop: 8, border: "1px solid #dbeafe", background: "#f8fbff", borderRadius: 16, padding: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", letterSpacing: ".08em" }}>
-                    Latest result
+                {wallet ? (
+                  <div style={{ marginTop: 8, border: "1px solid #dbeafe", background: "#f8fbff", borderRadius: 16, padding: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                      Latest result
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 1000, color: "#0f172a", marginTop: 4 }}>
+                      <FgcAmount amount={safeNum(wallet.balance_cents)} style={{ fontSize: 24, fontWeight: 1000, color: "#0f172a" }} iconSize={64} />
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: "#334155", marginTop: 8 }}>
+                      Frozen balance:{" "}
+                      <FrozenFgcAmount
+                        amount={safeNum(wallet.frozen_balance_cents)}
+                        style={{ fontSize: 14, fontWeight: 900, color: "#334155" }}
+                        iconSize={30}
+                      />
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+                      Frozen streak: {safeNum(wallet.frozen_release_streak_weeks).toLocaleString()} week(s)
+                    </div>
+                    <div style={{ color: "#475569", marginTop: 4 }}>
+                      Wallet ID: <b>{safeStr(wallet.wallet_id)}</b>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 24, fontWeight: 1000, color: "#0f172a", marginTop: 4 }}>
-                    <FgcAmount amount={safeNum(wallet.balance_cents)} style={{ fontSize: 24, fontWeight: 1000, color: "#0f172a" }} iconSize={64} />
-                  </div>
-                  <div style={{ color: "#475569", marginTop: 4 }}>
-                    Wallet ID: <b>{safeStr(wallet.wallet_id)}</b>
-                  </div>
-                </div>
-              ) : null}
+                ) : null}
             </div>
           </div>
         </div>

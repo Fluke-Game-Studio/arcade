@@ -1,6 +1,15 @@
 export type ApiWallet = {
   wallet_id: string;
   balance_cents: number;
+  frozen_balance_cents?: number;
+  frozen_total_granted_cents?: number;
+  frozen_total_released_cents?: number;
+  frozen_release_streak_weeks?: number;
+  frozen_last_release_week_start?: string;
+  frozen_last_release_at?: string;
+  frozen_last_release_amount_cents?: number;
+  frozen_last_grant_at?: string;
+  frozen_last_grant_amount_cents?: number;
   status?: string;
   version?: number;
   created_at?: string;
@@ -46,6 +55,7 @@ export type ApiWalletCreditBody = {
   amount_cents: number;
   reason?: string;
   transaction_id?: string;
+  credit_type?: "spendable" | "frozen";
 };
 
 export type ApiWalletCreditResponse = {

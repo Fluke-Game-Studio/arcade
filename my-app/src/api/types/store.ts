@@ -4,6 +4,7 @@ export type ApiStoreItem = {
   description?: string;
   category?: string;
   image_url?: string;
+  image_urls?: string[];
   status?: string;
   custom_order?: boolean;
   fulfillment_mode?: "purchase" | "request" | "sold_out" | "inactive" | string;
@@ -42,6 +43,7 @@ export type ApiStoreSaveBody = {
   description?: string;
   category?: string;
   image_url?: string;
+  image_urls?: string[];
   custom_order?: boolean;
   price_cents: number;
   stock: number;

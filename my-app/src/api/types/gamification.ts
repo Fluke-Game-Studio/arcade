@@ -32,6 +32,7 @@ export type ApiCreditConfig = {
     fileUpload?: number;
     timesheet?: number;
     webrtcBonus?: number;
+    aiBonus?: number;
     missingUpdatePenalty?: number;
     [k: string]: any;
   };
@@ -39,6 +40,11 @@ export type ApiCreditConfig = {
     linkedin?: number;
     discord?: number;
     jira?: number;
+    [k: string]: any;
+  };
+  frozenCredits?: {
+    basePercent?: number;
+    streakBonusPercent?: number;
     [k: string]: any;
   };
   isActive?: boolean;

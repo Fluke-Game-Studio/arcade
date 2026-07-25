@@ -161,7 +161,7 @@ export default function AccountMyOrders({ api }: { api: any }) {
         <div className="accOrdersHero">
           <div>
             <div className="accOrdersTitle">My Orders</div>
-            <div className="accOrdersSub">Your Fluke Boutique purchases in Fluke Game Credits.</div>
+            <div className="accOrdersSub">Your Fluke Store purchases in Fluke Game Credits.</div>
           </div>
           <div className="accOrdersPills">
             <div className="accOrdersPill">Orders: {fulfilledOrders.length}</div>
@@ -199,7 +199,7 @@ export default function AccountMyOrders({ api }: { api: any }) {
               </div>
             ))
           ) : (
-            <div className="emptyState">No fulfilled orders yet. Visit Fluke Boutique to buy your first item.</div>
+            <div className="emptyState">No fulfilled orders yet. Visit Fluke Store to buy your first item.</div>
           )}
         </div>
 
@@ -209,7 +209,7 @@ export default function AccountMyOrders({ api }: { api: any }) {
           </div>
           <button type="button" className="accBtn" onClick={() => navigate("/store")}>
             <i className="material-icons">storefront</i>
-            Open Fluke Boutique
+            Open Fluke Store
           </button>
         </div>
       </div>

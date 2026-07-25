@@ -17,8 +17,8 @@ import ApiEndpoints from "./ApiEndpoints";
 declare const M: any;
 
 type ProjectSettingsTab = "details" | "jira";
-type AssignableRole = "employee" | "admin" | "super";
-type ReadScope = "employee" | "admin" | "super";
+type AssignableRole = "employee" | "admin" | "super" | "test";
+type ReadScope = "employee" | "admin" | "super" | "test";
 
 type ProjectForm = {
   name: string;
@@ -310,6 +310,17 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
     }
   }
 
+  async function deleteUser(username: string) {
+    if (!isSuperUser) return;
+    try {
+      await api.deleteUser(username);
+      setRows((prev) => prev.filter((u) => u.username !== username));
+      M.toast({ html: "User deleted", classes: "green" });
+    } catch (e: any) {
+      M.toast({ html: e?.message || "Failed", classes: "red" });
+    }
+  }
+
   function handleProjectChange<K extends keyof ProjectForm>(key: K, v: ProjectForm[K]) {
     setProjectForm((prev) => ({ ...prev, [key]: v }));
   }
@@ -531,6 +542,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
           onSetRole={setRole}
           onSetReadScope={setReadScope}
           onSetAccessFlag={setUserAccessFlag}
+          onDeleteUser={deleteUser}
           roleFor={normalizeRole}
           readScopeFor={(u) =>
             normalizeRole(
@@ -539,6 +551,8 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
                   ? "super"
                   : normalizeRole(u.employee_role) === "admin"
                   ? "admin"
+                  : normalizeRole(u.employee_role) === "test"
+                  ? "test"
                   : "employee")
             ) as ReadScope
           }

@@ -31,11 +31,11 @@ export default function SuperRequestsTab() {
   const [statusFilter, setStatusFilter] = useState("pending");
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
-  const merchRequests = useMemo(
+  const visibleRequests = useMemo(
     () =>
       requests.filter((request) => {
         const kind = safeStr(request.kind || request.requestType || "").toLowerCase();
-        return kind.startsWith("store_");
+        return kind.startsWith("store_") || kind === "page_access";
       }),
     [requests]
   );
@@ -51,7 +51,7 @@ export default function SuperRequestsTab() {
       setRequests(
         nextRequests.filter((request) => {
           const kind = safeStr(request.kind || request.requestType || "").toLowerCase();
-          return kind.startsWith("store_");
+          return kind.startsWith("store_") || kind === "page_access";
         })
       );
     } catch (err: any) {
@@ -89,8 +89,8 @@ export default function SuperRequestsTab() {
       <div className="card-content">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
           <div>
-            <div className="card-title" style={{ marginBottom: 4 }}>Merch Requests</div>
-            <div style={{ color: "#475569" }}>Only store merch requests live here. Agent Builder requests stay in Agent Builder &gt; Requests.</div>
+            <div className="card-title" style={{ marginBottom: 4 }}>Requests</div>
+            <div style={{ color: "#475569" }}>Store merch and page access requests live here. Agent Builder requests stay in Agent Builder &gt; Requests.</div>
           </div>
           <button type="button" className="btn-flat" onClick={() => void loadRequests()} disabled={loading}>
             {loading ? "Loading..." : "Refresh"}
@@ -116,7 +116,7 @@ export default function SuperRequestsTab() {
         </div>
 
         <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          {merchRequests.length ? merchRequests.map((request) => {
+          {visibleRequests.length ? visibleRequests.map((request) => {
             const kind = safeStr(request.kind || request.requestType || "generic").toLowerCase();
             const pending = safeStr(request.status).toLowerCase() === "pending";
             return (
@@ -157,6 +157,9 @@ export default function SuperRequestsTab() {
 
                 <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                   {request.agentId ? <div style={{ fontSize: 13, color: "#475569" }}><b>Agent:</b> {request.agentId}</div> : null}
+                  {kind === "page_access" && request.payload?.pageKey ? (
+                    <div style={{ fontSize: 13, color: "#475569" }}><b>Page:</b> {safeStr(request.payload.pageKey)}</div>
+                  ) : null}
                   {request.reason ? <div style={{ fontSize: 13, color: "#475569" }}><b>Reason:</b> {request.reason}</div> : null}
                   <details style={{ border: "1px dashed #dbe5ef", borderRadius: 12, padding: 10, background: "#fbfdff" }}>
                     <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>Payload</summary>

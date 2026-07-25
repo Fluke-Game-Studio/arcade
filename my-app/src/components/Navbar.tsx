@@ -159,7 +159,7 @@ export default function Navbar() {
       { to: "/organisation/org-chart", label: "Org Chart" },
       { to: "/organisation/employees", label: "Employees" },
       { to: "/organisation/social-media", label: "Social Media" },
-      { to: "/store", label: "Fluke Boutique" },
+      { to: "/store", label: "Fluke Store" },
     ];
 
     if (teamCheckReady && hasTeamMembers) {

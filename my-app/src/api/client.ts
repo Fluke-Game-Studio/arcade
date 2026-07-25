@@ -287,6 +287,19 @@ export class ApiClient {
     return payload as { ok: boolean; releaseVersion: string };
   }
 
+  async updateOnboardingJourneyProgress(body: { releaseVersion: string; step: "agreement" | "commitment" | "payment" | "welcome" | "profile" }): Promise<{ ok: boolean; releaseVersion: string; step: string; onboardingJourneyState?: string | Record<string, unknown> }> {
+    const r = await fetch(`${API_BASE}/me/onboarding-progress`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`updateOnboardingJourneyProgress failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; releaseVersion: string; step: string; onboardingJourneyState?: string | Record<string, unknown> };
+  }
+
   async getDirectory(): Promise<ApiUser[]> {
     const r = await fetch(`${API_BASE}/directory`, {
       headers: this.headers(false),
@@ -413,6 +426,21 @@ export class ApiClient {
     return payload?.ok ? payload : { ok: true };
   }
 
+  async deleteUser(username: string): Promise<{ ok: true }> {
+    const r = await fetch(`${API_BASE}/admin/deleteUser`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({ username }),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `deleteUser failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return payload?.ok ? payload : { ok: true };
+  }
+
   async startLinkedInConnect(
     body?: StartLinkedInConnectBody
   ): Promise<StartLinkedInConnectResponse> {
@@ -486,6 +514,26 @@ export class ApiClient {
       ok: Boolean(payload?.ok ?? true),
       configured: Boolean(payload?.configured),
       items: Array.isArray(payload?.items) ? payload.items : [],
+    };
+  }
+
+  // Temporary, minimal publish call used only for the LinkedIn API review demo -
+  // remove alongside services/linkedin.mjs::publishLinkedInOrgPost once done.
+  async publishLinkedInOrgPost(body: { caption: string; imageUrl?: string }): Promise<{ ok: boolean; postId?: string }> {
+    const r = await fetch(`${API_BASE}/integrations/linkedin/org/publish`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `publishLinkedInOrgPost failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      postId: payload?.postId,
     };
   }
 
@@ -1314,6 +1362,22 @@ export class ApiClient {
     return payload;
   }
 
+  async deleteSocialPost(body: {
+    postId?: string;
+    post_id?: string;
+  }): Promise<any> {
+    const r = await fetch(`${API_BASE}/social-posts/delete`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`deleteSocialPost failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload;
+  }
+
   async addSocialPostComment(body: {
     postId?: string;
     post_id?: string;
@@ -1868,6 +1932,38 @@ export class ApiClient {
     return {
       ok: Boolean(payload?.ok ?? true),
       request: payload?.request,
+    };
+  }
+
+  async getPageAccessCatalog(): Promise<{ ok: boolean; pages: { pageKey: string; label: string }[] }> {
+    const r = await fetch(`${API_BASE}/page-access/catalog`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getPageAccessCatalog failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      pages: Array.isArray(payload?.pages) ? payload.pages : [],
+    };
+  }
+
+  async getMyPageAccess(pageKey: string): Promise<{ ok: boolean; page: string; allowed: boolean; blockedRoutes: { routeKey: string; reason: string }[] }> {
+    const r = await fetch(`${API_BASE}/me/page-access?page=${encodeURIComponent(pageKey)}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getMyPageAccess failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return {
+      ok: Boolean(payload?.ok ?? true),
+      page: String(payload?.page ?? pageKey),
+      allowed: Boolean(payload?.allowed),
+      blockedRoutes: Array.isArray(payload?.blockedRoutes) ? payload.blockedRoutes : [],
     };
   }
 
