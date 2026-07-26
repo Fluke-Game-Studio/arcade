@@ -336,22 +336,6 @@ export default function ProfileDetailsStep({
     }
   }
 
-  async function refreshMe() {
-    try {
-      const mine = await api.getMe();
-      setMe(mine);
-      setPic(safeStr(mine?.employee_profilepicture));
-      setEmployeePic(safeStr(mine?.employee_picture));
-      setLinkedinUrl(safeStr(mine?.linkedin_url));
-      setDiscordUrl(safeStr(mine?.discord_url));
-      setPhone(safeStr(mine?.employee_phonenumber));
-      setLocation(safeStr(mine?.location));
-      setDob(safeStr(mine?.employee_dob));
-      setAddress(safeStr(mine?.employee_address));
-      syncProfile(mine, user);
-    } catch {}
-  }
-
   async function saveOne(key: string) {
     if (!username) return;
 
@@ -416,8 +400,12 @@ export default function ProfileDetailsStep({
       if (key === "employee_dob") patch.employee_dob = safeStr(dob) || undefined;
       if (key === "employee_address") patch.employee_address = safeStr(address) || undefined;
       await api.updateUser(patch);
-      await refreshMe();
-      syncProfile(await api.getMe(), user);
+      // Update only the field we just saved rather than refetching + resyncing
+      // all 8 fields from the server - a full resync would overwrite whatever
+      // is currently typed (but not yet saved) into any other open field,
+      // making it impossible to fill in more than one field before saving.
+      setMe((prev: any) => ({ ...(prev || {}), [key]: nextValue }));
+      setInitialProfile((prev) => ({ ...prev, [key]: nextValue }));
       setEdit(key, false);
       setPulse(true);
       setTimeout(() => setPulse(false), 900);

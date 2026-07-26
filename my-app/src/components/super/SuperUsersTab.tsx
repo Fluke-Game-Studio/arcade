@@ -64,7 +64,7 @@ export default function SuperUsersTab({
               const readScope = readScopeFor(u);
               const roleKey = roleFor(u.employee_role);
               return (
-                <div key={u.username} className="suUserRow">
+                <div key={u.username} className="suUserRow" style={{ position: "relative" }}>
                   <div className="suUserIdentity">
                     <div className="suAvatarWrap">
                       <div className="suAvatar">
@@ -139,21 +139,30 @@ export default function SuperUsersTab({
                         </label>
                       </div>
                     </div>
-
-                    <button
-                      type="button"
-                      className="btn-flat"
-                      title={isSelf ? "You can't delete your own account" : "Delete user"}
-                      disabled={!isSuperUser || isSelf}
-                      onClick={() => {
-                        if (!window.confirm(`Permanently delete ${u.username}? This cannot be undone.`)) return;
-                        onDeleteUser(u.username);
-                      }}
-                      style={{ color: "#b91c1c", display: "flex", alignItems: "center", gap: 4 }}
-                    >
-                      <i className="material-icons" style={{ fontSize: 18 }}>delete</i>
-                    </button>
                   </div>
+
+                  <button
+                    type="button"
+                    className="btn-flat"
+                    title={isSelf ? "You can't delete your own account" : "Delete user"}
+                    disabled={!isSuperUser || isSelf}
+                    onClick={() => {
+                      if (!window.confirm(`Permanently delete ${u.username}? This cannot be undone.`)) return;
+                      onDeleteUser(u.username);
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: 10,
+                      right: 10,
+                      color: "#b91c1c",
+                      display: "flex",
+                      alignItems: "center",
+                      padding: 6,
+                      minWidth: 0,
+                    }}
+                  >
+                    <i className="material-icons" style={{ fontSize: 18 }}>delete</i>
+                  </button>
                 </div>
               );
             })}

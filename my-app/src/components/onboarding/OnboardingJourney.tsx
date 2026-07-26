@@ -376,7 +376,7 @@ export default function OnboardingJourney() {
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {stepPill(currentStep === "welcome", welcomeDone, "Welcome")}
-              {passwordResetRequired ? stepPill(currentStep === "password", passwordResetDone, "Password") : null}
+              {passwordResetRequired ? stepPill(currentStep === "password", passwordResetDone, "Password Reset") : null}
               {stepPill(currentStep === "profile", profileDone, "Profile")}
               {stepPill(currentStep === "connect", connectedReady, "Connect")}
               {stepPill(currentStep === "agreement", agreementDone, "Agreement")}
