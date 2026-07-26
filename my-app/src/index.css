@@ -82,6 +82,12 @@ html[data-theme="dark"] .select-wrapper input.select-dropdown {
   color: rgba(203, 213, 225, 0.88) !important;
 }
 
+.input-field > input:focus + label,
+.input-field > textarea:focus + label {
+  transform: translateY(-14px) scale(0.8) !important;
+  transform-origin: 0 0 !important;
+}
+
 html[data-theme="dark"] table,
 html[data-theme="dark"] thead,
 html[data-theme="dark"] tbody,
