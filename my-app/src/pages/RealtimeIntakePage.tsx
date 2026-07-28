@@ -11,10 +11,12 @@ const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
 
 // The model is never trusted to decide question order/wording from memory of a prompt.
 // It must call a tool after every candidate turn; the client owns qIdx and hands back the
-// exact next line to speak via a single-turn tool_choice:"none" response.
-const PERSONA_INSTRUCTIONS = `You are a warm, professional AI interviewer for Fluke Games.
-You do not decide what to ask, when to advance, or how to phrase questions. After every candidate response you MUST call exactly one tool: "advance_interview" (normal case) or "flag_off_topic" (only if the candidate made no attempt at all to address the current question). Never respond with speech directly at that point — only a tool call.
-After you call a tool, you will be told the exact words to say. Say only those words, nothing more, nothing less — no extra commentary, no repeating earlier questions, no paraphrasing.
+// exact next line to speak via a single-turn tool_choice:"none" response. Only the small
+// talk (acknowledgments) is left to the model's own phrasing — the question text itself is
+// always delivered as a literal instruction, never left to memory/compliance.
+const PERSONA_INSTRUCTIONS = `You are a warm, professional AI interviewer for Fluke Games having a natural conversation — not reading a script robotically.
+You do not decide what to ask, when to advance, or how to phrase questions yourself. After every candidate response you MUST call exactly one tool: "advance_interview" (normal case), "flag_off_topic" (candidate made no attempt to address the question), or "ask_follow_up_question" (only when explicitly instructed to, for a brief answer). Never respond with speech directly at that point — only a tool call.
+After you call a tool, you'll usually be told exact required words to include — but when asked to "acknowledge naturally," vary your phrasing, sound genuinely human and warm, and avoid repeating the same stock phrases turn after turn.
 Respond only in English, regardless of what language the candidate uses.`;
 
 const INTERVIEW_TOOLS = [
@@ -42,11 +44,28 @@ const INTERVIEW_TOOLS = [
       "Call this INSTEAD of advance_interview only if the candidate's response made no attempt whatsoever to address the current question (asked something unrelated, went silent, or talked about something else entirely).",
     parameters: { type: "object", properties: {}, required: [] },
   },
+  {
+    type: "function",
+    name: "ask_follow_up_question",
+    description:
+      "Called only when you are explicitly instructed to probe deeper on a brief answer. Craft ONE natural, specific follow-up question based directly on what the candidate just said — never generic.",
+    parameters: {
+      type: "object",
+      properties: {
+        follow_up_question: {
+          type: "string",
+          description: "The exact follow-up question to ask, phrased naturally and conversationally, referencing specifics from the candidate's answer.",
+        },
+      },
+      required: ["follow_up_question"],
+    },
+  },
 ];
 
-const ACKNOWLEDGMENTS = ["Got it, thank you.", "Thanks for sharing that.", "Understood, appreciate it.", "Great, thank you."];
 const OFF_TOPIC_REDIRECT = "Let's keep focused on the interview.";
 const CLARIFY_PROMPT = "It seems your response may have been incomplete — could you say a bit more about that?";
+const SHORT_ANSWER_THRESHOLD_MS = 30000;
+const MAX_COUNTER_QUESTIONS_PER_ANSWER = 2;
 
 
 function buildTranscript(answers: Record<string, string>, questions: string[]): string {
@@ -166,7 +185,9 @@ export default function RealtimeIntakePage() {
   const responseInProgressRef = useRef(false);
   const expectingToolCallRef = useRef(false);
   const followUpCountRef = useRef<Record<number, number>>({});
-  const ackIdxRef = useRef(0);
+  const counterQuestionCountRef = useRef<Record<number, number>>({});
+  const speechStartedAtRef = useRef<number | null>(null);
+  const lastAnswerDurationMsRef = useRef<number | null>(null);
   const closingTextRef = useRef("");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -356,7 +377,9 @@ export default function RealtimeIntakePage() {
         responseInProgressRef.current = false;
         expectingToolCallRef.current = false;
         followUpCountRef.current = {};
-        ackIdxRef.current = 0;
+        counterQuestionCountRef.current = {};
+        speechStartedAtRef.current = null;
+        lastAnswerDurationMsRef.current = null;
         debugLogRef.current = [];
         setDebugLog([]);
         const qs = allQuestionsRef.current;
@@ -462,6 +485,14 @@ export default function RealtimeIntakePage() {
           if (type === "response.audio_transcript.done" || type === "response.output_audio_transcript.done") {
             setAiSpeaking(false);
           }
+          // Track how long the candidate actually spoke this turn (first speech_started to
+          // last speech_stopped), so "under 30s" is measured, not guessed by the model.
+          if (type === "input_audio_buffer.speech_started" && speechStartedAtRef.current == null) {
+            speechStartedAtRef.current = Date.now();
+          }
+          if (type === "input_audio_buffer.speech_stopped" && speechStartedAtRef.current != null) {
+            lastAnswerDurationMsRef.current = Date.now() - speechStartedAtRef.current;
+          }
           if (type === "conversation.item.input_audio_transcription.completed") {
             const text = String(msg?.transcript || "").trim();
             if (!text || responseInProgressRef.current) return;
@@ -472,6 +503,22 @@ export default function RealtimeIntakePage() {
             const channel = dcRef.current;
             if (!channel) return;
             responseInProgressRef.current = true;
+
+            const durationMs = lastAnswerDurationMsRef.current;
+            const counterCount = counterQuestionCountRef.current[currentIdx] || 0;
+            if (durationMs != null && durationMs < SHORT_ANSWER_THRESHOLD_MS && counterCount < MAX_COUNTER_QUESTIONS_PER_ANSWER) {
+              expectingToolCallRef.current = true;
+              addDebug("out", "response.create", `answer ${(durationMs / 1000).toFixed(1)}s < 30s → requesting counter-question (${counterCount + 1}/${MAX_COUNTER_QUESTIONS_PER_ANSWER})`);
+              channel.send(JSON.stringify({
+                type: "response.create",
+                response: {
+                  instructions: `The candidate's answer was brief (under 30 seconds). Based specifically on what they just said, call ask_follow_up_question with ONE natural, targeted follow-up question that digs deeper into their answer.`,
+                  tool_choice: { type: "function", name: "ask_follow_up_question" },
+                },
+              }));
+              return;
+            }
+
             expectingToolCallRef.current = true;
             // No embedded rules here — tool_choice:"required" (set at session level) forces
             // the model into advance_interview/flag_off_topic; it cannot free-speak past a question.
@@ -489,9 +536,25 @@ export default function RealtimeIntakePage() {
         if (!channel) return;
         responseInProgressRef.current = true;
         expectingToolCallRef.current = false;
+        speechStartedAtRef.current = null;
         channel.send(JSON.stringify({
           type: "response.create",
           response: { instructions: `Say exactly and only: "${text}"`, tool_choice: "none" },
+        }));
+      }
+
+      function sendAckThenQuestion(question: string) {
+        const channel = dcRef.current;
+        if (!channel) return;
+        responseInProgressRef.current = true;
+        expectingToolCallRef.current = false;
+        speechStartedAtRef.current = null;
+        channel.send(JSON.stringify({
+          type: "response.create",
+          response: {
+            instructions: `Briefly and naturally acknowledge the candidate's last answer in your own words — one short sentence, warm and human, varied phrasing (don't reuse the same stock phrase every time). Then ask this exact question, word-for-word with no changes: "${question}"`,
+            tool_choice: "none",
+          },
         }));
       }
 
@@ -501,8 +564,8 @@ export default function RealtimeIntakePage() {
 
         if (seemsIncomplete && (followUpCountRef.current[currentIdx] || 0) < 1) {
           followUpCountRef.current[currentIdx] = (followUpCountRef.current[currentIdx] || 0) + 1;
-          addDebug("out", "response.create", `clarify Q${currentIdx + 1} (tool_choice=none)`);
-          sendScriptedResponse(CLARIFY_PROMPT);
+          addDebug("out", "response.create", `clarify → repeat Q${currentIdx + 1} (tool_choice=none)`);
+          sendScriptedResponse(`${CLARIFY_PROMPT} ${qs[currentIdx]}`);
           return;
         }
 
@@ -510,10 +573,8 @@ export default function RealtimeIntakePage() {
         if (nextIdx < qs.length) {
           qIdxRef.current = nextIdx;
           setQIdx(nextIdx);
-          const ack = ACKNOWLEDGMENTS[ackIdxRef.current % ACKNOWLEDGMENTS.length];
-          ackIdxRef.current += 1;
-          addDebug("out", "response.create", `→ Q${nextIdx + 1}: "${qs[nextIdx].slice(0, 60)}" (tool_choice=none)`);
-          sendScriptedResponse(`${ack} ${qs[nextIdx]}`);
+          addDebug("out", "response.create", `→ Q${nextIdx + 1}: "${qs[nextIdx].slice(0, 60)}" (natural ack, tool_choice=none)`);
+          sendAckThenQuestion(qs[nextIdx]);
         } else {
           qIdxRef.current = qs.length;
           setQIdx(qs.length);
@@ -543,6 +604,15 @@ export default function RealtimeIntakePage() {
           const currentIdx = qIdxRef.current;
           addDebug("out", "response.create", `off-topic redirect → repeat Q${currentIdx + 1} (tool_choice=none)`);
           sendScriptedResponse(`${OFF_TOPIC_REDIRECT} ${qs[currentIdx]}`);
+          return;
+        }
+
+        if (name === "ask_follow_up_question") {
+          const currentIdx = qIdxRef.current;
+          counterQuestionCountRef.current[currentIdx] = (counterQuestionCountRef.current[currentIdx] || 0) + 1;
+          const followUp = String(args?.follow_up_question || "").trim() || CLARIFY_PROMPT;
+          addDebug("out", "response.create", `counter-question ${counterQuestionCountRef.current[currentIdx]}/${MAX_COUNTER_QUESTIONS_PER_ANSWER}: "${followUp.slice(0, 60)}" (tool_choice=none)`);
+          sendScriptedResponse(followUp);
           return;
         }
 
