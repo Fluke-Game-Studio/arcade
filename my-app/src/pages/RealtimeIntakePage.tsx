@@ -9,15 +9,44 @@ import type { StoredIntakeContext, FeedbackState, DebugEvent } from "../componen
 
 const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
 
-const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Games. You have ONE job: conduct this interview by asking the listed questions in order.
+// The model is never trusted to decide question order/wording from memory of a prompt.
+// It must call a tool after every candidate turn; the client owns qIdx and hands back the
+// exact next line to speak via a single-turn tool_choice:"none" response.
+const PERSONA_INSTRUCTIONS = `You are a warm, professional AI interviewer for Fluke Games.
+You do not decide what to ask, when to advance, or how to phrase questions. After every candidate response you MUST call exactly one tool: "advance_interview" (normal case) or "flag_off_topic" (only if the candidate made no attempt at all to address the current question). Never respond with speech directly at that point — only a tool call.
+After you call a tool, you will be told the exact words to say. Say only those words, nothing more, nothing less — no extra commentary, no repeating earlier questions, no paraphrasing.
+Respond only in English, regardless of what language the candidate uses.`;
 
-=== ABSOLUTE RULES — no exceptions ===
-1. OFF-TOPIC RESPONSE: If the candidate says ANYTHING not related to answering the current interview question, do NOT engage with it. Say exactly: "Let's keep focused on the interview." then immediately repeat the current question word-for-word. Do not acknowledge, comment on, or explore the off-topic content in any way.
-2. QUESTION ORDER: Ask questions strictly in the listed order. Never skip, reorder, or paraphrase. Use the exact wording provided.
-3. INCOMPLETE ANSWERS: If an answer is vague or very short, ask one targeted follow-up before moving on.
-4. MIC INTERRUPTION: If a response seems cut off or too short, say "It seems your response may have been incomplete — could you complete your answer?" Do not advance.
-5. ENGLISH ONLY: Respond only in English, regardless of what language the candidate uses.
-6. BREVITY: Keep your own responses short — one or two sentences maximum before asking or repeating the question.`;
+const INTERVIEW_TOOLS = [
+  {
+    type: "function",
+    name: "advance_interview",
+    description:
+      "Call this after the candidate finishes responding to the current question. You do NOT choose the next question — it will be provided to you afterward.",
+    parameters: {
+      type: "object",
+      properties: {
+        candidate_answer_seems_incomplete: {
+          type: "boolean",
+          description:
+            "True ONLY if the candidate's answer was clearly cut off mid-sentence, silent, or nonsensical. False for any real attempt at an answer, even a brief one.",
+        },
+      },
+      required: ["candidate_answer_seems_incomplete"],
+    },
+  },
+  {
+    type: "function",
+    name: "flag_off_topic",
+    description:
+      "Call this INSTEAD of advance_interview only if the candidate's response made no attempt whatsoever to address the current question (asked something unrelated, went silent, or talked about something else entirely).",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+];
+
+const ACKNOWLEDGMENTS = ["Got it, thank you.", "Thanks for sharing that.", "Understood, appreciate it.", "Great, thank you."];
+const OFF_TOPIC_REDIRECT = "Let's keep focused on the interview.";
+const CLARIFY_PROMPT = "It seems your response may have been incomplete — could you say a bit more about that?";
 
 
 function buildTranscript(answers: Record<string, string>, questions: string[]): string {
@@ -135,6 +164,10 @@ export default function RealtimeIntakePage() {
   const qIdxRef = useRef(0);
   const allQuestionsRef = useRef<string[]>([]);
   const responseInProgressRef = useRef(false);
+  const expectingToolCallRef = useRef(false);
+  const followUpCountRef = useRef<Record<number, number>>({});
+  const ackIdxRef = useRef(0);
+  const closingTextRef = useRef("");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
@@ -321,28 +354,28 @@ export default function RealtimeIntakePage() {
       dc.onopen = () => {
         setStatus("connected");
         responseInProgressRef.current = false;
+        expectingToolCallRef.current = false;
+        followUpCountRef.current = {};
+        ackIdxRef.current = 0;
         debugLogRef.current = [];
         setDebugLog([]);
         const qs = allQuestionsRef.current;
         const liveCtx = ctxRef.current;
 
-        const baseRules = liveCtx.sessionPrompt?.trim() || DEFAULT_SESSION_PROMPT;
         const isWeeklyCtx = liveCtx.key === "weekly_update" || liveCtx.mcpActions.some((a) => a === "submit_weekly_update" || a === "updates_write");
         const closingDefault = isWeeklyCtx
           ? `Thank the person warmly and let them know their responses have been recorded.`
           : `Thank the candidate warmly, tell them a human will review their responses, and wish them well.`;
-        const greetInstruction = `Begin the session now. Greet warmly as your persona, do NOT say your model name or mention ChatGPT, then immediately ask the first question: "${qs[0]}"`;
+        closingTextRef.current = liveCtx.endNote?.trim() || closingDefault;
 
+        // Note: question text and ordering are NOT included here — they're delivered fresh,
+        // per-turn, via scripted tool_choice:"none" responses so the model never has to
+        // "remember" the list or comply with a rule that's buried many turns back.
         const sessionInstructions = [
-          baseRules,
-          liveCtx.customInstructions?.trim() ? `\n=== ADDITIONAL INSTRUCTIONS ===\n${liveCtx.customInstructions.trim()}` : "",
-          ``,
-          `=== QUESTIONS (ask in this exact order) ===`,
-          ...qs.map((q, i) => `Q${i + 1}: ${q}`),
-          liveCtx.backgroundInfo?.trim() ? `\n=== BACKGROUND CONTEXT ===\n${liveCtx.backgroundInfo.trim()}` : "",
-          ``,
-          `=== CLOSING (after all ${qs.length} questions) ===`,
-          liveCtx.endNote?.trim() || closingDefault,
+          PERSONA_INSTRUCTIONS,
+          liveCtx.sessionPrompt?.trim() ? `\nAdditional tone/persona notes (style only — the tool contract above always applies):\n${liveCtx.sessionPrompt.trim()}` : "",
+          liveCtx.customInstructions?.trim() ? `\nTone/style notes:\n${liveCtx.customInstructions.trim()}` : "",
+          liveCtx.backgroundInfo?.trim() ? `\nBackground context (for tone only, not to be recited):\n${liveCtx.backgroundInfo.trim()}` : "",
         ].filter(Boolean).join("\n").trim();
 
         setAppliedInstructions(sessionInstructions);
@@ -356,33 +389,28 @@ export default function RealtimeIntakePage() {
         });
         addDebug("info", "session.open", `ctx="${liveCtx.key}" qs=${qs.length}`);
 
-        // Set session-level instructions
+        // Session-level: tools are always available and REQUIRED after every candidate turn.
         dc.send(JSON.stringify({
           type: "session.update",
-          session: { type: "realtime", instructions: sessionInstructions },
+          session: { type: "realtime", instructions: sessionInstructions, tools: INTERVIEW_TOOLS, tool_choice: "required" },
         }));
-        addDebug("out", "session.update", `${sessionInstructions.length} chars`);
-
-        // Hard-inject as a system message so the model cannot ignore these rules
-        dc.send(JSON.stringify({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "system",
-            content: [{ type: "input_text", text: `[SYSTEM — ABSOLUTE RULES — follow at ALL times]\n${sessionInstructions}` }],
-          },
-        }));
-        addDebug("out", "conversation.item.create", "system rules injected");
+        addDebug("out", "session.update", `${sessionInstructions.length} chars, tools=${INTERVIEW_TOOLS.length}, tool_choice=required`);
 
         // Clear any mic audio buffered during connection to prevent VAD from cancelling the greeting
         dc.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
 
+        // First turn has no "advance" decision to make — override to tool_choice:"none" and
+        // hand the model the literal Q1 text to speak.
         responseInProgressRef.current = true;
+        expectingToolCallRef.current = false;
         dc.send(JSON.stringify({
           type: "response.create",
-          response: { instructions: greetInstruction },
+          response: {
+            instructions: `Begin the session now. Greet warmly as your persona, do NOT say your model name or mention ChatGPT, then say exactly and only: "${qs[0]}"`,
+            tool_choice: "none",
+          },
         }));
-        addDebug("out", "response.create", `greet → Q1: "${(qs[0] || "").slice(0, 60)}"`);
+        addDebug("out", "response.create", `greet → Q1: "${(qs[0] || "").slice(0, 60)}" (tool_choice=none)`);
       };
 
       dc.onmessage = (event) => {
@@ -408,9 +436,25 @@ export default function RealtimeIntakePage() {
             return;
           }
           if (type === "response.created") responseInProgressRef.current = true;
-          if (type === "response.done" || type === "response.cancelled") {
+          if (type === "response.cancelled") {
             responseInProgressRef.current = false;
             greetedRef.current = true;
+            expectingToolCallRef.current = false;
+          }
+          if (type === "response.done") {
+            responseInProgressRef.current = false;
+            greetedRef.current = true;
+            const outputs: any[] = Array.isArray(msg?.response?.output) ? msg.response.output : [];
+            const fnCall = outputs.find((o) => o?.type === "function_call");
+            if (fnCall) {
+              expectingToolCallRef.current = false;
+              handleFunctionCall(fnCall);
+            } else if (expectingToolCallRef.current) {
+              // Model ignored the required tool call — safety net so a skip is never silent.
+              expectingToolCallRef.current = false;
+              addDebug("info", "watchdog", "model responded without required tool call — forcing advance");
+              performAdvance(false);
+            }
           }
           if (type === "response.audio_transcript.delta" || type === "response.output_audio_transcript.delta") {
             setAiSpeaking(true);
@@ -421,8 +465,6 @@ export default function RealtimeIntakePage() {
           if (type === "conversation.item.input_audio_transcription.completed") {
             const text = String(msg?.transcript || "").trim();
             if (!text || responseInProgressRef.current) return;
-            const wordCount = text.split(/\s+/).filter(Boolean).length;
-            const qs = allQuestionsRef.current;
             const currentIdx = qIdxRef.current;
             const key = `q${currentIdx + 1}`;
             setAnswers((prev) => ({ ...prev, [key]: (prev[key] ? `${prev[key]} ` : "") + text }));
@@ -430,54 +472,82 @@ export default function RealtimeIntakePage() {
             const channel = dcRef.current;
             if (!channel) return;
             responseInProgressRef.current = true;
-
-            if (wordCount < 4) {
-              channel.send(JSON.stringify({
-                type: "conversation.item.create",
-                item: { type: "message", role: "system", content: [{ type: "input_text",
-                  text: `[HARD RULE] The candidate's last response was too short to be a real answer. Do NOT advance. Politely say their response may have been incomplete, then repeat this question VERBATIM: "${qs[currentIdx]}"`
-                }] },
-              }));
-              channel.send(JSON.stringify({
-                type: "response.create",
-                response: { instructions: `Short/incomplete response detected. Do NOT move on. Politely check in and repeat the current question word-for-word: "${qs[currentIdx]}"` },
-              }));
-              return;
-            }
-
-            const nextIdx = currentIdx + 1;
-            if (nextIdx < qs.length) {
-              qIdxRef.current = nextIdx;
-              setQIdx(nextIdx);
-              channel.send(JSON.stringify({
-                type: "conversation.item.create",
-                item: { type: "message", role: "system", content: [{ type: "input_text",
-                  text: `[HARD RULE] You MUST now ask Q${nextIdx + 1} using EXACTLY these words: "${qs[nextIdx]}" — do not paraphrase, skip, or discuss anything else first.`
-                }] },
-              }));
-              channel.send(JSON.stringify({
-                type: "response.create",
-                response: { instructions: `Acknowledge the answer in ONE sentence only. Then ask this exact question, word-for-word — no paraphrasing allowed: "${qs[nextIdx]}"` },
-              }));
-              addDebug("out", "response.create", `→ Q${nextIdx + 1}: "${qs[nextIdx].slice(0, 60)}"`);
-            } else {
-              qIdxRef.current = qs.length;
-              setQIdx(qs.length);
-              channel.send(JSON.stringify({
-                type: "conversation.item.create",
-                item: { type: "message", role: "system", content: [{ type: "input_text",
-                  text: `[HARD RULE] All ${qs.length} questions are complete. Deliver ONLY the closing message. Do not ask any more questions.`
-                }] },
-              }));
-              channel.send(JSON.stringify({
-                type: "response.create",
-                response: { instructions: `All questions done. Deliver closing message from session instructions. Nothing else.` },
-              }));
-              addDebug("out", "response.create", "closing message");
-            }
+            expectingToolCallRef.current = true;
+            // No embedded rules here — tool_choice:"required" (set at session level) forces
+            // the model into advance_interview/flag_off_topic; it cannot free-speak past a question.
+            channel.send(JSON.stringify({
+              type: "response.create",
+              response: { tool_choice: "required" },
+            }));
+            addDebug("out", "response.create", "requesting tool decision (advance_interview / flag_off_topic)");
           }
         } catch {}
       };
+
+      function sendScriptedResponse(text: string) {
+        const channel = dcRef.current;
+        if (!channel) return;
+        responseInProgressRef.current = true;
+        expectingToolCallRef.current = false;
+        channel.send(JSON.stringify({
+          type: "response.create",
+          response: { instructions: `Say exactly and only: "${text}"`, tool_choice: "none" },
+        }));
+      }
+
+      function performAdvance(seemsIncomplete: boolean) {
+        const qs = allQuestionsRef.current;
+        const currentIdx = qIdxRef.current;
+
+        if (seemsIncomplete && (followUpCountRef.current[currentIdx] || 0) < 1) {
+          followUpCountRef.current[currentIdx] = (followUpCountRef.current[currentIdx] || 0) + 1;
+          addDebug("out", "response.create", `clarify Q${currentIdx + 1} (tool_choice=none)`);
+          sendScriptedResponse(CLARIFY_PROMPT);
+          return;
+        }
+
+        const nextIdx = currentIdx + 1;
+        if (nextIdx < qs.length) {
+          qIdxRef.current = nextIdx;
+          setQIdx(nextIdx);
+          const ack = ACKNOWLEDGMENTS[ackIdxRef.current % ACKNOWLEDGMENTS.length];
+          ackIdxRef.current += 1;
+          addDebug("out", "response.create", `→ Q${nextIdx + 1}: "${qs[nextIdx].slice(0, 60)}" (tool_choice=none)`);
+          sendScriptedResponse(`${ack} ${qs[nextIdx]}`);
+        } else {
+          qIdxRef.current = qs.length;
+          setQIdx(qs.length);
+          addDebug("out", "response.create", "closing message (tool_choice=none)");
+          sendScriptedResponse(closingTextRef.current);
+        }
+      }
+
+      function handleFunctionCall(fnCall: any) {
+        const name = String(fnCall?.name || "");
+        const callId = String(fnCall?.call_id || fnCall?.id || "");
+        let args: any = {};
+        try { args = JSON.parse(fnCall?.arguments || "{}"); } catch {}
+        addDebug("in", "function_call", `${name}(${JSON.stringify(args)})`);
+
+        const channel = dcRef.current;
+        if (!channel) return;
+
+        // Acknowledge the tool call so the API doesn't consider the turn dangling.
+        channel.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: callId, output: JSON.stringify({ ok: true }) },
+        }));
+
+        if (name === "flag_off_topic") {
+          const qs = allQuestionsRef.current;
+          const currentIdx = qIdxRef.current;
+          addDebug("out", "response.create", `off-topic redirect → repeat Q${currentIdx + 1} (tool_choice=none)`);
+          sendScriptedResponse(`${OFF_TOPIC_REDIRECT} ${qs[currentIdx]}`);
+          return;
+        }
+
+        performAdvance(!!args?.candidate_answer_seems_incomplete);
+      }
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
