@@ -9,11 +9,10 @@ type Props = {
   api: any;
   user: any;
   tempPassword?: string;
-  onBack?: () => void;
   onSaved: () => void | Promise<void>;
 };
 
-export default function PasswordResetStep({ api, user, tempPassword, onBack, onSaved }: Props) {
+export default function PasswordResetStep({ api, user, tempPassword, onSaved }: Props) {
   const [showTempPassword, setShowTempPassword] = useState(false);
   const loginName = safeStr((user as any)?.employee_email) || safeStr((user as any)?.username);
   const canRevealTempPassword = Boolean(safeStr(tempPassword));
@@ -169,30 +168,6 @@ export default function PasswordResetStep({ api, user, tempPassword, onBack, onS
       </div>
 
       <AccountEditPassword api={api} user={user} onSaved={onSaved} />
-
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={!onBack}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-            minHeight: 48,
-            borderRadius: 16,
-            border: "1px solid rgba(148,163,184,.22)",
-            background: onBack ? "#fff" : "rgba(148,163,184,.12)",
-            color: onBack ? "#0f172a" : "#94a3b8",
-            padding: "12px 18px",
-            fontWeight: 900,
-            cursor: onBack ? "pointer" : "not-allowed",
-          }}
-        >
-          <i className="material-icons" style={{ fontSize: 18 }}>arrow_back</i>
-          Back
-        </button>
-      </div>
     </section>
   );
 }

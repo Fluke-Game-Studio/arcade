@@ -1,9 +1,13 @@
 import { useState } from "react";
+import SelfInitiateWallet from "../wallet/SelfInitiateWallet";
 
 type Props = {
+  api: any;
   accepted: boolean;
+  commitmentRequired: boolean;
   onAcceptedChange: (value: boolean) => void;
-  onContinue: () => void;
+  paymentRecorded: boolean;
+  onPaymentRecordedChange: (value: boolean) => void;
 };
 
 type ProcessCard = {
@@ -13,14 +17,24 @@ type ProcessCard = {
   summary: string;
   accent: string;
   details: string[];
-  disabled?: boolean;
 };
 
-export default function CommitmentStep({ accepted, onAcceptedChange, onContinue }: Props) {
+export default function CommitmentStep({
+  api,
+  accepted,
+  commitmentRequired,
+  onAcceptedChange,
+  paymentRecorded,
+  onPaymentRecordedChange,
+}: Props) {
   const [openStep, setOpenStep] = useState<string>("1");
   const stepOrder = ["1", "2", "3", "4"];
   const currentIndex = Math.max(0, stepOrder.indexOf(openStep));
   const isFinalStep = openStep === "4";
+
+  async function handleWalletCompleted() {
+    onPaymentRecordedChange(true);
+  }
 
   function goBack() {
     setOpenStep((current) => {
@@ -30,10 +44,7 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
   }
 
   function goNext() {
-    if (isFinalStep) {
-      if (accepted) onContinue();
-      return;
-    }
+    if (isFinalStep) return;
     setOpenStep(stepOrder[Math.min(currentIndex + 1, stepOrder.length - 1)]);
   }
 
@@ -80,15 +91,22 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
     {
       step: "4",
       icon: "qr_code_2",
-      title: "QR payment coming soon",
-      summary: "This will later handle the initial payment handoff that creates the frozen pool. It stays disabled for now.",
-      accent: "#b45309",
-      disabled: true,
-      details: [
-        "This step is reserved for the onboarding commitment payment flow.",
-        "When enabled, it will seed the initial Frozen FGC pool.",
-        "For now it is shown only as a disabled preview.",
-      ],
+      title: commitmentRequired ? "Self-initiate wallet" : "QR payment coming soon",
+      summary: commitmentRequired
+        ? "Record the commitment payment now so the wallet can be created and the onboarding flow can continue."
+        : "This will later handle the initial payment handoff that creates the frozen pool. It stays disabled for now.",
+      accent: commitmentRequired ? "#0f766e" : "#b45309",
+      details: commitmentRequired
+        ? [
+            "Enter the commitment amount you intend to load.",
+            "Scan the QR code when the payment rail is connected.",
+            "Paste the transaction ID after the payment is made.",
+          ]
+        : [
+            "This step is reserved for the onboarding commitment payment flow.",
+            "When enabled, it will seed the initial Frozen FGC pool.",
+            "For now it is shown only as a disabled preview.",
+          ],
     },
   ];
 
@@ -105,6 +123,7 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
       <div style={{ display: "grid", gap: 12 }}>
         {process.map((card) => {
           const expanded = openStep === card.step;
+          const isPaymentStep = card.step === "4";
           return (
             <div
               key={card.title}
@@ -163,7 +182,7 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
                 <div style={{ minWidth: 0, flex: "1 1 auto" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ fontSize: 16, fontWeight: 1000, color: "#0f172a" }}>{card.title}</div>
-                    {card.disabled ? (
+                    {!commitmentRequired && isPaymentStep ? (
                       <span
                         style={{
                           display: "inline-flex",
@@ -178,6 +197,23 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
                         }}
                       >
                         Disabled
+                      </span>
+                    ) : null}
+                    {commitmentRequired && isPaymentStep && paymentRecorded ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          borderRadius: 999,
+                          padding: "5px 9px",
+                          border: "1px solid rgba(34,197,94,.22)",
+                          background: "rgba(34,197,94,.10)",
+                          color: "#166534",
+                          fontSize: 11,
+                          fontWeight: 900,
+                        }}
+                      >
+                        Recorded
                       </span>
                     ) : null}
                   </div>
@@ -198,24 +234,68 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
               </button>
 
               {expanded ? (
-                <div style={{ padding: "0 16px 16px 76px", color: "#334155", lineHeight: 1.7 }}>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {card.details.map((line) => (
-                      <div key={line} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                        <span
+                <div style={{ padding: "0 16px 16px 76px", color: "#334155", lineHeight: 1.7, display: "grid", gap: 14 }}>
+                  {!isPaymentStep ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {card.details.map((line) => (
+                        <div key={line} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              marginTop: 10,
+                              borderRadius: 999,
+                              background: card.accent,
+                              flex: "0 0 auto",
+                            }}
+                          />
+                          <span>{line}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : commitmentRequired ? (
+                    <div style={{ display: "grid", gap: 14 }}>
+                      <SelfInitiateWallet
+                        api={api}
+                        title="Self Initiate Wallet"
+                        description="Record the commitment amount here. Once the payment is captured, the onboarding commitment can be marked complete."
+                        defaultAmountFgc={1}
+                        onCompleted={() => void handleWalletCompleted()}
+                      />
+                      {paymentRecorded ? (
+                        <div
                           style={{
-                            width: 8,
-                            height: 8,
-                            marginTop: 10,
-                            borderRadius: 999,
-                            background: card.accent,
-                            flex: "0 0 auto",
+                            borderRadius: 16,
+                            border: "1px solid rgba(34,197,94,.18)",
+                            background: "rgba(34,197,94,.06)",
+                            padding: 14,
+                            color: "#166534",
+                            fontWeight: 800,
                           }}
-                        />
-                        <span>{line}</span>
-                      </div>
-                    ))}
-                  </div>
+                        >
+                          Commitment payment recorded. You can continue once the checkbox is also confirmed.
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {card.details.map((line) => (
+                        <div key={line} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              marginTop: 10,
+                              borderRadius: 999,
+                              background: card.accent,
+                              flex: "0 0 auto",
+                            }}
+                          />
+                          <span>{line}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -230,8 +310,28 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
           onChange={(e) => onAcceptedChange(e.target.checked)}
           style={{ marginTop: 4, width: 18, height: 18, accentColor: "#2563eb" }}
         />
-        <span>I understand the commitment model, the 1:1 starting commitment pool, and how vesting can increase released value over time.</span>
+        <span>
+          I understand the commitment model, the 1:1 starting commitment pool, and how vesting can increase released value over time.
+        </span>
       </label>
+
+      {commitmentRequired ? (
+        <div
+          style={{
+            borderRadius: 18,
+            border: paymentRecorded ? "1px solid rgba(34,197,94,.22)" : "1px solid rgba(245,158,11,.22)",
+            background: paymentRecorded ? "rgba(34,197,94,.08)" : "rgba(245,158,11,.10)",
+            padding: 16,
+            color: paymentRecorded ? "#166534" : "#92400e",
+            fontWeight: 900,
+            lineHeight: 1.6,
+          }}
+        >
+          {paymentRecorded
+            ? "The commitment payment has been recorded. Finish the agreement checkbox and continue."
+            : "This onboarding requires a commitment payment before you can continue."}
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <button
@@ -260,7 +360,7 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
         <button
           type="button"
           onClick={goNext}
-          disabled={isFinalStep ? !accepted : false}
+          disabled={isFinalStep}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -268,22 +368,16 @@ export default function CommitmentStep({ accepted, onAcceptedChange, onContinue 
             minHeight: 48,
             borderRadius: 16,
             border: "1px solid rgba(37,99,235,.18)",
-            background: isFinalStep
-              ? accepted
-                ? "linear-gradient(135deg, #2563eb 0%, #0f766e 100%)"
-                : "rgba(148,163,184,.16)"
-              : "linear-gradient(135deg, #2563eb 0%, #0f766e 100%)",
-            color: isFinalStep ? (accepted ? "#fff" : "#94a3b8") : "#fff",
+            background: isFinalStep ? "rgba(148,163,184,.16)" : "linear-gradient(135deg, #2563eb 0%, #0f766e 100%)",
+            color: isFinalStep ? "#94a3b8" : "#fff",
             padding: "12px 18px",
             fontWeight: 900,
-            cursor: isFinalStep && !accepted ? "not-allowed" : "pointer",
-            boxShadow: isFinalStep && accepted ? "0 16px 34px rgba(37,99,235,.18)" : "none",
+            cursor: isFinalStep ? "not-allowed" : "pointer",
+            boxShadow: isFinalStep ? "none" : "0 16px 34px rgba(37,99,235,.18)",
           }}
         >
-          {isFinalStep ? "Continue" : "Next"}
-          <i className="material-icons" style={{ fontSize: 18 }}>
-            {isFinalStep ? "check_circle" : "arrow_forward"}
-          </i>
+          Next
+          <i className="material-icons" style={{ fontSize: 18 }}>arrow_forward</i>
         </button>
       </div>
     </section>

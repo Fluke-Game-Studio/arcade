@@ -83,11 +83,13 @@ export default function AccountSettingsPanel({
   me,
   theme,
   onToggleTheme,
+  onConnected,
 }: {
   api: any;
   me: any;
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  onConnected?: () => void | Promise<void>;
 }) {
   const [section, setSection] = useState<SettingsSectionKey>("general");
   const [agents, setAgents] = useState<any[]>([]);
@@ -103,7 +105,7 @@ export default function AccountSettingsPanel({
   const [notificationPrefs, setNotificationPrefs] = useState(() => normalizePreferences((me as any)?.notification_preferences));
   const [notificationSaving, setNotificationSaving] = useState(false);
 
-  const integrations = useIntegrations(api, me);
+  const integrations = useIntegrations(api, me, { onConnected });
 
   function preferenceCheckbox(checked: boolean, onChange: (checked: boolean) => void, label: string) {
     return (

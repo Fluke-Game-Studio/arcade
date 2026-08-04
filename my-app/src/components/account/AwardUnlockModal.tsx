@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import FgcAmount from "../credits/FgcAmount";
 
 type UnlockItem = {
   kind?: "achievement" | "trophy";
@@ -7,9 +8,8 @@ type UnlockItem = {
   description?: string;
   tier?: string;
   imageUrl?: string;
-  metric?: string;
-  threshold?: number;
-  setKey?: string;
+  creditAmount?: number;
+  creditsGranted?: number;
   awardedAt?: string;
 };
 
@@ -36,6 +36,10 @@ function itemTone(kind?: string) {
 function itemIcon(item: UnlockItem) {
   if (safeStr(item.imageUrl)) return "image";
   return item.kind === "trophy" ? "emoji_events" : "military_tech";
+}
+
+function rewardAmount(item: UnlockItem) {
+  return safeNum(item.creditAmount || item.creditsGranted || 0);
 }
 
 export default function AwardUnlockModal({
@@ -70,6 +74,7 @@ export default function AwardUnlockModal({
   const current = normalized[index] || normalized[0];
   const tone = itemTone(current.kind);
   const total = normalized.length;
+  const credits = rewardAmount(current);
 
   function step(delta: number) {
     setIndex((prev) => {
@@ -84,7 +89,7 @@ export default function AwardUnlockModal({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="New unlocks"
+      aria-label="New rewards"
       onClick={onClose}
       style={{
         position: "fixed",
@@ -100,8 +105,8 @@ export default function AwardUnlockModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(760px, 100%)",
-          borderRadius: 26,
+          width: "min(780px, 100%)",
+          borderRadius: 28,
           background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96))",
           boxShadow: "0 30px 80px rgba(2,8,23,0.38)",
           border: "1px solid rgba(148,163,184,0.22)",
@@ -120,7 +125,7 @@ export default function AwardUnlockModal({
         >
           <div>
             <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: "0.18em", color: "#64748b" }}>
-              NEW UNLOCKS
+              NEW REWARDS
             </div>
             <div style={{ fontSize: 24, fontWeight: 1000, color: "#0f172a", marginTop: 4 }}>
               You unlocked {total} reward{total === 1 ? "" : "s"}
@@ -147,6 +152,44 @@ export default function AwardUnlockModal({
         </div>
 
         <div style={{ padding: 20, display: "grid", gap: 16 }}>
+          <div
+            style={{
+              borderRadius: 20,
+              padding: "14px 16px",
+              border: "1px solid rgba(59,130,246,0.14)",
+              background: "linear-gradient(135deg, rgba(59,130,246,0.10), rgba(14,165,233,0.06))",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "grid", gap: 3 }}>
+              <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: "0.14em", color: "#1d4ed8" }}>
+                REWARD TOTAL
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#334155" }}>
+                This reward is now available in your account.
+              </div>
+            </div>
+            <div
+              style={{
+                borderRadius: 999,
+                padding: "10px 14px",
+                background: "rgba(255,255,255,0.82)",
+                border: "1px solid rgba(148,163,184,0.22)",
+                boxShadow: "0 8px 18px rgba(15,23,42,0.08)",
+              }}
+            >
+              {credits > 0 ? (
+                <FgcAmount amount={credits} iconSize={18} />
+              ) : (
+                <span style={{ fontWeight: 900, color: "#1d4ed8" }}>Reward unlocked</span>
+              )}
+            </div>
+          </div>
+
           {total > 1 && (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <button
@@ -177,7 +220,7 @@ export default function AwardUnlockModal({
                     key={`${safeStr(item.id)}-${i}`}
                     type="button"
                     onClick={() => setIndex(i)}
-                    aria-label={`Show unlock ${i + 1}`}
+                    aria-label={`Show reward ${i + 1}`}
                     style={{
                       width: 10,
                       height: 10,
@@ -301,6 +344,18 @@ export default function AwardUnlockModal({
                     color: "#334155",
                   }}
                 >
+                  {credits > 0 ? <FgcAmount amount={credits} iconSize={16} /> : "No credit bonus"}
+                </span>
+                <span
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 900,
+                    background: "rgba(15,23,42,0.06)",
+                    color: "#334155",
+                  }}
+                >
                   {index + 1} / {total}
                 </span>
               </div>
@@ -315,28 +370,11 @@ export default function AwardUnlockModal({
                 </div>
               )}
 
-              <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
-                {!!safeStr(current.setKey) && (
-                  <div style={{ color: "#64748b", fontSize: 13, fontWeight: 800 }}>
-                    Set: {safeStr(current.setKey)}
-                  </div>
-                )}
-                {!!safeStr(current.metric) && (
-                  <div style={{ color: "#64748b", fontSize: 13, fontWeight: 800 }}>
-                    Metric: {safeStr(current.metric)}
-                    {safeNum(current.threshold) ? ` • Threshold ${safeNum(current.threshold)}` : ""}
-                  </div>
-                )}
-                {(() => {
-                  const awardedAt = safeStr(current.awardedAt);
-                  if (!awardedAt) return null;
-                  return (
-                  <div style={{ color: "#64748b", fontSize: 13, fontWeight: 800 }}>
-                    Awarded: {new Date(awardedAt).toLocaleString()}
-                  </div>
-                  );
-                })()}
-              </div>
+              {!!safeStr(current.awardedAt) && (
+                <div style={{ color: "#64748b", fontSize: 13, fontWeight: 800 }}>
+                  Awarded: {new Date(safeStr(current.awardedAt)).toLocaleString()}
+                </div>
+              )}
             </div>
           </div>
         </div>

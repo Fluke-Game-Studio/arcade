@@ -15,3 +15,18 @@ export type ConnectRequirement = {
   icon: string;
   optional: boolean;
 };
+
+export type OnboardingStepId =
+  | "welcome"
+  | "password"
+  | "profile"
+  | "agreement"
+  | "commitment"
+  | "connect";
+
+export type OnboardingChapterStatus = {
+  id: OnboardingStepId;
+  label: string;
+  active: boolean;
+  complete: boolean;
+};

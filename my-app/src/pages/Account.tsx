@@ -14,7 +14,7 @@ declare const M: any;
 type AccountTabKey = "updates" | "details" | "password" | "gamification" | "downloads" | "wallet" | "orders" | "settings";
 
 export default function Account() {
-  const { user, api, refreshSession } = useAuth();
+  const { user, api, refreshSession, applySessionPatch } = useAuth();
   const [activeTab, setActiveTab] = useState<AccountTabKey>("updates");
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const saved = (localStorage.getItem("fg_theme") || "").toLowerCase();
@@ -26,6 +26,43 @@ export default function Account() {
   const [dlError, setDlError] = useState("");
   const [dlData, setDlData] = useState<{ customer?: any; items?: any[] } | null>(null);
   const [scopeByProduct, setScopeByProduct] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const oauth = String(params.get("oauth") || params.get("provider") || "").trim().toLowerCase();
+    const oauthStatus = String(params.get("oauthStatus") || params.get("status") || "").trim().toLowerCase();
+    const discordConnected =
+      oauth === "discord" || params.get("discord_connected") === "1" || oauthStatus === "connected";
+
+    if (!discordConnected) return;
+
+    applySessionPatch({
+      discord_connected: true,
+      discord_connected_at: String(params.get("connectedAt") || new Date().toISOString()).trim(),
+      discord_member_id: String(params.get("memberId") || "").trim(),
+      discord_name: String(params.get("name") || "").trim(),
+      discord_email: String(params.get("email") || "").trim(),
+      discord_url: String(params.get("discordUrl") || "").trim(),
+    });
+
+    params.delete("oauth");
+    params.delete("provider");
+    params.delete("oauthStatus");
+    params.delete("status");
+    params.delete("discord_connected");
+    params.delete("connectedAt");
+    params.delete("memberId");
+    params.delete("name");
+    params.delete("email");
+    params.delete("discordUrl");
+
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", nextUrl);
+    void refreshSession();
+  }, [applySessionPatch, refreshSession]);
 
   function humanizeDownloadsError(message: string) {
     const raw = String(message || "").toLowerCase();
@@ -83,9 +120,7 @@ export default function Account() {
             id: achievement?.achievementId || achievement?.id,
             title: achievement?.title,
             description: achievement?.description,
-            metric: achievement?.metric,
-            threshold: achievement?.threshold,
-            setKey: achievement?.setKey,
+            creditAmount: resp?.creditsGranted || achievement?.creditAmount || 0,
           };
     const trophyItems = Array.isArray(resp?.unlockedTrophies)
       ? resp.unlockedTrophies.map((t: any) => ({
@@ -95,7 +130,7 @@ export default function Account() {
           description: t?.description,
           tier: t?.tier,
           imageUrl: t?.imageUrl,
-          achievementSetKey: t?.achievementSetKey,
+          creditAmount: t?.creditAmount || 0,
         }))
       : [];
     const items = [achievementItem, ...trophyItems].filter((x: any) => !!x?.id || !!x?.title);
@@ -110,6 +145,8 @@ export default function Account() {
     function onLinkedInMessage(event: MessageEvent) {
       const data = event?.data || {};
       if (data?.type !== "linkedin-connected") return;
+
+      void refreshSession();
 
       const achievementId = "linkedin_connect";
       api
@@ -130,7 +167,6 @@ export default function Account() {
             setKey: "connectSocials",
             threshold: 1,
           });
-          void refreshSession();
           if (typeof M !== "undefined") {
             M.toast({ html: "LinkedIn achievement awarded.", classes: "green" });
           }
@@ -153,6 +189,16 @@ export default function Account() {
     function onDiscordMessage(event: MessageEvent) {
       const data = event?.data || {};
       if (data?.type !== "discord-connected") return;
+
+      applySessionPatch({
+        discord_connected: true,
+        discord_connected_at: String(data?.connectedAt || new Date().toISOString()).trim(),
+        discord_member_id: String(data?.memberId || "").trim(),
+        discord_name: String(data?.name || "").trim(),
+        discord_email: String(data?.email || "").trim(),
+        discord_url: String(data?.discordUrl || "").trim(),
+      });
+      void refreshSession();
 
       const joinUrl = String(data?.joinUrl || "").trim();
       if (joinUrl) {
@@ -179,7 +225,6 @@ export default function Account() {
             setKey: "connectSocials",
             threshold: 1,
           });
-          void refreshSession();
           if (typeof M !== "undefined") {
             M.toast({
               html: joinUrl
@@ -803,6 +848,7 @@ export default function Account() {
             api={api}
             me={user}
             theme={theme}
+            onConnected={refreshSession}
             onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
           />
         )}

@@ -20,11 +20,11 @@ type NotificationStyle = {
 };
 
 const CATEGORY_STYLE: Record<string, NotificationStyle> = {
-  social_media: { icon: "campaign", dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Social" },
-  weekly_updates: { icon: "event_note", dot: "#0f766e", chip: "rgba(15,118,110,.12)", text: "#0f766e", label: "Weekly" },
-  applicants: { icon: "group_add", dot: "#9333ea", chip: "rgba(147,51,234,.12)", text: "#7e22ce", label: "Applicants" },
+  social_media: { icon: "forum", dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Social" },
+  weekly_updates: { icon: "event", dot: "#0f766e", chip: "rgba(15,118,110,.12)", text: "#0f766e", label: "Weekly" },
+  applicants: { icon: "groups", dot: "#9333ea", chip: "rgba(147,51,234,.12)", text: "#7e22ce", label: "Applicants" },
   mentions: { icon: "alternate_email", dot: "#db2777", chip: "rgba(219,39,119,.12)", text: "#be185d", label: "Mentions" },
-  commerce: { icon: "storefront", dot: "#ca8a04", chip: "rgba(234,179,8,.14)", text: "#a16207", label: "Commerce" },
+  commerce: { icon: "payments", dot: "#ca8a04", chip: "rgba(234,179,8,.14)", text: "#a16207", label: "Commerce" },
   system: { icon: "notifications", dot: "#475569", chip: "rgba(148,163,184,.12)", text: "#475569", label: "System" },
 };
 
@@ -33,27 +33,29 @@ const CATEGORY_STYLE: Record<string, NotificationStyle> = {
 // (e.g. an applicant being newly received vs. rated, or a merch request approved vs. rejected).
 const TYPE_STYLE: Record<string, NotificationStyle | ((item: ApiNotificationItem) => NotificationStyle)> = {
   social_post_review_requested: { icon: "rate_review", dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Social" },
-  social_post_published: { icon: "campaign", dot: "#16a34a", chip: "rgba(22,163,74,.12)", text: "#15803d", label: "Social" },
+  social_post_published: { icon: "send", dot: "#16a34a", chip: "rgba(22,163,74,.12)", text: "#15803d", label: "Social" },
   social_post_mentioned: { icon: "alternate_email", dot: "#db2777", chip: "rgba(219,39,119,.12)", text: "#be185d", label: "Mention" },
-  social_post_comment_added: { icon: "chat_bubble", dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Social" },
-  social_post_changes_requested: { icon: "edit_note", dot: "#ea580c", chip: "rgba(234,88,12,.12)", text: "#c2410c", label: "Social" },
+  social_post_comment_added: { icon: "chat", dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Social" },
+  social_post_changes_requested: { icon: "edit", dot: "#ea580c", chip: "rgba(234,88,12,.12)", text: "#c2410c", label: "Social" },
   weekly_update_submitted: { icon: "event_available", dot: "#0f766e", chip: "rgba(15,118,110,.12)", text: "#0f766e", label: "Weekly" },
   weekly_update_manager_submitted: { icon: "fact_check", dot: "#0f766e", chip: "rgba(15,118,110,.12)", text: "#0f766e", label: "Weekly" },
-  weekly_update_missing_reminder: { icon: "alarm", dot: "#b45309", chip: "rgba(180,83,9,.12)", text: "#b45309", label: "Reminder" },
+  weekly_update_missing_reminder: { icon: "schedule", dot: "#b45309", chip: "rgba(180,83,9,.12)", text: "#b45309", label: "Reminder" },
   wallet_credited: { icon: "account_balance_wallet", dot: "#ca8a04", chip: "rgba(202,138,4,.14)", text: "#a16207", label: "Wallet" },
-  store_purchase_request_submitted: { icon: "shopping_cart", dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Store" },
+  wallet_activated: { icon: "task_alt", dot: "#16a34a", chip: "rgba(22,163,74,.12)", text: "#15803d", label: "Wallet" },
+  onboarding_completed: { icon: "celebration", dot: "#0f766e", chip: "rgba(15,118,110,.12)", text: "#0f766e", label: "Onboarding" },
+  store_purchase_request_submitted: { icon: "shopping_bag", dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Store" },
   store_purchase_completed: { icon: "local_shipping", dot: "#16a34a", chip: "rgba(22,163,74,.12)", text: "#15803d", label: "Store" },
   applicant_admin_notify: (item) => {
     const isRated = Boolean(safeStr(item?.meta?.rating));
     return isRated
       ? { icon: "star", dot: "#9333ea", chip: "rgba(147,51,234,.12)", text: "#7e22ce", label: "Applicants" }
-      : { icon: "person_add", dot: "#9333ea", chip: "rgba(147,51,234,.12)", text: "#7e22ce", label: "Applicants" };
+      : { icon: "person_add_alt_1", dot: "#9333ea", chip: "rgba(147,51,234,.12)", text: "#7e22ce", label: "Applicants" };
   },
   store_purchase_request_reviewed: (item) => {
     const approved = safeStr(item?.meta?.decision).toLowerCase() === "approved";
     return approved
-      ? { icon: "check_circle", dot: "#16a34a", chip: "rgba(22,163,74,.12)", text: "#15803d", label: "Store" }
-      : { icon: "cancel", dot: "#dc2626", chip: "rgba(220,38,38,.12)", text: "#b91c1c", label: "Store" };
+      ? { icon: "task_alt", dot: "#16a34a", chip: "rgba(22,163,74,.12)", text: "#15803d", label: "Store" }
+      : { icon: "do_not_disturb_on", dot: "#dc2626", chip: "rgba(220,38,38,.12)", text: "#b91c1c", label: "Store" };
   },
 };
 
@@ -119,15 +121,17 @@ export const notificationIconChipStyle = {
   width: 34,
   height: 34,
   borderRadius: 12,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
+  display: "grid",
+  placeItems: "center",
   lineHeight: 0,
   flex: "0 0 auto",
+  boxSizing: "border-box",
 } as const;
 
 export const notificationIconStyle = {
   display: "block",
   lineHeight: 1,
-  transform: "translateY(2px)",
+  transform: "none",
+  margin: 0,
+  padding: 0,
 } as const;

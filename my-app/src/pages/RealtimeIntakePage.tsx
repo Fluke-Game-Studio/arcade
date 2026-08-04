@@ -9,15 +9,19 @@ import type { StoredIntakeContext, FeedbackState, DebugEvent } from "../componen
 
 const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
 
-// The model is never trusted to decide question order/wording from memory of a prompt.
-// It must call a tool after every candidate turn; the client owns qIdx and hands back the
-// exact next line to speak via a single-turn tool_choice:"none" response. Only the small
-// talk (acknowledgments) is left to the model's own phrasing — the question text itself is
-// always delivered as a literal instruction, never left to memory/compliance.
-const PERSONA_INSTRUCTIONS = `You are a warm, professional AI interviewer for Fluke Games having a natural conversation — not reading a script robotically.
-You do not decide what to ask, when to advance, or how to phrase questions yourself. After every candidate response you MUST call exactly one tool: "advance_interview" (normal case), "flag_off_topic" (candidate made no attempt to address the question), or "ask_follow_up_question" (only when explicitly instructed to, for a brief answer). Never respond with speech directly at that point — only a tool call.
-After you call a tool, you'll usually be told exact required words to include — but when asked to "acknowledge naturally," vary your phrasing, sound genuinely human and warm, and avoid repeating the same stock phrases turn after turn.
+// Two clearly separate layers:
+// - PROTOCOL_INSTRUCTIONS: the mechanical contract (must call a tool, never free-speak).
+//   This is the part that actually fixes question skipping, so it stays code-owned and is
+//   never overridable by admin-authored text — that's exactly what broke before.
+// - Persona/tone/behavior: comes entirely from the context's own sessionPrompt /
+//   customInstructions (admin-editable via the context builder). DEFAULT_PERSONA is only a
+//   fallback for contexts that leave sessionPrompt blank.
+const PROTOCOL_INSTRUCTIONS = `PROTOCOL — follow exactly, no exceptions:
+After every candidate response you MUST call exactly one tool: "advance_interview" (normal case), "flag_off_topic" (candidate made no attempt to address the question), or "ask_follow_up_question" (only when explicitly instructed to). Never respond with speech directly at that point — only a tool call.
+After a tool call you'll be told what to say next. When told to say something "exactly," use those exact words — no additions, no paraphrasing. When told to "acknowledge naturally," vary your phrasing and sound genuinely human — don't reuse the same stock phrase every time.
 Respond only in English, regardless of what language the candidate uses.`;
+
+const DEFAULT_PERSONA = "You are a warm, professional AI interviewer for Fluke Games, having a natural conversation — not reading a script robotically.";
 
 const INTERVIEW_TOOLS = [
   {
@@ -394,11 +398,13 @@ export default function RealtimeIntakePage() {
         // Note: question text and ordering are NOT included here — they're delivered fresh,
         // per-turn, via scripted tool_choice:"none" responses so the model never has to
         // "remember" the list or comply with a rule that's buried many turns back.
+        // Persona/behavior comes from the context itself (admin-editable) — PROTOCOL_INSTRUCTIONS
+        // is the only hardcoded, non-overridable part, and it's appended last.
         const sessionInstructions = [
-          PERSONA_INSTRUCTIONS,
-          liveCtx.sessionPrompt?.trim() ? `\nAdditional tone/persona notes (style only — the tool contract above always applies):\n${liveCtx.sessionPrompt.trim()}` : "",
-          liveCtx.customInstructions?.trim() ? `\nTone/style notes:\n${liveCtx.customInstructions.trim()}` : "",
+          liveCtx.sessionPrompt?.trim() || DEFAULT_PERSONA,
+          liveCtx.customInstructions?.trim() ? `\nBehavior rules for this interview:\n${liveCtx.customInstructions.trim()}` : "",
           liveCtx.backgroundInfo?.trim() ? `\nBackground context (for tone only, not to be recited):\n${liveCtx.backgroundInfo.trim()}` : "",
+          `\n${PROTOCOL_INSTRUCTIONS}`,
         ].filter(Boolean).join("\n").trim();
 
         setAppliedInstructions(sessionInstructions);
@@ -509,10 +515,11 @@ export default function RealtimeIntakePage() {
             if (durationMs != null && durationMs < SHORT_ANSWER_THRESHOLD_MS && counterCount < MAX_COUNTER_QUESTIONS_PER_ANSWER) {
               expectingToolCallRef.current = true;
               addDebug("out", "response.create", `answer ${(durationMs / 1000).toFixed(1)}s < 30s → requesting counter-question (${counterCount + 1}/${MAX_COUNTER_QUESTIONS_PER_ANSWER})`);
+              const followUpGuidance = ctxRef.current?.followUpInstructions?.trim();
               channel.send(JSON.stringify({
                 type: "response.create",
                 response: {
-                  instructions: `The candidate's answer was brief (under 30 seconds). Based specifically on what they just said, call ask_follow_up_question with ONE natural, targeted follow-up question that digs deeper into their answer.`,
+                  instructions: `The candidate's answer was brief (under 30 seconds). Based specifically on what they just said, call ask_follow_up_question with ONE natural, targeted follow-up question that digs deeper into their answer.${followUpGuidance ? ` Follow these guidelines from the interviewer's configuration when crafting it: ${followUpGuidance}` : ""}`,
                   tool_choice: { type: "function", name: "ask_follow_up_question" },
                 },
               }));

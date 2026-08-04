@@ -37,6 +37,14 @@ export type ApiStoreItemsResponse = {
   items: ApiStoreItem[];
 };
 
+export type ApiStoreBootstrapResponse = {
+  ok: boolean;
+  token?: string;
+  wallet: Record<string, any>;
+  items: ApiStoreItem[];
+  orders: ApiStoreOrder[];
+};
+
 export type ApiStoreSaveBody = {
   item_id?: string;
   name: string;

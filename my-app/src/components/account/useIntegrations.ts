@@ -9,7 +9,13 @@ function safeStr(v: any) {
 
 export type IntegrationKey = "linkedin" | "discord" | "jira";
 
-export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => void | Promise<void> }) {
+export function useIntegrations(
+  api: any,
+  me: any,
+  opts?: {
+    onConnected?: (payload?: any) => void | Promise<void>;
+  }
+) {
   const [loadingByKey, setLoadingByKey] = useState<Record<IntegrationKey, boolean>>({
     linkedin: false,
     discord: false,
@@ -89,10 +95,12 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
           if (popup.closed) {
             setLoading(key, false);
             window.clearInterval(timer);
+            return;
           }
         } catch {
           setLoading(key, false);
           window.clearInterval(timer);
+          return;
         }
       }, 500);
     },
@@ -109,11 +117,11 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
       const type = safeStr((event as any)?.data?.type);
       if (type === "linkedin-connected") {
         setLoading("linkedin", false);
-        void opts?.onConnected?.();
+        void opts?.onConnected?.(event?.data);
         M?.toast?.({ html: "LinkedIn connected.", classes: "green" });
       } else if (type === "discord-connected") {
         setLoading("discord", false);
-        void opts?.onConnected?.();
+        void opts?.onConnected?.(event?.data);
         M?.toast?.({ html: "Discord connected.", classes: "green" });
       } else if (type === "jira-connected") {
         setLoading("jira", false);

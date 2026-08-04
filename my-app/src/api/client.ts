@@ -56,11 +56,17 @@ import type {
     LinkedInOrgStatus,
     DiscordStatusResponse,
     ListStorageFilesResponse,
+    ApiWalletBootstrapResponse,
     ApiWalletResponse,
     ApiWalletSessionResponse,
     ApiWalletCreditBody,
     ApiWalletCreditResponse,
+    ApiWalletActivateBody,
+    ApiWalletActivateResponse,
+    ApiWalletSelfInitiateBody,
+    ApiWalletSelfInitiateResponse,
     ApiStoreItem,
+    ApiStoreBootstrapResponse,
     ApiStoreItemsResponse,
     ApiStoreOrder,
     ApiStorePurchaseBody,
@@ -287,7 +293,7 @@ export class ApiClient {
     return payload as { ok: boolean; releaseVersion: string };
   }
 
-  async updateOnboardingJourneyProgress(body: { releaseVersion: string; step: "agreement" | "commitment" | "payment" | "welcome" | "profile" }): Promise<{ ok: boolean; releaseVersion: string; step: string; onboardingJourneyState?: string | Record<string, unknown> }> {
+  async updateOnboardingJourneyProgress(body: { releaseVersion: string; step: "agreement" | "commitment" | "payment" | "welcome" | "profile" | "connect" }): Promise<{ ok: boolean; releaseVersion: string; step: string; onboardingJourneyState?: string | Record<string, unknown> }> {
     const r = await fetch(`${API_BASE}/me/onboarding-progress`, {
       method: "POST",
       headers: this.headers(true),
@@ -1573,6 +1579,18 @@ export class ApiClient {
     return payload as ApiWalletResponse;
   }
 
+  async getWalletBootstrap(): Promise<ApiWalletBootstrapResponse> {
+    const r = await fetch(`${API_BASE}/wallet/bootstrap`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getWalletBootstrap failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiWalletBootstrapResponse;
+  }
+
   async createWalletSession(): Promise<ApiWalletSessionResponse> {
     const r = await fetch(`${API_BASE}/wallet/session`, {
       method: "POST",
@@ -1621,6 +1639,18 @@ export class ApiClient {
     return payload as { ok: boolean; items: any[] };
   }
 
+  async getAdminWallet(username: string): Promise<ApiWalletResponse> {
+    const r = await fetch(`${API_BASE}/wallet/admin/wallet?username=${encodeURIComponent(username)}`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getAdminWallet failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiWalletResponse;
+  }
+
   async creditWallet(body: ApiWalletCreditBody): Promise<ApiWalletCreditResponse> {
     const r = await fetch(`${API_BASE}/wallet/admin/credit`, {
       method: "POST",
@@ -1632,6 +1662,32 @@ export class ApiClient {
       throw new Error(`creditWallet failed: ${this.extractErrorMessage(payload, r.status)}`);
     }
     return payload as ApiWalletCreditResponse;
+  }
+
+  async activateWallet(body: ApiWalletActivateBody): Promise<ApiWalletActivateResponse> {
+    const r = await fetch(`${API_BASE}/wallet/admin/activate`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`activateWallet failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiWalletActivateResponse;
+  }
+
+  async selfInitiateWallet(body: ApiWalletSelfInitiateBody): Promise<ApiWalletSelfInitiateResponse> {
+    const r = await fetch(`${API_BASE}/wallet/self-initiate`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body || {}),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`selfInitiateWallet failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiWalletSelfInitiateResponse;
   }
 
   async rewardAllActiveMembers(body: { amount_cents: number; reason?: string; transaction_id?: string }): Promise<{ ok: boolean; rewarded: number; skipped: number; errors?: any[] }> {
@@ -1658,6 +1714,18 @@ export class ApiClient {
     }
     const data = payload as ApiStoreItemsResponse;
     return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  async getStoreBootstrap(): Promise<ApiStoreBootstrapResponse> {
+    const r = await fetch(`${API_BASE}/store/bootstrap`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getStoreBootstrap failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as ApiStoreBootstrapResponse;
   }
 
   async getMyStoreOrders(): Promise<ApiStoreOrder[]> {
