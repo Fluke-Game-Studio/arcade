@@ -10,6 +10,7 @@ import type {
 } from "../api";
 import { API_BASE, PUBLIC_WEBSITE_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
+import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
 
 declare const M: any;
 
@@ -160,6 +161,8 @@ type ComposerState = {
   welcome_city: string;
   welcome_dateStarted: string; // YYYY-MM-DD
   welcome_subjectOverride: string;
+  welcome_createEmployeeUser: boolean;
+  welcome_requireCommitment: boolean;
 };
 
 function defaultComposer(stage: Stage): ComposerState {
@@ -195,27 +198,13 @@ function defaultComposer(stage: Stage): ComposerState {
     welcome_city: "",
     welcome_dateStarted: "",
     welcome_subjectOverride: "Welcome to Fluke Games!",
+    welcome_createEmployeeUser: true,
+    welcome_requireCommitment: false,
   };
 }
 
 function stageIsWired(stage: Stage) {
   return stage === "Welcome" || !!STAGE_TO_RICH_TYPE[stage] || !!STAGE_TO_DOC_TYPE[stage];
-}
-
-function repairModalScrollLock() {
-  window.setTimeout(() => {
-    try {
-      const anyOpen = Array.from(document.querySelectorAll(".modal")).some((el) =>
-        el.classList.contains("open")
-      );
-      if (anyOpen) return;
-
-      document.querySelectorAll(".modal-overlay").forEach((el) => el.remove());
-      document.body.classList.remove("modal-open");
-      if (document.body.style.overflow === "hidden") document.body.style.overflow = "";
-      if (document.body.style.paddingRight) document.body.style.paddingRight = "";
-    } catch {}
-  }, 0);
 }
 
 function pickApplicantAddressCity(details: any): { address: string; city: string } {
@@ -365,7 +354,7 @@ export default function ApplicantComposerModal({
         try {
           onCloseRef.current?.();
         } catch {}
-        repairModalScrollLock();
+        syncMaterializeModalState();
       },
       onOpenStart: () => {
         try {
@@ -387,7 +376,7 @@ export default function ApplicantComposerModal({
         instRef.current?.destroy?.();
       } catch {}
       instRef.current = null;
-      repairModalScrollLock();
+      syncMaterializeModalState();
     };
   }, []);
 
@@ -512,6 +501,8 @@ export default function ApplicantComposerModal({
         subjectOverride: c.welcome_subjectOverride || "",
         applicantId: applicantId || undefined,
         extraInfo: note,
+        createEmployeeUser: c.welcome_createEmployeeUser,
+        requireCommitment: c.welcome_createEmployeeUser ? c.welcome_requireCommitment : false,
         vars,
         setStatus: c.setStatus?.trim() ? c.setStatus.trim() : undefined,
       };
@@ -625,12 +616,7 @@ export default function ApplicantComposerModal({
   }
 
   function requestClose() {
-    try {
-      instRef.current?.close?.();
-      return;
-    } catch {}
-    onCloseRef.current?.();
-    repairModalScrollLock();
+    closeMaterializeModal(instRef.current, onCloseRef.current);
   }
 
   async function sendNow() {
@@ -674,13 +660,15 @@ export default function ApplicantComposerModal({
           subjectOverride: composer.welcome_subjectOverride.trim(),
           applicantId,
           extraInfo: note,
+          createEmployeeUser: composer.welcome_createEmployeeUser,
+          requireCommitment: composer.welcome_createEmployeeUser ? composer.welcome_requireCommitment : false,
           vars,
           setStatus: composer.setStatus.trim() ? composer.setStatus.trim() : undefined,
         };
 
         const resp = await (api as any).sendApplicantWelcomeEmail(applicantId, body);
         M?.toast?.({ html: String(resp?.message || resp?.status || "Sent"), classes: "green" });
-        onClose();
+        requestClose();
         return;
       }
 
@@ -792,7 +780,7 @@ export default function ApplicantComposerModal({
         // ✅ Cast at boundary (your api typing may not accept CONFIRMATION yet)
         const resp = await (api as any).sendApplicantRichEmail(applicantId, body as any);
         M?.toast?.({ html: String(resp?.message || resp?.status || "Sent"), classes: "green" });
-        onClose();
+        requestClose();
         return;
       }
 
@@ -835,7 +823,7 @@ export default function ApplicantComposerModal({
 
         const resp = await api.sendApplicantDocEmail(applicantId, body);
         M?.toast?.({ html: String(resp?.message || resp?.status || "Sent"), classes: "green" });
-        onClose();
+        requestClose();
         return;
       }
     } catch (e: any) {
@@ -1161,6 +1149,34 @@ export default function ApplicantComposerModal({
                 />
               </div>
             </div>
+
+            <p style={{ marginTop: 10, marginBottom: 0 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={composer.welcome_createEmployeeUser}
+                  onChange={(e) =>
+                    updateComposer({
+                      welcome_createEmployeeUser: e.target.checked,
+                      welcome_requireCommitment: e.target.checked ? composer.welcome_requireCommitment : false,
+                    })
+                  }
+                />
+                <span>createEmployeeUser</span>
+              </label>
+            </p>
+
+            <p style={{ marginTop: 10 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={composer.welcome_requireCommitment}
+                  disabled={!composer.welcome_createEmployeeUser}
+                  onChange={(e) => updateComposer({ welcome_requireCommitment: e.target.checked })}
+                />
+                <span>requireCommitment</span>
+              </label>
+            </p>
           </>
         )}
 

@@ -35,6 +35,20 @@ function weekdayLabel(iso: string) {
   });
 }
 
+function mondayOfDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const copy = new Date(d);
+  copy.setHours(0, 0, 0, 0);
+  const day = copy.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  copy.setDate(copy.getDate() + diff);
+  const yyyy = copy.getFullYear();
+  const mm = String(copy.getMonth() + 1).padStart(2, "0");
+  const dd = String(copy.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 type TimesheetEntry = {
   date: string;
   hours: number;
@@ -72,6 +86,7 @@ type UpdateSummary = {
   timesheet: TimesheetEntry[];
   attachments: AttachmentRef[];
   driveFolderLink?: string;
+  isLateSubmission?: boolean;
 };
 
 function normalizeAttachments(value: any): AttachmentRef[] {
@@ -183,17 +198,23 @@ function extractSummaries(resp: any): any[] {
 }
 
 function normalizeSummary(x: any): UpdateSummary {
+  const weekStart = safeStr(
+    x?.weekStart || x?.weekOf || x?.week_start || x?.week || x?.weekLabel
+  );
+  const createdAtLast = safeStr(x?.createdAtLast);
+  const isLateSubmission = Boolean(
+    weekStart && createdAtLast && mondayOfDate(createdAtLast) && mondayOfDate(createdAtLast) !== weekStart
+  );
+
   return {
     userId: safeStr(x?.userId || x?.employeeId || x?.username),
     userName: safeStr(x?.userName || x?.employee_name || x?.name),
     employee_id: safeStr(x?.employee_id),
     employee_manager: safeStr(x?.employee_manager),
     projectId: safeStr(x?.projectId || x?.project_id),
-    weekStart: safeStr(
-      x?.weekStart || x?.weekOf || x?.week_start || x?.week || x?.weekLabel
-    ),
+    weekStart,
     createdAtFirst: safeStr(x?.createdAtFirst),
-    createdAtLast: safeStr(x?.createdAtLast),
+    createdAtLast,
     totalEntries: safeNum(x?.totalEntries),
     totalHours: safeNum(x?.totalHours),
     accomplishments: Array.isArray(x?.accomplishments)
@@ -226,6 +247,7 @@ function normalizeSummary(x: any): UpdateSummary {
       : [],
     attachments: normalizeAttachments(x?.attachments || x?.uploadedFiles || x?.files),
     driveFolderLink: safeStr(x?.driveFolderLink),
+    isLateSubmission,
   };
 }
 
@@ -988,6 +1010,9 @@ export default function AccountMyUpdates({ api }: { api: any }) {
                       <div className="amuWeekMeta">
                         <Pill icon="article" text={`${week.accomplishments.length} done`} tone="blue" />
                         <Pill icon="warning_amber" text={`${week.blockers.length} blockers`} tone="amber" />
+                        {week.isLateSubmission ? (
+                          <Pill icon="schedule" text="Late 40%" tone="amber" />
+                        ) : null}
                       </div>
                     </button>
                   );
@@ -1005,6 +1030,11 @@ export default function AccountMyUpdates({ api }: { api: any }) {
                         <div className="amuHeroSub">
                           Consolidated view of all submissions made in this week
                         </div>
+                        {currentWeek.isLateSubmission ? (
+                          <div style={{ marginTop: 10 }}>
+                            <Pill icon="schedule" text="Late submission - 40% reward, no streak release" tone="amber" />
+                          </div>
+                        ) : null}
                       </div>
 
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

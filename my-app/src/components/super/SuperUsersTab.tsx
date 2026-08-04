@@ -1,7 +1,7 @@
 import type { ApiUser } from "../../api";
 
-type AssignableRole = "employee" | "admin" | "super";
-type ReadScope = "employee" | "admin" | "super";
+type AssignableRole = "employee" | "admin" | "super" | "test";
+type ReadScope = "employee" | "admin" | "super" | "test";
 
 type Props = {
   users: ApiUser[];
@@ -15,12 +15,13 @@ type Props = {
   onSetRole: (username: string, role: AssignableRole) => void;
   onSetReadScope: (username: string, readScope: ReadScope) => void;
   onSetAccessFlag: (username: string, field: "portal_access" | "project_access" | "version_control_access", value: boolean) => void;
+  onDeleteUser: (username: string) => void;
   roleFor: (value: any) => string;
   readScopeFor: (u: ApiUser) => ReadScope;
   safeStr: (value: any) => string;
 };
 
-const ASSIGNABLE_ROLES: AssignableRole[] = ["employee", "admin", "super"];
+const ASSIGNABLE_ROLES: AssignableRole[] = ["employee", "admin", "super", "test"];
 
 export default function SuperUsersTab({
   users,
@@ -33,6 +34,7 @@ export default function SuperUsersTab({
   onSetRole,
   onSetReadScope,
   onSetAccessFlag,
+  onDeleteUser,
   roleFor,
   readScopeFor,
   safeStr,
@@ -62,7 +64,7 @@ export default function SuperUsersTab({
               const readScope = readScopeFor(u);
               const roleKey = roleFor(u.employee_role);
               return (
-                <div key={u.username} className="suUserRow">
+                <div key={u.username} className="suUserRow" style={{ position: "relative" }}>
                   <div className="suUserIdentity">
                     <div className="suAvatarWrap">
                       <div className="suAvatar">
@@ -96,6 +98,7 @@ export default function SuperUsersTab({
                         value={readScope}
                         onChange={(e) => onSetReadScope(u.username, e.target.value as ReadScope)}
                       >
+                        <option value="test">test</option>
                         <option value="employee">employee</option>
                         <option value="admin">admin</option>
                         <option value="super">super</option>
@@ -137,6 +140,29 @@ export default function SuperUsersTab({
                       </div>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    className="btn-flat"
+                    title={isSelf ? "You can't delete your own account" : "Delete user"}
+                    disabled={!isSuperUser || isSelf}
+                    onClick={() => {
+                      if (!window.confirm(`Permanently delete ${u.username}? This cannot be undone.`)) return;
+                      onDeleteUser(u.username);
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: 10,
+                      right: 10,
+                      color: "#b91c1c",
+                      display: "flex",
+                      alignItems: "center",
+                      padding: 6,
+                      minWidth: 0,
+                    }}
+                  >
+                    <i className="material-icons" style={{ fontSize: 18 }}>delete</i>
+                  </button>
                 </div>
               );
             })}
