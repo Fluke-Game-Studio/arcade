@@ -56,6 +56,7 @@ import type {
     LinkedInOrgStatus,
     DiscordStatusResponse,
     ListStorageFilesResponse,
+    ApiWallet,
     ApiWalletBootstrapResponse,
     ApiWalletResponse,
     ApiWalletSessionResponse,
