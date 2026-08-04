@@ -2,23 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import type { ApiNotificationItem } from "../api";
+import { notificationChips, notificationDetailHref, notificationIcon, notificationIconChipStyle, notificationIconStyle, notificationLabel, notificationTone } from "../lib/notifications";
 
 declare const M: any;
-
-type NotificationItem = {
-  recipientUsername?: string;
-  notificationId?: string;
-  type?: string;
-  category?: string;
-  title?: string;
-  body?: string;
-  href?: string;
-  actorUsername?: string;
-  read?: boolean;
-  readAt?: string;
-  createdAt?: string;
-  meta?: Record<string, any>;
-};
 
 function safeStr(v: any) {
   return String(v ?? "").trim();
@@ -40,15 +27,6 @@ function relativeTime(value?: string) {
   return date.toLocaleString();
 }
 
-function categoryTone(category?: string) {
-  const value = safeStr(category).toLowerCase();
-  if (value === "social_media") return { dot: "#2563eb", chip: "rgba(37,99,235,.12)", text: "#1d4ed8", label: "Social" };
-  if (value === "weekly_updates") return { dot: "#0f766e", chip: "rgba(15,118,110,.12)", text: "#0f766e", label: "Weekly" };
-  if (value === "applicants") return { dot: "#9333ea", chip: "rgba(147,51,234,.12)", text: "#7e22ce", label: "Applicants" };
-  if (value === "mentions") return { dot: "#db2777", chip: "rgba(219,39,119,.12)", text: "#be185d", label: "Mentions" };
-  return { dot: "#475569", chip: "rgba(148,163,184,.12)", text: "#475569", label: "System" };
-}
-
 const actionButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -65,7 +43,7 @@ const actionButtonStyle: CSSProperties = {
 export default function NotificationsCenter() {
   const { api } = useAuth();
   const navigate = useNavigate();
-  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [items, setItems] = useState<ApiNotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -100,7 +78,7 @@ export default function NotificationsCenter() {
     return items.filter((item) => safeStr(item.category).toLowerCase() === category);
   }, [category, items]);
 
-  async function openItem(item: NotificationItem) {
+  async function openItem(item: ApiNotificationItem) {
     try {
       if (safeStr(item.notificationId) && !item.read) {
         await api.markNotificationsRead({ notificationId: safeStr(item.notificationId) });
@@ -113,7 +91,7 @@ export default function NotificationsCenter() {
         );
       }
     } catch {}
-    navigate(safeStr(item.href) || "/");
+    navigate(safeStr(item.notificationId) ? notificationDetailHref(item.notificationId) : (safeStr(item.href) || "/"));
   }
 
   async function markAllRead() {
@@ -123,6 +101,22 @@ export default function NotificationsCenter() {
       M?.toast?.({ html: "All notifications marked as read.", classes: "green" });
     } catch (e: any) {
       M?.toast?.({ html: e?.message || "Failed to mark notifications read", classes: "red" });
+    }
+  }
+
+  async function markOneRead(item: ApiNotificationItem) {
+    if (!safeStr(item.notificationId) || item.read) return;
+    try {
+      await api.markNotificationsRead({ notificationId: safeStr(item.notificationId) });
+      setItems((prev) =>
+        prev.map((row) =>
+          safeStr(row.notificationId) === safeStr(item.notificationId)
+            ? { ...row, read: true }
+            : row
+        )
+      );
+    } catch (e: any) {
+      M?.toast?.({ html: e?.message || "Failed to mark notification read", classes: "red" });
     }
   }
 
@@ -147,11 +141,11 @@ export default function NotificationsCenter() {
             </p>
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button type="button" style={actionButtonStyle} onClick={() => void load()}>
+            <button type="button" style={actionButtonStyle} onClick={() => void load()} title="Refresh notifications" aria-label="Refresh notifications">
               <i className="material-icons" style={{ fontSize: 18 }}>refresh</i>
               Refresh
             </button>
-            <button type="button" style={actionButtonStyle} onClick={() => void markAllRead()}>
+            <button type="button" style={actionButtonStyle} onClick={() => void markAllRead()} title="Mark all notifications as read" aria-label="Mark all notifications as read">
               <i className="material-icons" style={{ fontSize: 18 }}>done_all</i>
               Mark all read
             </button>
@@ -165,6 +159,7 @@ export default function NotificationsCenter() {
             { key: "mentions", label: "Mentions" },
             { key: "weekly_updates", label: "Weekly" },
             { key: "applicants", label: "Applicants" },
+            { key: "commerce", label: "Commerce" },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -197,12 +192,22 @@ export default function NotificationsCenter() {
           ) : null}
 
           {filtered.map((item) => {
-            const tone = categoryTone(item.category);
+            const tone = notificationTone(item.category);
+            const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
+            const chips = notificationChips(item);
+            const comment = safeStr(meta.comment);
             return (
-              <button
+              <div
                 key={safeStr(item.notificationId)}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => void openItem(item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    void openItem(item);
+                  }
+                }}
                 style={{
                   width: "100%",
                   textAlign: "left",
@@ -218,12 +223,24 @@ export default function NotificationsCenter() {
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 999, background: tone.dot, boxShadow: !item.read ? `0 0 0 4px ${tone.chip}` : "none" }} />
-                    <span style={{ fontWeight: 900, color: "#0f172a", fontSize: 16 }}>{safeStr(item.title) || "Notification"}</span>
+                    <span
+                      style={{
+                        background: tone.chip,
+                        color: tone.text,
+                        boxShadow: !item.read ? `0 0 0 4px ${tone.chip}` : "none",
+                        ...notificationIconChipStyle,
+                      }}
+                    >
+                      <i className="material-icons" style={{ fontSize: 18, ...notificationIconStyle }}>{notificationIcon(item.type, item.category, item.meta)}</i>
+                    </span>
+                    <div style={{ minWidth: 0, display: "grid", gap: 4 }}>
+                      <span style={{ fontWeight: 900, color: "#0f172a", fontSize: 16 }}>{safeStr(item.title) || "Notification"}</span>
+                      <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>{relativeTime(item.createdAt)}</span>
+                    </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ color: tone.text, background: tone.chip, borderRadius: 999, padding: "6px 10px", fontWeight: 800, fontSize: 11 }}>
-                      {tone.label}
+                      {notificationLabel(item)}
                     </span>
                     {!item.read ? (
                       <span style={{ color: "#1d4ed8", background: "rgba(37,99,235,.10)", borderRadius: 999, padding: "6px 10px", fontWeight: 900, fontSize: 11 }}>
@@ -235,10 +252,79 @@ export default function NotificationsCenter() {
                 <div style={{ color: "#334155", fontSize: 14, lineHeight: 1.6, fontWeight: 700 }}>
                   {safeStr(item.body)}
                 </div>
-                <div style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
-                  {relativeTime(item.createdAt)}
+                {chips.length ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {chips.map((chip) => (
+                      <span
+                        key={chip.key}
+                        style={{
+                          borderRadius: 999,
+                          border: "1px solid rgba(148,163,184,.18)",
+                          background: "rgba(248,250,252,.95)",
+                          color: "#475569",
+                          padding: "6px 10px",
+                          fontSize: 11,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {chip.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {comment ? (
+                  <div
+                    style={{
+                      borderRadius: 14,
+                      border: "1px solid rgba(148,163,184,.16)",
+                      background: "rgba(248,250,252,.92)",
+                      padding: 12,
+                      color: "#334155",
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                      fontWeight: 700,
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: ".08em", textTransform: "uppercase", color: "#64748b", marginBottom: 6 }}>
+                      Review note
+                    </div>
+                    {comment}
+                  </div>
+                ) : null}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <span
+                    title="Open notification"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      color: "#1d4ed8",
+                      fontSize: 12,
+                      fontWeight: 900,
+                    }}
+                  >
+                    <i className="material-icons" style={{ fontSize: 16 }}>touch_app</i>
+                    Tap to open
+                  </span>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    {!item.read ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void markOneRead(item);
+                        }}
+                        title="Mark this notification as read"
+                        aria-label="Mark this notification as read"
+                        style={actionButtonStyle}
+                      >
+                        <i className="material-icons" style={{ fontSize: 18 }}>done</i>
+                        Mark read
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-              </button>
+              </div>
             );
           })}
 

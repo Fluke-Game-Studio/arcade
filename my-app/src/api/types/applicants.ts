@@ -5,6 +5,9 @@ export type ApiApplicantListItem = {
   roleId?: string;
   roleTitle?: string;
   status?: string;
+  shortlistRating?: string;
+  shortlistUpdatedAt?: string;
+  shortlistUpdatedBy?: string;
   source?: string;
   formVersion?: string;
   submittedAt?: string;
@@ -73,6 +76,8 @@ export type SendApplicantWelcomeEmailBody = {
   extraInfo?: string;
   vars?: Record<string, any>;
   setStatus?: string;
+  createEmployeeUser?: boolean;
+  requireCommitment?: boolean;
 };
 
 export type EmployeeDocEmailType = "EXPERIENCE" | "RECOMMENDATION";

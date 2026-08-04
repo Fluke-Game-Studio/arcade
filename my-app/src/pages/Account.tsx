@@ -5,14 +5,16 @@ import AccountProfileSecurity from "../components/account/AccountProfileSecurity
 import AccountMyUpdates from "../components/account/AccountMyUpdates";
 import AccountGamification from "../components/account/AccountGamification";
 import AccountSettingsPanel from "../components/account/AccountSettingsPanel";
+import AccountWallet from "../components/account/AccountWallet";
+import AccountMyOrders from "../components/account/AccountMyOrders";
 import AwardUnlockModal from "../components/account/AwardUnlockModal";
 
 declare const M: any;
 
-type AccountTabKey = "updates" | "details" | "password" | "gamification" | "downloads" | "settings";
+type AccountTabKey = "updates" | "details" | "password" | "gamification" | "downloads" | "wallet" | "orders" | "settings";
 
 export default function Account() {
-  const { user, api, refreshSession } = useAuth();
+  const { user, api, refreshSession, applySessionPatch } = useAuth();
   const [activeTab, setActiveTab] = useState<AccountTabKey>("updates");
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const saved = (localStorage.getItem("fg_theme") || "").toLowerCase();
@@ -24,6 +26,43 @@ export default function Account() {
   const [dlError, setDlError] = useState("");
   const [dlData, setDlData] = useState<{ customer?: any; items?: any[] } | null>(null);
   const [scopeByProduct, setScopeByProduct] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const oauth = String(params.get("oauth") || params.get("provider") || "").trim().toLowerCase();
+    const oauthStatus = String(params.get("oauthStatus") || params.get("status") || "").trim().toLowerCase();
+    const discordConnected =
+      oauth === "discord" || params.get("discord_connected") === "1" || oauthStatus === "connected";
+
+    if (!discordConnected) return;
+
+    applySessionPatch({
+      discord_connected: true,
+      discord_connected_at: String(params.get("connectedAt") || new Date().toISOString()).trim(),
+      discord_member_id: String(params.get("memberId") || "").trim(),
+      discord_name: String(params.get("name") || "").trim(),
+      discord_email: String(params.get("email") || "").trim(),
+      discord_url: String(params.get("discordUrl") || "").trim(),
+    });
+
+    params.delete("oauth");
+    params.delete("provider");
+    params.delete("oauthStatus");
+    params.delete("status");
+    params.delete("discord_connected");
+    params.delete("connectedAt");
+    params.delete("memberId");
+    params.delete("name");
+    params.delete("email");
+    params.delete("discordUrl");
+
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", nextUrl);
+    void refreshSession();
+  }, [applySessionPatch, refreshSession]);
 
   function humanizeDownloadsError(message: string) {
     const raw = String(message || "").toLowerCase();
@@ -81,9 +120,7 @@ export default function Account() {
             id: achievement?.achievementId || achievement?.id,
             title: achievement?.title,
             description: achievement?.description,
-            metric: achievement?.metric,
-            threshold: achievement?.threshold,
-            setKey: achievement?.setKey,
+            creditAmount: resp?.creditsGranted || achievement?.creditAmount || 0,
           };
     const trophyItems = Array.isArray(resp?.unlockedTrophies)
       ? resp.unlockedTrophies.map((t: any) => ({
@@ -93,7 +130,7 @@ export default function Account() {
           description: t?.description,
           tier: t?.tier,
           imageUrl: t?.imageUrl,
-          achievementSetKey: t?.achievementSetKey,
+          creditAmount: t?.creditAmount || 0,
         }))
       : [];
     const items = [achievementItem, ...trophyItems].filter((x: any) => !!x?.id || !!x?.title);
@@ -108,6 +145,8 @@ export default function Account() {
     function onLinkedInMessage(event: MessageEvent) {
       const data = event?.data || {};
       if (data?.type !== "linkedin-connected") return;
+
+      void refreshSession();
 
       const achievementId = "linkedin_connect";
       api
@@ -128,7 +167,6 @@ export default function Account() {
             setKey: "connectSocials",
             threshold: 1,
           });
-          void refreshSession();
           if (typeof M !== "undefined") {
             M.toast({ html: "LinkedIn achievement awarded.", classes: "green" });
           }
@@ -151,6 +189,16 @@ export default function Account() {
     function onDiscordMessage(event: MessageEvent) {
       const data = event?.data || {};
       if (data?.type !== "discord-connected") return;
+
+      applySessionPatch({
+        discord_connected: true,
+        discord_connected_at: String(data?.connectedAt || new Date().toISOString()).trim(),
+        discord_member_id: String(data?.memberId || "").trim(),
+        discord_name: String(data?.name || "").trim(),
+        discord_email: String(data?.email || "").trim(),
+        discord_url: String(data?.discordUrl || "").trim(),
+      });
+      void refreshSession();
 
       const joinUrl = String(data?.joinUrl || "").trim();
       if (joinUrl) {
@@ -177,7 +225,6 @@ export default function Account() {
             setKey: "connectSocials",
             threshold: 1,
           });
-          void refreshSession();
           if (typeof M !== "undefined") {
             M.toast({
               html: joinUrl
@@ -200,44 +247,6 @@ export default function Account() {
     window.addEventListener("message", onDiscordMessage);
     return () => window.removeEventListener("message", onDiscordMessage);
   }, [api, refreshSession]);
-
-  function TabButton({
-    tab,
-    icon,
-    label,
-  }: {
-    tab: AccountTabKey;
-    icon: string;
-    label: string;
-  }) {
-    const active = activeTab === tab;
-    return (
-      <button
-        type="button"
-        onClick={() => setActiveTab(tab)}
-        style={{
-          border: active ? "1px solid rgba(37,99,235,0.22)" : "1px solid #dbe5ec",
-          background: active
-            ? "linear-gradient(135deg, rgba(37,99,235,0.10), rgba(255,255,255,1))"
-            : "#fff",
-          color: active ? "#1d4ed8" : "#334155",
-          borderRadius: 14,
-          padding: "10px 14px",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          fontWeight: 900,
-          cursor: "pointer",
-          boxShadow: active ? "0 10px 20px rgba(37,99,235,0.08)" : "none",
-        }}
-      >
-        <i className="material-icons" style={{ fontSize: 18 }}>
-          {icon}
-        </i>
-        {label}
-      </button>
-    );
-  }
 
   return (
     <main className="container" style={{ paddingTop: 22, maxWidth: 1080 }}>
@@ -686,22 +695,46 @@ export default function Account() {
 
         .accountTabBar{
           display:flex;
+          align-items:center;
+          justify-content:flex-start;
           gap:10px;
           flex-wrap:wrap;
           margin: 0 0 14px 0;
+          padding: 6px;
+          border: 1px solid #dbe5ef;
+          border-radius: 999px;
+          background: #f8fbff;
+          width: fit-content;
+          max-width: 100%;
+        }
+        .suTabBtn {
+          border: 0;
+          border-radius: 999px;
+          padding: 9px 14px;
+          font-weight: 900;
+          font-size: 13px;
+          cursor: pointer;
+          color: #334155;
+          background: transparent;
+          transition: all .15s ease;
+        }
+        .suTabBtn.active {
+          background: rgba(59,130,246,.16);
+          color: #1d4ed8;
+          box-shadow: inset 0 0 0 1px rgba(59,130,246,.12);
         }
       `}</style>
 
       <div className="accWrap">
-        <div className="accountTabBar" style={{ alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
-            <TabButton tab="updates" icon="history" label="My Updates" />
-            <TabButton tab="details" icon="badge" label="Edit Details" />
-            <TabButton tab="password" icon="lock" label="Edit Password" />
-            <TabButton tab="gamification" icon="emoji_events" label="Achievements" />
-            <TabButton tab="downloads" icon="download" label="Customer Downloads" />
-            <TabButton tab="settings" icon="settings" label="Settings" />
-          </div>
+        <div className="accountTabBar" role="tablist" aria-label="Account tabs">
+          <button type="button" className={`suTabBtn ${activeTab === "updates" ? "active" : ""}`} onClick={() => setActiveTab("updates")}>My Updates</button>
+          <button type="button" className={`suTabBtn ${activeTab === "details" ? "active" : ""}`} onClick={() => setActiveTab("details")}>Edit Details</button>
+          <button type="button" className={`suTabBtn ${activeTab === "password" ? "active" : ""}`} onClick={() => setActiveTab("password")}>Edit Password</button>
+          <button type="button" className={`suTabBtn ${activeTab === "gamification" ? "active" : ""}`} onClick={() => setActiveTab("gamification")}>Achievements</button>
+          <button type="button" className={`suTabBtn ${activeTab === "downloads" ? "active" : ""}`} onClick={() => setActiveTab("downloads")}>Customer Downloads</button>
+          <button type="button" className={`suTabBtn ${activeTab === "wallet" ? "active" : ""}`} onClick={() => setActiveTab("wallet")}>Wallet</button>
+          <button type="button" className={`suTabBtn ${activeTab === "orders" ? "active" : ""}`} onClick={() => setActiveTab("orders")}>My Orders</button>
+          <button type="button" className={`suTabBtn ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>Settings</button>
         </div>
 
         {activeTab === "updates" && <AccountMyUpdates api={api} />}
@@ -806,11 +839,16 @@ export default function Account() {
           </section>
         )}
 
+        {activeTab === "wallet" && <AccountWallet api={api} user={user} />}
+
+        {activeTab === "orders" && <AccountMyOrders api={api} />}
+
         {activeTab === "settings" && (
           <AccountSettingsPanel
             api={api}
             me={user}
             theme={theme}
+            onConnected={refreshSession}
             onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
           />
         )}

@@ -9,13 +9,21 @@ function safeStr(v: any) {
 
 export type IntegrationKey = "linkedin" | "discord" | "jira";
 
-export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => void | Promise<void> }) {
+export function useIntegrations(
+  api: any,
+  me: any,
+  opts?: {
+    onConnected?: (payload?: any) => void | Promise<void>;
+  }
+) {
   const [loadingByKey, setLoadingByKey] = useState<Record<IntegrationKey, boolean>>({
     linkedin: false,
     discord: false,
     jira: false,
   });
   const [jiraStatus, setJiraStatus] = useState<any>(null);
+  const meJiraConnected = Boolean((me as any)?.jira_connected || safeStr((me as any)?.jira_connected_at));
+  const meJiraCloudName = safeStr((me as any)?.jira_cloud_name);
 
   const status = useMemo(
     () => ({
@@ -25,10 +33,13 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
       discord: Boolean(
         (me as any)?.discord_connected || safeStr((me as any)?.discord_connected_at)
       ),
-      jira: Boolean(jiraStatus?.connected),
-      jiraCloudName: safeStr(jiraStatus?.cloudName),
+      jira: jiraStatus === null ? meJiraConnected : Boolean(jiraStatus?.connected),
+      jiraCloudName:
+        jiraStatus === null
+          ? meJiraCloudName
+          : safeStr(jiraStatus?.cloudName) || meJiraCloudName,
     }),
-    [me, jiraStatus]
+    [jiraStatus, meJiraCloudName, meJiraConnected, me]
   );
 
   const setLoading = useCallback((key: IntegrationKey, value: boolean) => {
@@ -45,8 +56,9 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
   }, [api]);
 
   useEffect(() => {
+    setJiraStatus(null);
     void refreshJiraStatus();
-  }, [refreshJiraStatus]);
+  }, [me, refreshJiraStatus]);
 
   const startConnect = useCallback(
     async (key: IntegrationKey) => {
@@ -83,10 +95,12 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
           if (popup.closed) {
             setLoading(key, false);
             window.clearInterval(timer);
+            return;
           }
         } catch {
           setLoading(key, false);
           window.clearInterval(timer);
+          return;
         }
       }, 500);
     },
@@ -103,14 +117,24 @@ export function useIntegrations(api: any, me: any, opts?: { onConnected?: () => 
       const type = safeStr((event as any)?.data?.type);
       if (type === "linkedin-connected") {
         setLoading("linkedin", false);
-        void opts?.onConnected?.();
+        void opts?.onConnected?.(event?.data);
         M?.toast?.({ html: "LinkedIn connected.", classes: "green" });
       } else if (type === "discord-connected") {
         setLoading("discord", false);
-        void opts?.onConnected?.();
+        void opts?.onConnected?.(event?.data);
         M?.toast?.({ html: "Discord connected.", classes: "green" });
       } else if (type === "jira-connected") {
         setLoading("jira", false);
+        if (api.awardAchievement) {
+          void api.awardAchievement({
+            achievementId: "jira_connect",
+            title: "Connect Jira",
+            description: "Connect Jira to sync project tickets.",
+            metric: "jiraSocials",
+            setKey: "connectSocials",
+            threshold: 1,
+          }).catch(() => {});
+        }
         void opts?.onConnected?.();
         void refreshJiraStatus();
         M?.toast?.({ html: "Jira connected.", classes: "green" });

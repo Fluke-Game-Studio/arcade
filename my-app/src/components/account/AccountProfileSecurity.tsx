@@ -284,6 +284,22 @@ export default function AccountProfileSecurity({
   }, [initialTab]);
 
   useEffect(() => {
+    if (!user) return;
+
+    setMe(user as ApiUser);
+    setPic(safeStr((user as any).employee_profilepicture));
+    setEmployeePic(safeStr((user as any).employee_picture));
+    setPhone(safeStr((user as any).employee_phonenumber));
+    setLocation(safeStr((user as any).location));
+    setDob(safeStr((user as any).employee_dob));
+    setAddress(safeStr((user as any).employee_address));
+    setPicError(false);
+    setEmployeePicError(false);
+
+    if (typeof M !== "undefined") setTimeout(() => M.updateTextFields(), 0);
+  }, [user]);
+
+  useEffect(() => {
     let mounted = true;
 
     (async () => {

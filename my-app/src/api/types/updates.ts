@@ -43,6 +43,20 @@ export type CreateWeeklyUpdateUploadUrlsResponse = {
   files: PresignedUploadItem[];
 };
 
+export type CreateStoreImageUploadUrlsBody = {
+  itemId?: string;
+  itemName?: string;
+  files: Array<{
+    fileName: string;
+    mimeType: string;
+    size: number;
+  }>;
+};
+
+export type CreateStoreImageUploadUrlsResponse = {
+  files: PresignedUploadItem[];
+};
+
 export type ListStorageFilesResponse = {
   ok?: boolean;
   bucket?: string;
@@ -137,6 +151,7 @@ export type SubmitUpdateBody = {
   accomplishments: string;
   blockers: string;
   next: string;
+  submissionSource?: string;
   retrospective: {
     worked: string[];
     didnt: string[];
