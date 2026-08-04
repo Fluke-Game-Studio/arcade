@@ -17,8 +17,8 @@ const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
 //   customInstructions (admin-editable via the context builder). DEFAULT_PERSONA is only a
 //   fallback for contexts that leave sessionPrompt blank.
 const PROTOCOL_INSTRUCTIONS = `PROTOCOL — follow exactly, no exceptions:
-After every candidate response you MUST call exactly one tool: "advance_interview" (normal case), "flag_off_topic" (candidate made no attempt to address the question), or "ask_follow_up_question" (only when explicitly instructed to). Never respond with speech directly at that point — only a tool call.
-After a tool call you'll be told what to say next. When told to say something "exactly," use those exact words — no additions, no paraphrasing. When told to "acknowledge naturally," vary your phrasing and sound genuinely human — don't reuse the same stock phrase every time.
+After every candidate response you MUST call exactly one tool: "advance_interview" (normal case), "flag_off_topic" (candidate made no attempt to address the question), or "ask_follow_up_question" (when the current topic could use more depth — either because you decide that yourself, or because you're told to). Never respond with speech directly at that point — only a tool call.
+After a tool call you'll be told what to say next. When told to say something "exactly," use those exact words — no additions, no paraphrasing. When told to "acknowledge naturally," vary your phrasing and sound genuinely human — don't reuse the same stock phrase every time. Never comment on audio quality, interruptions, or whether an answer "sounded cut off" during a natural acknowledgment — that judgment is handled separately; a natural acknowledgment always means the system has already decided to move on, so treat it as a settled transition, not a chance to ask for a repeat.
 Respond only in English, regardless of what language the candidate uses.`;
 
 const DEFAULT_PERSONA = "You are a warm, professional AI interviewer for Fluke Games, having a natural conversation — not reading a script robotically.";
@@ -52,7 +52,7 @@ const INTERVIEW_TOOLS = [
     type: "function",
     name: "ask_follow_up_question",
     description:
-      "Called only when you are explicitly instructed to probe deeper on a brief answer. Craft ONE natural, specific follow-up question based directly on what the candidate just said — never generic.",
+      "Call this INSTEAD of advance_interview when the candidate's answer to the current topic could use more depth or specifics before moving on — use your own judgment on when a topic has been covered well enough. You may call this multiple times in a row on the same topic to keep drilling in (e.g. ask what they did, then ask to elaborate on a specific part of that answer), but don't overdo it once you have a clear, complete picture. Craft ONE natural, specific follow-up question based directly on what the candidate just said — never generic.",
     parameters: {
       type: "object",
       properties: {
@@ -66,10 +66,21 @@ const INTERVIEW_TOOLS = [
   },
 ];
 
+// Tools allowed once the safety-net cap is hit — ask_follow_up_question is removed so the
+// model is structurally unable to keep drilling, regardless of what it "wants."
+const ADVANCE_AND_OFFTOPIC_TOOLS = INTERVIEW_TOOLS.filter((t) => t.name !== "ask_follow_up_question");
+
 const OFF_TOPIC_REDIRECT = "Let's keep focused on the interview.";
 const CLARIFY_PROMPT = "It seems your response may have been incomplete — could you say a bit more about that?";
-const SHORT_ANSWER_THRESHOLD_MS = 30000;
-const MAX_COUNTER_QUESTIONS_PER_ANSWER = 2;
+// Under 10s: elaboration is forced. Under 30s: elaboration is nudged but the model still
+// chooses freely (it can also choose to elaborate above 30s — there's no hard duration ceiling,
+// only the circuit breaker below).
+const HARD_ELABORATE_THRESHOLD_MS = 10000;
+const SOFT_ELABORATE_THRESHOLD_MS = 30000;
+// Not a normal operating limit — the model is meant to decide when a topic ("epic") has been
+// covered well enough. This is purely a circuit breaker so a stuck/looping model can't trap a
+// candidate on one question forever.
+const SAFETY_MAX_FOLLOWUPS_PER_EPIC = 6;
 
 
 function buildTranscript(answers: Record<string, string>, questions: string[]): string {
@@ -193,6 +204,10 @@ export default function RealtimeIntakePage() {
   const speechStartedAtRef = useRef<number | null>(null);
   const lastAnswerDurationMsRef = useRef<number | null>(null);
   const closingTextRef = useRef("");
+  // The literal text of whatever question is currently "live" — the top-level question, or the
+  // most recent follow-up within it. Clarify/off-topic repeats must target THIS, not always the
+  // top-level question, since the candidate may be mid-elaboration-chain when either fires.
+  const currentAskedQuestionRef = useRef("");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
@@ -388,6 +403,7 @@ export default function RealtimeIntakePage() {
         setDebugLog([]);
         const qs = allQuestionsRef.current;
         const liveCtx = ctxRef.current;
+        currentAskedQuestionRef.current = qs[0] || "";
 
         const isWeeklyCtx = liveCtx.key === "weekly_update" || liveCtx.mcpActions.some((a) => a === "submit_weekly_update" || a === "updates_write");
         const closingDefault = isWeeklyCtx
@@ -511,15 +527,18 @@ export default function RealtimeIntakePage() {
             responseInProgressRef.current = true;
 
             const durationMs = lastAnswerDurationMsRef.current;
-            const counterCount = counterQuestionCountRef.current[currentIdx] || 0;
-            if (durationMs != null && durationMs < SHORT_ANSWER_THRESHOLD_MS && counterCount < MAX_COUNTER_QUESTIONS_PER_ANSWER) {
+            const roundsUsed = counterQuestionCountRef.current[currentIdx] || 0;
+            const safetyReached = roundsUsed >= SAFETY_MAX_FOLLOWUPS_PER_EPIC;
+            const followUpGuidance = ctxRef.current?.followUpInstructions?.trim();
+
+            if (!safetyReached && durationMs != null && durationMs < HARD_ELABORATE_THRESHOLD_MS) {
+              // Under 10s: elaboration is forced, not offered.
               expectingToolCallRef.current = true;
-              addDebug("out", "response.create", `answer ${(durationMs / 1000).toFixed(1)}s < 30s → requesting counter-question (${counterCount + 1}/${MAX_COUNTER_QUESTIONS_PER_ANSWER})`);
-              const followUpGuidance = ctxRef.current?.followUpInstructions?.trim();
+              addDebug("out", "response.create", `answer ${(durationMs / 1000).toFixed(1)}s < 10s → forcing elaboration (${roundsUsed + 1})`);
               channel.send(JSON.stringify({
                 type: "response.create",
                 response: {
-                  instructions: `The candidate's answer was brief (under 30 seconds). Based specifically on what they just said, call ask_follow_up_question with ONE natural, targeted follow-up question that digs deeper into their answer.${followUpGuidance ? ` Follow these guidelines from the interviewer's configuration when crafting it: ${followUpGuidance}` : ""}`,
+                  instructions: `The candidate's answer was very brief (under 10 seconds). Based specifically on what they just said, call ask_follow_up_question with ONE natural, targeted follow-up asking them to elaborate.${followUpGuidance ? ` Follow these guidelines from the interviewer's configuration: ${followUpGuidance}` : ""}`,
                   tool_choice: { type: "function", name: "ask_follow_up_question" },
                 },
               }));
@@ -527,13 +546,25 @@ export default function RealtimeIntakePage() {
             }
 
             expectingToolCallRef.current = true;
-            // No embedded rules here — tool_choice:"required" (set at session level) forces
-            // the model into advance_interview/flag_off_topic; it cannot free-speak past a question.
+            const softNudge = !safetyReached && durationMs != null && durationMs < SOFT_ELABORATE_THRESHOLD_MS;
+            const nudgeInstructions = softNudge
+              ? `The candidate's answer was somewhat brief (under 30 seconds). Decide whether this topic has enough substance now, or whether one more targeted follow-up (ask_follow_up_question) would get meaningfully more useful information before moving on (advance_interview).${followUpGuidance ? ` Follow-up guidance from the interviewer's configuration: ${followUpGuidance}` : ""}`
+              : undefined;
+            // No embedded rules otherwise — tool_choice:"required" forces the model to choose
+            // among advance_interview / flag_off_topic / ask_follow_up_question on its own
+            // judgment; it cannot free-speak past a question. Once the safety cap is hit,
+            // ask_follow_up_question is structurally removed from the allowed tool set.
             channel.send(JSON.stringify({
               type: "response.create",
-              response: { tool_choice: "required" },
+              response: {
+                ...(nudgeInstructions ? { instructions: nudgeInstructions } : {}),
+                ...(safetyReached ? { tools: ADVANCE_AND_OFFTOPIC_TOOLS } : {}),
+                tool_choice: "required",
+              },
             }));
-            addDebug("out", "response.create", "requesting tool decision (advance_interview / flag_off_topic)");
+            addDebug("out", "response.create", safetyReached
+              ? "safety cap reached — forcing advance_interview/flag_off_topic only"
+              : `requesting tool decision${softNudge ? " (soft nudge toward elaboration)" : ""}`);
           }
         } catch {}
       };
@@ -556,10 +587,11 @@ export default function RealtimeIntakePage() {
         responseInProgressRef.current = true;
         expectingToolCallRef.current = false;
         speechStartedAtRef.current = null;
+        currentAskedQuestionRef.current = question;
         channel.send(JSON.stringify({
           type: "response.create",
           response: {
-            instructions: `Briefly and naturally acknowledge the candidate's last answer in your own words — one short sentence, warm and human, varied phrasing (don't reuse the same stock phrase every time). Then ask this exact question, word-for-word with no changes: "${question}"`,
+            instructions: `Briefly and naturally acknowledge the candidate's last answer in your own words — one short sentence, warm and human, varied phrasing (don't reuse the same stock phrase every time). Do NOT comment on audio quality, interruptions, or completeness — that's already been decided; just acknowledge normally. Then ask this exact question, word-for-word with no changes: "${question}"`,
             tool_choice: "none",
           },
         }));
@@ -571,12 +603,13 @@ export default function RealtimeIntakePage() {
 
         if (seemsIncomplete && (followUpCountRef.current[currentIdx] || 0) < 1) {
           followUpCountRef.current[currentIdx] = (followUpCountRef.current[currentIdx] || 0) + 1;
-          addDebug("out", "response.create", `clarify → repeat Q${currentIdx + 1} (tool_choice=none)`);
-          sendScriptedResponse(`${CLARIFY_PROMPT} ${qs[currentIdx]}`);
+          addDebug("out", "response.create", `clarify → repeat current question (tool_choice=none)`);
+          sendScriptedResponse(`${CLARIFY_PROMPT} ${currentAskedQuestionRef.current}`);
           return;
         }
 
         const nextIdx = currentIdx + 1;
+        counterQuestionCountRef.current[currentIdx] = 0;
         if (nextIdx < qs.length) {
           qIdxRef.current = nextIdx;
           setQIdx(nextIdx);
@@ -607,10 +640,8 @@ export default function RealtimeIntakePage() {
         }));
 
         if (name === "flag_off_topic") {
-          const qs = allQuestionsRef.current;
-          const currentIdx = qIdxRef.current;
-          addDebug("out", "response.create", `off-topic redirect → repeat Q${currentIdx + 1} (tool_choice=none)`);
-          sendScriptedResponse(`${OFF_TOPIC_REDIRECT} ${qs[currentIdx]}`);
+          addDebug("out", "response.create", `off-topic redirect → repeat current question (tool_choice=none)`);
+          sendScriptedResponse(`${OFF_TOPIC_REDIRECT} ${currentAskedQuestionRef.current}`);
           return;
         }
 
@@ -618,7 +649,8 @@ export default function RealtimeIntakePage() {
           const currentIdx = qIdxRef.current;
           counterQuestionCountRef.current[currentIdx] = (counterQuestionCountRef.current[currentIdx] || 0) + 1;
           const followUp = String(args?.follow_up_question || "").trim() || CLARIFY_PROMPT;
-          addDebug("out", "response.create", `counter-question ${counterQuestionCountRef.current[currentIdx]}/${MAX_COUNTER_QUESTIONS_PER_ANSWER}: "${followUp.slice(0, 60)}" (tool_choice=none)`);
+          currentAskedQuestionRef.current = followUp;
+          addDebug("out", "response.create", `follow-up ${counterQuestionCountRef.current[currentIdx]}/${SAFETY_MAX_FOLLOWUPS_PER_EPIC}: "${followUp.slice(0, 60)}" (tool_choice=none)`);
           sendScriptedResponse(followUp);
           return;
         }
