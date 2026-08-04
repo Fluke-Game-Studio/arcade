@@ -56,6 +56,7 @@ import type {
     LinkedInOrgStatus,
     DiscordStatusResponse,
     ListStorageFilesResponse,
+    ApiWallet,
     ApiWalletBootstrapResponse,
     ApiWalletResponse,
     ApiWalletSessionResponse,
@@ -1637,6 +1638,18 @@ export class ApiClient {
       );
     }
     return payload as { ok: boolean; items: any[] };
+  }
+
+  async getAdminWallets(): Promise<{ ok: boolean; items: ApiWallet[]; count?: number }> {
+    const r = await fetch(`${API_BASE}/wallet/admin/wallets`, {
+      method: "GET",
+      headers: this.headers(true),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getAdminWallets failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; items: ApiWallet[]; count?: number };
   }
 
   async getAdminWallet(username: string): Promise<ApiWalletResponse> {
