@@ -76,6 +76,8 @@ export type SendApplicantWelcomeEmailBody = {
   extraInfo?: string;
   vars?: Record<string, any>;
   setStatus?: string;
+  createEmployeeUser?: boolean;
+  requireCommitment?: boolean;
 };
 
 export type EmployeeDocEmailType = "EXPERIENCE" | "RECOMMENDATION";

@@ -63,7 +63,6 @@ export default function Store() {
   const [orders, setOrders] = useState<ApiStoreOrder[]>([]);
   const [requests, setRequests] = useState<ApiRequestRecord[]>([]);
   const [wallet, setWallet] = useState<ApiWallet | null>(null);
-  const [walletToken, setWalletToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyItemId, setBusyItemId] = useState("");
   const [error, setError] = useState("");
@@ -72,36 +71,18 @@ export default function Store() {
   const [selectedItem, setSelectedItem] = useState<ApiStoreItem | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
-  async function ensureWalletSession() {
-    if (walletToken) return walletToken;
-    const resp = await api.createWalletSession();
-    const token = String(resp?.token || "").trim();
-    if (!token) throw new Error("Wallet token missing");
-    setWalletToken(token);
-    return token;
-  }
-
-  async function loadWallet(token?: string) {
-    const nextToken = String(token || walletToken || "").trim();
-    if (!nextToken) return;
-    const resp = await api.getWalletMeWithToken(nextToken);
-    setWallet(resp?.wallet || null);
-  }
-
   async function loadData() {
     setLoading(true);
     setError("");
     try {
-      const token = await ensureWalletSession();
-      const [storeItems, myOrders, myRequests] = await Promise.all([
-        api.getStoreItems(),
-        api.getMyStoreOrders(),
+      const [bootstrap, myRequests] = await Promise.all([
+        api.getStoreBootstrap(),
         api.listMyRequests({ limit: 200 }),
       ]);
-      setItems(Array.isArray(storeItems) ? storeItems : []);
-      setOrders(Array.isArray(myOrders) ? myOrders : []);
+      setItems(Array.isArray(bootstrap?.items) ? bootstrap.items : []);
+      setOrders(Array.isArray(bootstrap?.orders) ? bootstrap.orders : []);
+      setWallet(bootstrap?.wallet ? (bootstrap.wallet as ApiWallet) : null);
       setRequests(Array.isArray(myRequests?.requests) ? myRequests.requests : []);
-      await loadWallet(token);
     } catch (e: any) {
       setError(String(e?.message || "Failed to load store"));
     } finally {

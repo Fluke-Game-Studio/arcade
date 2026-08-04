@@ -161,6 +161,8 @@ type ComposerState = {
   welcome_city: string;
   welcome_dateStarted: string; // YYYY-MM-DD
   welcome_subjectOverride: string;
+  welcome_createEmployeeUser: boolean;
+  welcome_requireCommitment: boolean;
 };
 
 function defaultComposer(stage: Stage): ComposerState {
@@ -196,6 +198,8 @@ function defaultComposer(stage: Stage): ComposerState {
     welcome_city: "",
     welcome_dateStarted: "",
     welcome_subjectOverride: "Welcome to Fluke Games!",
+    welcome_createEmployeeUser: true,
+    welcome_requireCommitment: false,
   };
 }
 
@@ -497,6 +501,8 @@ export default function ApplicantComposerModal({
         subjectOverride: c.welcome_subjectOverride || "",
         applicantId: applicantId || undefined,
         extraInfo: note,
+        createEmployeeUser: c.welcome_createEmployeeUser,
+        requireCommitment: c.welcome_createEmployeeUser ? c.welcome_requireCommitment : false,
         vars,
         setStatus: c.setStatus?.trim() ? c.setStatus.trim() : undefined,
       };
@@ -654,6 +660,8 @@ export default function ApplicantComposerModal({
           subjectOverride: composer.welcome_subjectOverride.trim(),
           applicantId,
           extraInfo: note,
+          createEmployeeUser: composer.welcome_createEmployeeUser,
+          requireCommitment: composer.welcome_createEmployeeUser ? composer.welcome_requireCommitment : false,
           vars,
           setStatus: composer.setStatus.trim() ? composer.setStatus.trim() : undefined,
         };
@@ -1141,6 +1149,34 @@ export default function ApplicantComposerModal({
                 />
               </div>
             </div>
+
+            <p style={{ marginTop: 10, marginBottom: 0 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={composer.welcome_createEmployeeUser}
+                  onChange={(e) =>
+                    updateComposer({
+                      welcome_createEmployeeUser: e.target.checked,
+                      welcome_requireCommitment: e.target.checked ? composer.welcome_requireCommitment : false,
+                    })
+                  }
+                />
+                <span>createEmployeeUser</span>
+              </label>
+            </p>
+
+            <p style={{ marginTop: 10 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={composer.welcome_requireCommitment}
+                  disabled={!composer.welcome_createEmployeeUser}
+                  onChange={(e) => updateComposer({ welcome_requireCommitment: e.target.checked })}
+                />
+                <span>requireCommitment</span>
+              </label>
+            </p>
           </>
         )}
 

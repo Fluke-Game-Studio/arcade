@@ -638,7 +638,7 @@ export default function TalkingHeadAI() {
   const headRef = useRef<TalkingHeadInstance | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const serverAudioRef = useRef<HTMLAudioElement | null>(null);
-  const serverVisemeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const serverVisemeTimersRef = useRef<number[]>([]);
   const activeLipProfileRef = useRef<LipProfile>({
     visemeStrengthBase: AVATAR_DEFAULTS.visemeStrengthBase,
     visemeStrengthWave: AVATAR_DEFAULTS.visemeStrengthWave,
@@ -659,7 +659,7 @@ export default function TalkingHeadAI() {
     fallbackBoundaryKickoffMs: AVATAR_DEFAULTS.fallbackBoundaryKickoffMs,
     smoothLerpRate: AVATAR_DEFAULTS.smoothLerpRate,
   });
-  const fallbackVisemeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallbackVisemeTimerRef = useRef<number | null>(null);
   const activeVisemeRef = useRef<string | null>(null);
   const nativeServerVisemeModeRef = useRef(false);
   const browserVoiceNameRef = useRef<string | null>(null);
@@ -876,7 +876,7 @@ export default function TalkingHeadAI() {
   const realtimeAudioCtxRef = useRef<AudioContext | null>(null);
   const realtimeAnalyserRef = useRef<AnalyserNode | null>(null);
   const realtimeMeterFrameRef = useRef<number | null>(null);
-  const realtimeIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimeIdleTimerRef = useRef<number | null>(null);
   const realtimeSpeakingRef = useRef(false);
   const realtimeAssistantTextRef = useRef("");
   const realtimeVisemeQueueRef = useRef<RealtimeVisemeStep[]>([]);
@@ -889,7 +889,7 @@ export default function TalkingHeadAI() {
   const submitAbortRef = useRef<AbortController | null>(null);
   const registeredClientIdRef = useRef<string | null>(null);
   const wsConnectPromiseRef = useRef<Promise<boolean> | null>(null);
-  const speechDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechDoneTimerRef = useRef<number | null>(null);
   const speakSeqRef = useRef(0);
 
   const talkingHeadView = useMemo<"head" | "full">(
@@ -2278,7 +2278,7 @@ export default function TalkingHeadAI() {
 
       speechDoneTimerRef.current = globalThis.setTimeout(() => {
         finish();
-      }, estimateSpeechMs(cleanText, polish));
+      }, estimateSpeechMs(cleanText, polish)) as unknown as number;
 
       revealTextIfNeeded();
       setStatusText("No TTS available | using estimated speaking state");

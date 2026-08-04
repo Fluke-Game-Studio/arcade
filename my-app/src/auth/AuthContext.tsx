@@ -40,6 +40,7 @@ export type SessionUser = {
   password_reset_at?: string;
   employee_picture?: string;
   employee_profilepicture?: string;
+  onboarding_commitment_required?: boolean;
   notification_preferences?: string | {
     email?: Record<string, boolean>;
     in_app?: Record<string, boolean>;
@@ -111,8 +112,8 @@ function buildSessionFromApi(user: any, fallback?: Partial<SessionUser>): Sessio
   const effectiveRole = higherRole(baseRole, readOnlyScope);
 
   return {
-    ...(user || {}),
     ...(fallback || {}),
+    ...(user || {}),
     token: String(user?.token || fallback?.token || ""),
     username: String(user?.username || fallback?.username || ""),
     name: String(user?.name || user?.employee_name || fallback?.name || fallback?.username || ""),

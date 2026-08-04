@@ -216,16 +216,11 @@ function EditableDropdown({
 export default function ProfileDetailsStep({
   api,
   user,
-  onBack,
-  onContinue,
 }: {
   api: any;
   user: any;
-  onBack?: () => void;
-  onContinue: () => void;
 }) {
   const [me, setMe] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string>("");
   const [pulse, setPulse] = useState(false);
   const [editing, setEditing] = useState<Record<string, boolean>>({});
@@ -260,7 +255,6 @@ export default function ProfileDetailsStep({
     let mounted = true;
     (async () => {
       try {
-        setLoading(true);
         const mine = await api.getMe();
         if (!mounted) return;
         setMe(mine);
@@ -285,7 +279,6 @@ export default function ProfileDetailsStep({
         setAddress(safeStr(user?.employee_address));
         syncProfile(user, user);
       } finally {
-        if (mounted) setLoading(false);
       }
     })();
     return () => {
@@ -320,8 +313,6 @@ export default function ProfileDetailsStep({
   );
 
   const missingFields = useMemo(() => requiredFields.filter((item) => !safeStr(item.value)), [requiredFields]);
-  const canContinue = missingFields.length === 0 && !loading;
-
   function setEdit(k: string, next: boolean) {
     setEditing((m) => ({ ...m, [k]: next }));
     if (!next && me) {
@@ -552,52 +543,6 @@ export default function ProfileDetailsStep({
         </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={!onBack}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-            minHeight: 48,
-            borderRadius: 16,
-            border: "1px solid rgba(148,163,184,.22)",
-            background: onBack ? "#fff" : "rgba(148,163,184,.12)",
-            color: onBack ? "#0f172a" : "#94a3b8",
-            padding: "12px 18px",
-            fontWeight: 900,
-            cursor: onBack ? "pointer" : "not-allowed",
-          }}
-        >
-          <i className="material-icons" style={{ fontSize: 18 }}>arrow_back</i>
-          Back
-        </button>
-
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={!canContinue}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-            minHeight: 48,
-            borderRadius: 16,
-            border: "1px solid rgba(37,99,235,.18)",
-            background: canContinue ? "linear-gradient(135deg, #2563eb 0%, #0f766e 100%)" : "rgba(148,163,184,.16)",
-            color: canContinue ? "#fff" : "#94a3b8",
-            padding: "12px 18px",
-            fontWeight: 900,
-            cursor: canContinue ? "pointer" : "not-allowed",
-            boxShadow: canContinue ? "0 16px 34px rgba(37,99,235,.18)" : "none",
-          }}
-        >
-          Continue
-          <i className="material-icons" style={{ fontSize: 18 }}>arrow_forward</i>
-        </button>
-      </div>
     </section>
   );
 }

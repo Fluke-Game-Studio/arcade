@@ -11,6 +11,8 @@ export type ApiWallet = {
   frozen_last_grant_at?: string;
   frozen_last_grant_amount_cents?: number;
   status?: string;
+  wallet_state?: "missing" | "dormant" | "frozen" | "available" | string;
+  record_exists?: boolean;
   version?: number;
   created_at?: string;
   updated_at?: string;
@@ -19,7 +21,14 @@ export type ApiWallet = {
 
 export type ApiWalletResponse = {
   ok: boolean;
+  wallet: ApiWallet | null;
+  found?: boolean;
+};
+
+export type ApiWalletBootstrapResponse = {
+  ok: boolean;
   wallet: ApiWallet;
+  transactions: ApiWalletTransaction[];
 };
 
 export type ApiWalletTransaction = {
@@ -56,6 +65,8 @@ export type ApiWalletCreditBody = {
   reason?: string;
   transaction_id?: string;
   credit_type?: "spendable" | "frozen";
+  activate_wallet?: boolean;
+  activateWallet?: boolean;
 };
 
 export type ApiWalletCreditResponse = {
@@ -65,3 +76,24 @@ export type ApiWalletCreditResponse = {
   credited_fgc?: number;
   reason?: string;
 };
+
+export type ApiWalletActivateBody = {
+  username: string;
+  reason?: string;
+};
+
+export type ApiWalletActivateResponse = {
+  ok: boolean;
+  wallet: ApiWallet;
+  reason?: string;
+};
+
+export type ApiWalletSelfInitiateBody = {
+  amount_cents: number;
+  transaction_id: string;
+  reason?: string;
+  credit_type?: "spendable" | "frozen";
+  meta?: Record<string, any>;
+};
+
+export type ApiWalletSelfInitiateResponse = ApiWalletCreditResponse;

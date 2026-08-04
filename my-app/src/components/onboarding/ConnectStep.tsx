@@ -1,14 +1,12 @@
 import type { ConnectRequirement } from "./types";
 
 type Props = {
-  requirements: ConnectRequirement[];
+  requirements: ConnectRequirement[]; 
   onConnect: (key: ConnectRequirement["key"]) => void;
-  onBack?: () => void;
-  onContinue: () => void;
   canContinue: boolean;
 };
 
-export default function ConnectStep({ requirements, onConnect, onBack, onContinue, canContinue }: Props) {
+export default function ConnectStep({ requirements, onConnect, canContinue }: Props) {
   return (
     <section style={{ display: "grid", gap: 18 }}>
       <div style={{ fontSize: 26, fontWeight: 1000, color: "#0f172a", letterSpacing: "-.02em" }}>
@@ -96,53 +94,6 @@ export default function ConnectStep({ requirements, onConnect, onBack, onContinu
         {canContinue
           ? "LinkedIn, Discord, and Jira are connected. Continue to enter the portal."
           : "Finish LinkedIn, Discord, and Jira to continue."}
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={!onBack}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-            minHeight: 48,
-            borderRadius: 16,
-            border: "1px solid rgba(148,163,184,.22)",
-            background: onBack ? "#fff" : "rgba(148,163,184,.12)",
-            color: onBack ? "#0f172a" : "#94a3b8",
-            padding: "12px 18px",
-            fontWeight: 900,
-            cursor: onBack ? "pointer" : "not-allowed",
-          }}
-        >
-          <i className="material-icons" style={{ fontSize: 18 }}>arrow_back</i>
-          Back
-        </button>
-
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={!canContinue}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-            minHeight: 48,
-            borderRadius: 16,
-            border: "1px solid rgba(37,99,235,.18)",
-            background: canContinue ? "linear-gradient(135deg, #2563eb 0%, #0f766e 100%)" : "rgba(148,163,184,.16)",
-            color: canContinue ? "#fff" : "#94a3b8",
-            padding: "12px 18px",
-            fontWeight: 900,
-            cursor: canContinue ? "pointer" : "not-allowed",
-            boxShadow: canContinue ? "0 16px 34px rgba(37,99,235,.18)" : "none",
-          }}
-        >
-          Continue
-          <i className="material-icons" style={{ fontSize: 18 }}>arrow_forward</i>
-        </button>
       </div>
     </section>
   );

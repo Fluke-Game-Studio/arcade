@@ -104,6 +104,22 @@ export default function NotificationsCenter() {
     }
   }
 
+  async function markOneRead(item: ApiNotificationItem) {
+    if (!safeStr(item.notificationId) || item.read) return;
+    try {
+      await api.markNotificationsRead({ notificationId: safeStr(item.notificationId) });
+      setItems((prev) =>
+        prev.map((row) =>
+          safeStr(row.notificationId) === safeStr(item.notificationId)
+            ? { ...row, read: true }
+            : row
+        )
+      );
+    } catch (e: any) {
+      M?.toast?.({ html: e?.message || "Failed to mark notification read", classes: "red" });
+    }
+  }
+
   return (
     <main className="container" style={{ paddingTop: 22, maxWidth: 1120 }}>
       <section
@@ -125,11 +141,11 @@ export default function NotificationsCenter() {
             </p>
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button type="button" style={actionButtonStyle} onClick={() => void load()}>
+            <button type="button" style={actionButtonStyle} onClick={() => void load()} title="Refresh notifications" aria-label="Refresh notifications">
               <i className="material-icons" style={{ fontSize: 18 }}>refresh</i>
               Refresh
             </button>
-            <button type="button" style={actionButtonStyle} onClick={() => void markAllRead()}>
+            <button type="button" style={actionButtonStyle} onClick={() => void markAllRead()} title="Mark all notifications as read" aria-label="Mark all notifications as read">
               <i className="material-icons" style={{ fontSize: 18 }}>done_all</i>
               Mark all read
             </button>
@@ -181,10 +197,17 @@ export default function NotificationsCenter() {
             const chips = notificationChips(item);
             const comment = safeStr(meta.comment);
             return (
-              <button
+              <div
                 key={safeStr(item.notificationId)}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => void openItem(item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    void openItem(item);
+                  }
+                }}
                 style={{
                   width: "100%",
                   textAlign: "left",
@@ -268,8 +291,9 @@ export default function NotificationsCenter() {
                     {comment}
                   </div>
                 ) : null}
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <span
+                    title="Open notification"
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
@@ -279,11 +303,28 @@ export default function NotificationsCenter() {
                       fontWeight: 900,
                     }}
                   >
-                    Open
-                    <i className="material-icons" style={{ fontSize: 16 }}>arrow_forward</i>
+                    <i className="material-icons" style={{ fontSize: 16 }}>touch_app</i>
+                    Tap to open
                   </span>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    {!item.read ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void markOneRead(item);
+                        }}
+                        title="Mark this notification as read"
+                        aria-label="Mark this notification as read"
+                        style={actionButtonStyle}
+                      >
+                        <i className="material-icons" style={{ fontSize: 18 }}>done</i>
+                        Mark read
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-              </button>
+              </div>
             );
           })}
 
