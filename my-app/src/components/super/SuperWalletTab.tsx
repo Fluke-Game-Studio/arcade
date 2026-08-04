@@ -39,8 +39,8 @@ export default function SuperWalletTab() {
   const [saving, setSaving] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [activatingWallet, setActivatingWallet] = useState(false);
-  const [walletLoading, setWalletLoading] = useState(false);
-  const [wallet, setWallet] = useState<ApiWallet | null>(null);
+  const [walletsLoading, setWalletsLoading] = useState(false);
+  const [wallets, setWallets] = useState<ApiWallet[]>([]);
 
   async function loadUsers() {
     setLoadingUsers(true);
@@ -57,10 +57,52 @@ export default function SuperWalletTab() {
     }
   }
 
+  async function loadWallets() {
+    setWalletsLoading(true);
+    try {
+      const resp = await api.getAdminWallets();
+      setWallets(Array.isArray(resp?.items) ? resp.items : []);
+    } catch (err: any) {
+      M?.toast?.({ html: err?.message || "Failed to load wallets", classes: "red" });
+    } finally {
+      setWalletsLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadUsers();
+    void loadWallets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const walletByUsername = useMemo(() => {
+    const map = new Map<string, ApiWallet>();
+    for (const w of wallets) {
+      const key = safeStr(w.wallet_id).toLowerCase();
+      if (key) map.set(key, w);
+    }
+    return map;
+  }, [wallets]);
+
+  const orphanedWallets = useMemo(() => {
+    const knownUsernames = new Set(users.map((u) => safeStr(u.username).toLowerCase()).filter(Boolean));
+    return wallets.filter((w) => {
+      const key = safeStr(w.wallet_id).toLowerCase();
+      return key && !knownUsernames.has(key);
+    });
+  }, [wallets, users]);
+
+  function upsertWallet(next: ApiWallet | null | undefined) {
+    if (!next || !safeStr(next.wallet_id)) return;
+    setWallets((prev) => {
+      const key = safeStr(next.wallet_id).toLowerCase();
+      const idx = prev.findIndex((w) => safeStr(w.wallet_id).toLowerCase() === key);
+      if (idx === -1) return [...prev, next];
+      const copy = [...prev];
+      copy[idx] = next;
+      return copy;
+    });
+  }
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -77,92 +119,12 @@ export default function SuperWalletTab() {
     () => users.find((u) => safeStr(u.username) === selectedUsername) || null,
     [users, selectedUsername]
   );
+  const wallet = useMemo(
+    () => walletByUsername.get(selectedUsername.toLowerCase()) || null,
+    [walletByUsername, selectedUsername]
+  );
   const walletStateMeta = useMemo(() => getWalletStateMeta(wallet), [wallet]);
   const canActivateWallet = walletStateMeta.state === "missing" || walletStateMeta.state === "dormant";
-
-  function normalizeWalletResponse(resp: any): ApiWallet | null {
-    const candidates = [
-      resp?.wallet,
-      resp?.item,
-      resp?.record,
-      resp?.data?.wallet,
-      resp?.data?.item,
-      resp?.data?.record,
-      resp?.data,
-      resp,
-    ];
-
-    for (const candidate of candidates) {
-      if (!candidate || typeof candidate !== "object") continue;
-      if (
-        "wallet_id" in candidate ||
-        "balance_cents" in candidate ||
-        "frozen_balance_cents" in candidate ||
-        "status" in candidate ||
-        "wallet_state" in candidate
-      ) {
-        return candidate as ApiWallet;
-      }
-    }
-    return null;
-  }
-
-  async function loadSelectedWallet(user: ApiUser | null) {
-    const candidates = Array.from(
-      new Set(
-        [
-          safeStr(user?.username),
-          safeStr(user?.employee_email),
-          safeStr(user?.email),
-          safeStr((user as any)?.employeeEmail),
-          safeStr((user as any)?.employee_name),
-          safeStr((user as any)?.employeeName),
-          safeStr((user as any)?.employee_id),
-          safeStr((user as any)?.employeeId),
-          safeStr((user as any)?.wallet_id),
-          safeStr((user as any)?.walletId),
-          safeStr((user as any)?.userId),
-        ].filter(Boolean)
-      )
-    );
-
-    if (!candidates.length) {
-      setWallet(null);
-      return;
-    }
-
-    setWalletLoading(true);
-    try {
-      for (const candidate of candidates) {
-        try {
-          const resp = await api.getAdminWallet(candidate);
-          const resolvedWallet = normalizeWalletResponse(resp);
-          if (resolvedWallet) {
-            setWallet(resolvedWallet);
-            return;
-          }
-        } catch (err) {
-          if (candidate !== candidates[candidates.length - 1]) continue;
-          throw err;
-        }
-      }
-      setWallet(null);
-    } catch (err: any) {
-      setWallet(null);
-      M?.toast?.({ html: err?.message || "Failed to load wallet", classes: "red" });
-    } finally {
-      setWalletLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!selectedUsername) {
-      setWallet(null);
-      return;
-    }
-    void loadSelectedWallet(selectedUser);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUsername, selectedUser]);
 
   async function handleCredit(e: FormEvent, direction: 1 | -1 = 1) {
     e.preventDefault();
@@ -188,7 +150,7 @@ export default function SuperWalletTab() {
         transaction_id: transactionId,
         credit_type: creditType,
       });
-      setWallet(normalizeWalletResponse(resp));
+      upsertWallet(resp?.wallet || null);
       M?.toast?.({
         html:
           direction < 0
@@ -198,7 +160,6 @@ export default function SuperWalletTab() {
       });
       setAmountFgc("");
       setReason("");
-      void loadSelectedWallet(selectedUser);
     } catch (err: any) {
       M?.toast?.({ html: err?.message || "Failed to update wallet", classes: "red" });
     } finally {
@@ -223,12 +184,11 @@ export default function SuperWalletTab() {
         username,
         reason: safeStr(reason) || "Manual wallet activation",
       });
-      setWallet(normalizeWalletResponse(resp));
+      upsertWallet(resp?.wallet || null);
       M?.toast?.({
         html: `Activated wallet for ${username}`,
         classes: "green",
       });
-      void loadSelectedWallet(selectedUser);
     } catch (err: any) {
       M?.toast?.({ html: err?.message || "Failed to activate wallet", classes: "red" });
     } finally {
@@ -275,8 +235,16 @@ export default function SuperWalletTab() {
               Grant Fluke Game Credits to any employee from the super console.
             </div>
           </div>
-          <button type="button" className="btn-flat" onClick={() => void loadUsers()} disabled={loadingUsers}>
-            {loadingUsers ? "Loading..." : "Refresh employees"}
+          <button
+            type="button"
+            className="btn-flat"
+            onClick={() => {
+              void loadUsers();
+              void loadWallets();
+            }}
+            disabled={loadingUsers || walletsLoading}
+          >
+            {loadingUsers || walletsLoading ? "Loading..." : "Refresh"}
           </button>
         </div>
 
@@ -291,6 +259,9 @@ export default function SuperWalletTab() {
               {filteredUsers.map((u) => {
                 const username = safeStr(u.username);
                 const active = selectedUsername === username;
+                const rowWallet = walletByUsername.get(username.toLowerCase()) || null;
+                const rowMeta = getWalletStateMeta(rowWallet);
+                const rowTotalCents = safeNum(rowWallet?.balance_cents) + safeNum(rowWallet?.frozen_balance_cents);
                 return (
                   <button
                     key={username}
@@ -305,8 +276,28 @@ export default function SuperWalletTab() {
                       cursor: "pointer",
                     }}
                   >
-                    <div style={{ fontWeight: 900, color: "#0f172a" }}>{safeStr(u.employee_name || u.name || username)}</div>
-                    <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{username}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                      <div>
+                        <div style={{ fontWeight: 900, color: "#0f172a" }}>{safeStr(u.employee_name || u.name || username)}</div>
+                        <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{username}</div>
+                      </div>
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "3px 8px",
+                          fontSize: 10,
+                          fontWeight: 900,
+                          background: rowWallet ? rowMeta.bg : "rgba(148,163,184,.14)",
+                          color: rowWallet ? rowMeta.color : "#94a3b8",
+                          border: `1px solid ${rowWallet ? rowMeta.border : "rgba(148,163,184,.24)"}`,
+                          textTransform: "uppercase",
+                          letterSpacing: ".04em",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {rowWallet ? `${rowMeta.label} · ${(rowTotalCents / 100).toFixed(2)} FGC` : "No wallet"}
+                      </span>
+                    </div>
                   </button>
                 );
               })}
@@ -441,7 +432,7 @@ export default function SuperWalletTab() {
               </form>
 
               <div style={{ marginTop: 16 }}>
-                {walletLoading ? (
+                {walletsLoading ? (
                   <div style={{ border: "1px solid #dbeafe", background: "#f8fbff", borderRadius: 16, padding: 14, color: "#64748b", fontWeight: 800 }}>
                     Loading wallet...
                   </div>
@@ -572,6 +563,52 @@ export default function SuperWalletTab() {
             </div>
           </div>
         </div>
+
+        {orphanedWallets.length ? (
+          <div
+            style={{
+              marginTop: 16,
+              border: "1px solid rgba(220,38,38,.25)",
+              background: "rgba(220,38,38,.05)",
+              borderRadius: 18,
+              padding: 14,
+            }}
+          >
+            <div style={{ fontWeight: 900, color: "#991b1b" }}>
+              {orphanedWallets.length} wallet{orphanedWallets.length === 1 ? "" : "s"} not linked to a known employee
+            </div>
+            <div style={{ color: "#7f1d1d", fontSize: 12.5, marginTop: 2 }}>
+              These wallet IDs don't match any current employee username. They likely belong to a renamed or
+              deleted account — the balance is still real, it just can't be found by searching the current
+              employee list.
+            </div>
+            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+              {orphanedWallets.map((w) => {
+                const totalCents = safeNum(w.balance_cents) + safeNum(w.frozen_balance_cents);
+                return (
+                  <div
+                    key={safeStr(w.wallet_id)}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      background: "#fff",
+                      border: "1px solid #fecaca",
+                      borderRadius: 12,
+                      padding: "8px 12px",
+                    }}
+                  >
+                    <span style={{ fontWeight: 800, color: "#0f172a" }}>{safeStr(w.wallet_id)}</span>
+                    <span style={{ color: "#64748b", fontSize: 12.5 }}>
+                      {safeStr(w.status || w.wallet_state)} · {(totalCents / 100).toFixed(2)} FGC
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
