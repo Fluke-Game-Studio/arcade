@@ -1,5 +1,46 @@
-export const API_BASE =
-  "https://xtipeal88c.execute-api.us-east-1.amazonaws.com";
+export const PROD_API_BASE = "https://xtipeal88c.execute-api.us-east-1.amazonaws.com";
+const API_MODE_STORAGE_KEY = "arcade_api_mode";
+
+function isLocalhost(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  );
+}
+
+export function resolveDefaultApiBase(): string {
+  return (
+    (import.meta.env.VITE_API_BASE as string | undefined)?.trim() ||
+    (isLocalhost() ? "/api" : PROD_API_BASE)
+  );
+}
+
+export function resolveApiBase(): string {
+  const fallback = resolveDefaultApiBase();
+  if (!isLocalhost()) return fallback;
+
+  try {
+    const mode = window.localStorage.getItem(API_MODE_STORAGE_KEY);
+    if (mode === "production") return PROD_API_BASE;
+    if (mode === "local") return fallback;
+  } catch {}
+
+  return fallback;
+}
+
+export let API_BASE = resolveApiBase();
+
+export function setApiBase(nextBase: string) {
+  const trimmed = String(nextBase || "").trim();
+  API_BASE = trimmed || resolveApiBase();
+
+  if (isLocalhost()) {
+    try {
+      const mode = API_BASE === PROD_API_BASE ? "production" : "local";
+      window.localStorage.setItem(API_MODE_STORAGE_KEY, mode);
+    } catch {}
+  }
+}
 
 // Resolves the sibling public website's base URL from arcade's own current origin, so
 // cross-app links (e.g. the intake "Try" button) always land on the matching environment

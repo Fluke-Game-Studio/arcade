@@ -127,6 +127,10 @@ type StoredIntakeContext = {
   intakeLinkMode?: "public" | "arcade";
   transcriptEmailEnabled?: boolean;
   transcriptEmailTo?: string;
+  preSessionEnabled?: boolean;
+  preSessionNote?: string;
+  postSessionQAEnabled?: boolean;
+  commitmentModalEnabled?: boolean;
 };
 
 const DEFAULT_SESSION_PROMPT = `You are a structured AI interviewer for Fluke Games. You have ONE job: conduct this interview by asking the listed questions in order.
@@ -212,6 +216,10 @@ function migrateIntakeContext(raw: any): StoredIntakeContext {
     intakeLinkMode: raw?.intakeLinkMode === "public" ? "public" : "arcade",
     transcriptEmailEnabled: Boolean(raw?.transcriptEmailEnabled),
     transcriptEmailTo: safeStr(raw?.transcriptEmailTo),
+    preSessionEnabled: Boolean(raw?.preSessionEnabled),
+    preSessionNote: safeStr(raw?.preSessionNote),
+    postSessionQAEnabled: Boolean(raw?.postSessionQAEnabled),
+    commitmentModalEnabled: Boolean(raw?.commitmentModalEnabled),
   };
 }
 
@@ -2675,6 +2683,61 @@ function parseMcpInput(text: string) {
                 )}
                 <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
                   When enabled, a plain-text transcript is emailed to the address above after every submission or skip.
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(intakeForm.preSessionEnabled)}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, preSessionEnabled: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
+                  />
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>Pre-session overview</span>
+                </label>
+                {Boolean(intakeForm.preSessionEnabled) && (
+                  <textarea
+                    className="mgr-input"
+                    rows={2}
+                    value={intakeForm.preSessionNote || ""}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, preSessionNote: e.target.value }))}
+                    placeholder='Leave blank to auto-generate from the question count and label, e.g. "This will be a short interview with 4 questions about Level Designer, and should take about 8 minutes."'
+                    style={{ marginTop: 10 }}
+                  />
+                )}
+                <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
+                  Gives the candidate a quick, natural preview of what's ahead before Q1 — no separate turn, folded into the greeting.
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(intakeForm.postSessionQAEnabled)}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, postSessionQAEnabled: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
+                  />
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>Post-session open Q&amp;A</span>
+                </label>
+                <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
+                  After the last fixed question, asks once if the candidate has questions for us. A short "no" ends the interview immediately — no clarify loop. If they do ask something, it's answered grounded in the "snapshot:public" doc from the Super AI Console (never internal content), capped at {5} rounds. Remove any manually-added "Do you have any questions for me?" item from your question list above if you enable this — otherwise it'll be asked twice.
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(intakeForm.commitmentModalEnabled)}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, commitmentModalEnabled: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
+                  />
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>Commitment model preview (public intake only)</span>
+                </label>
+                <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
+                  Right after the greeting, shows a read-only walkthrough modal of the commitment/vesting model (no payment step — that only happens post-hire, during onboarding). The AI narrates each step aloud in sync with the modal, then asks if the candidate has questions — answerable aloud or via a typed chat in the modal, both grounded in the same fixed program info. Only wired into the public candidate page (website), not the internal arcade practice-interview flow.
                 </div>
               </div>
 
