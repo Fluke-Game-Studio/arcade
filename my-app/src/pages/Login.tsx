@@ -347,7 +347,13 @@ export default function Login() {
       setApiBase(useProductionApi ? PROD_API_BASE : resolveDefaultApiBase());
       const ok = await login(username, password);
       if (!ok) {
-        setErrMsg("Invalid username or password.");
+        const typedUsername = String(username || "").trim().toLowerCase();
+        const isLocalDemoUser = localDemoAccounts.some((account) => account.username === typedUsername);
+        if (isLocalHost && useProductionApi && isLocalDemoUser) {
+          setErrMsg("These demo accounts only work on local API. Turn off 'Switch to production API'.");
+        } else {
+          setErrMsg("Invalid username or password.");
+        }
         M.toast({ html: "Invalid credentials", classes: "red darken-2" });
         setLoading(false);
         return;
@@ -874,7 +880,9 @@ export default function Login() {
                           <span>Switch to production API</span>
                         </label>
                         <div className="cpToggleHint">
-                          {useProductionApi ? "Using the current AWS backend" : "Using local API"}
+                          {useProductionApi
+                            ? "Using the current AWS backend. Demo accounts will not work here."
+                            : "Using local API. Demo accounts are available."}
                         </div>
                       </div>
                     ) : null}

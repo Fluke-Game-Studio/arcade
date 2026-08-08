@@ -175,7 +175,10 @@ export default function OnboardingJourney() {
   const profileDone = progress.profileReleaseVersion === releaseVersion || isProfileComplete(user);
   const commitmentDone = progress.commitmentReleaseVersion === releaseVersion;
   const agreementDone = progress.agreementReleaseVersion === releaseVersion;
-  const connectedReady = localDevBypassComplete || Boolean(integrations.status.linkedin && integrations.status.discord && integrations.status.jira);
+  // Jira is temporarily optional — the Atlassian OAuth app is still in "Development"
+  // distribution status, so only its owner account can authorize it right now. Not gating
+  // onboarding on it until that's fixed on Atlassian's side (unrelated to this app's code).
+  const connectedReady = localDevBypassComplete || Boolean(integrations.status.linkedin && integrations.status.discord);
 
   const nextStep: OnboardingStepId | null = useMemo(
     () =>
@@ -234,11 +237,11 @@ export default function OnboardingJourney() {
         key: "jira",
         label: "Jira",
         subtitle: integrations.status.jiraCloudName
-          ? `Required. Connected site: ${integrations.status.jiraCloudName}`
-          : "Required. Connect Jira now so project workflow hooks are ready from day one.",
+          ? `Connected site: ${integrations.status.jiraCloudName}`
+          : "Optional for now. Connect Jira later once it's available for project workflow hooks.",
         connected: integrations.status.jira,
         icon: "schema",
-        optional: false,
+        optional: true,
       },
     ],
     [integrations.status.discord, integrations.status.jira, integrations.status.jiraCloudName, integrations.status.linkedin, user]
