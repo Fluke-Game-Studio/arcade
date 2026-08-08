@@ -13,6 +13,10 @@ export type StoredIntakeContext = {
   intakeLinkMode?: "public" | "arcade";
   transcriptEmailEnabled?: boolean;
   transcriptEmailTo?: string;
+  preSessionEnabled?: boolean;
+  preSessionNote?: string;
+  postSessionQAEnabled?: boolean;
+  commitmentModalEnabled?: boolean;
 };
 
 export type FeedbackState = {
