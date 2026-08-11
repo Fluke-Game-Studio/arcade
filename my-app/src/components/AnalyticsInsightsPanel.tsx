@@ -4,7 +4,6 @@ import type {
   AnalyticsContributorBreakdownItem,
   AnalyticsDashboardResponse,
   AnalyticsEmployeeLite,
-  AnalyticsProjectBreakdownItem,
   AnalyticsUnderReportedItem,
 } from "../api/types/analytics";
 
@@ -527,6 +526,8 @@ function DetailsModal({
   );
 }
 
+const ALL_ASSIGNED_PROJECTS = "__all_assigned__";
+
 export default function AnalyticsInsightsPanel() {
   const { api } = useAuth() as any;
   const [data, setData] = useState<AnalyticsDashboardResponse | null>(null);
@@ -535,12 +536,39 @@ export default function AnalyticsInsightsPanel() {
   const [modalKey, setModalKey] = useState<
     null | "missingUpdates" | "missingTimesheets" | "underReportedHours" | "noActivity"
   >(null);
+  const [projectNameMap, setProjectNameMap] = useState<Record<string, string>>({});
 
   const apiRef = useRef<any>(api);
 
   useEffect(() => {
     apiRef.current = api;
   }, [api]);
+
+  // Same project list the rest of the app uses (e.g. the weekly update project
+  // picker), so breakdown charts can show names instead of raw project IDs.
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const projects = await apiRef.current?.getProjects?.();
+        if (!mounted || !Array.isArray(projects)) return;
+        const map: Record<string, string> = {};
+        for (const p of projects) {
+          const id = safeStr((p as any)?.projectId);
+          const name = safeStr((p as any)?.name);
+          if (id && name) map[id] = name;
+        }
+        setProjectNameMap(map);
+      } catch {
+        // Non-fatal — charts fall back to raw project IDs.
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -621,10 +649,17 @@ export default function AnalyticsInsightsPanel() {
     };
   }, [data]);
 
-  const projectItems = useMemo<AnalyticsProjectBreakdownItem[]>(
-    () => (Array.isArray(data?.projectBreakdown) ? data.projectBreakdown : []),
-    [data]
-  );
+  const projectItems = useMemo(() => {
+    const rows = Array.isArray(data?.projectBreakdown) ? data.projectBreakdown : [];
+    return rows.map((row) => {
+      const id = safeStr(row.projectId);
+      const projectLabel =
+        id === ALL_ASSIGNED_PROJECTS
+          ? "All Assigned Projects"
+          : projectNameMap[id] || id || "Unassigned";
+      return { ...row, projectLabel };
+    });
+  }, [data, projectNameMap]);
 
   const contributorItems = useMemo<AnalyticsContributorBreakdownItem[]>(
     () =>
@@ -890,7 +925,7 @@ export default function AnalyticsInsightsPanel() {
                     title="Project Breakdown"
                     items={projectItems}
                     valueKey="totalHours"
-                    labelKey="projectId"
+                    labelKey="projectLabel"
                     color="linear-gradient(90deg,#34d399,#10b981)"
                     suffix="h"
                   />
@@ -920,7 +955,7 @@ export default function AnalyticsInsightsPanel() {
                     title="Contributors per Project"
                     items={projectItems}
                     valueKey="contributors"
-                    labelKey="projectId"
+                    labelKey="projectLabel"
                     color="linear-gradient(90deg,#fbbf24,#f59e0b)"
                   />
 
@@ -928,7 +963,7 @@ export default function AnalyticsInsightsPanel() {
                     title="Project Updates"
                     items={projectItems}
                     valueKey="updates"
-                    labelKey="projectId"
+                    labelKey="projectLabel"
                     color="linear-gradient(90deg,#22c55e,#16a34a)"
                   />
                 </div>

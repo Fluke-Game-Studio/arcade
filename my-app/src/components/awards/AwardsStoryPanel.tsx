@@ -185,18 +185,6 @@ function fmtShortDate(v?: string) {
   });
 }
 
-function fmtWeekLabel(iso?: string) {
-  const s = safeStr(iso);
-  if (!s) return "All Time";
-  const d = new Date(`${s}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return s;
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  });
-}
-
 function getRecipientName(item: StudioRecentItem) {
   const personName = safeStr((item as any)?.person?.name);
   if (personName) return personName;
@@ -362,23 +350,6 @@ function getRequirementText(item: StudioRecentItem) {
     return `${safeStr(item.tier)} requirement details are not wired from backend yet.`;
   }
   return "No requirement details available for this award yet.";
-}
-
-function Pill({
-  icon,
-  text,
-  tone = "blue",
-}: {
-  icon: string;
-  text: string;
-  tone?: "blue" | "green" | "amber" | "purple" | "grey";
-}) {
-  return (
-    <span className={`arsPill ${tone}`}>
-      <i className="material-icons">{icon}</i>
-      <span>{text}</span>
-    </span>
-  );
 }
 
 function StatCard({
@@ -752,7 +723,6 @@ export default function AwardsSummaryPanel() {
 
         .arsHeroInner{
           position:relative;
-          z-index:1;
           padding:24px 24px 0 24px;
           display:grid;
           grid-template-columns:minmax(0,1fr) auto;
@@ -790,51 +760,12 @@ export default function AwardsSummaryPanel() {
           max-width:560px;
         }
 
-        .arsTopMeta{
-          display:flex;
-          flex-wrap:wrap;
-          gap:10px;
-          align-items:center;
-        }
-
-        .arsPill{
-          display:inline-flex;
-          align-items:center;
-          gap:7px;
-          max-width:100%;
-          padding:8px 12px;
-          border-radius:999px;
-          font-size:11px;
-          font-weight:900;
-          white-space:normal;
-          backdrop-filter:blur(12px);
-          -webkit-backdrop-filter:blur(12px);
-          box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
-        }
-
-        .arsPill span{
-          white-space:normal;
-          display:-webkit-box;
-          -webkit-line-clamp:2;
-          -webkit-box-orient:vertical;
-          overflow:hidden;
-        }
-
-        .arsPill i{ font-size:15px; flex:0 0 auto; }
-        .arsPill.blue{ background:rgba(59,130,246,.16); color:#dbeafe; border:1px solid rgba(59,130,246,.18); }
-        .arsPill.green{ background:rgba(34,197,94,.16); color:#dcfce7; border:1px solid rgba(34,197,94,.18); }
-        .arsPill.amber{ background:rgba(245,158,11,.18); color:#fef3c7; border:1px solid rgba(245,158,11,.18); }
-        .arsPill.purple{ background:rgba(168,85,247,.18); color:#f3e8ff; border:1px solid rgba(168,85,247,.18); }
-        .arsPill.grey{ background:rgba(255,255,255,.10); color:#e2e8f0; border:1px solid rgba(255,255,255,.14); }
-
         .arsHeroLegendWrap{
           display:flex;
           justify-content:flex-end;
         }
 
         .arsHeroStats{
-          position:relative;
-          z-index:5;
           padding:20px 24px 24px 24px;
           display:grid;
           grid-template-columns:repeat(4,minmax(0,1fr));
@@ -898,13 +829,6 @@ export default function AwardsSummaryPanel() {
           letter-spacing:-.03em;
           flex:0 0 auto;
           text-align:right;
-        }
-
-        @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-          .arsPill{
-            background:rgba(15,23,42,.55) !important;
-            border:1px solid rgba(255,255,255,.18) !important;
-          }
         }
 
         .arsBody{
@@ -1414,24 +1338,6 @@ export default function AwardsSummaryPanel() {
               <div className="arsTitle">Recognition Summary</div>
               <div className="arsSub">
                 A compact view of awards, trophies, contributor recognition, and the most recent highlights.
-              </div>
-
-              <div className="arsTopMeta">
-                <Pill
-                  icon="calendar_month"
-                  text={weekStart ? `Week of ${fmtWeekLabel(weekStart)}` : "All available data"}
-                  tone="grey"
-                />
-                <Pill
-                  icon="military_tech"
-                  text={`${safeNum(totals.achievements)} achievements`}
-                  tone="green"
-                />
-                <Pill
-                  icon="emoji_events"
-                  text={`${safeNum(totals.trophies)} trophies`}
-                  tone="amber"
-                />
               </div>
             </div>
 
