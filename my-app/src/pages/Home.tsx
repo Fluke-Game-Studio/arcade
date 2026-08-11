@@ -4,6 +4,10 @@ import ProfileCard from "../components/ProfileCard";
 import RightRail from "../components/RightRail";
 import EventHero from "../components/EventHero";
 import EmployeeActions from "../components/EmployeeActions";
+import ReleaseHighlightsPanel, {
+  DEFAULT_RELEASE_NOTES,
+  DEFAULT_RELEASE_VERSION,
+} from "../components/ReleaseHighlightsPanel";
 import { useAuth } from "../auth/AuthContext";
 
 declare const M: any;
@@ -24,13 +28,6 @@ type DocCategory = {
   items: DocLink[];
 };
 
-type UpdateItem = {
-  title: string;
-  detail: string;
-  when: string;
-  icon: string;
-};
-
 function parseYmdParts(raw: any): { y: number; m: number; d: number } | null {
   const s = String(raw || "").trim();
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -44,7 +41,7 @@ function parseYmdParts(raw: any): { y: number; m: number; d: number } | null {
 }
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, api } = useAuth();
   const [docQuery, setDocQuery] = useState("");
   const [activeDocCategory, setActiveDocCategory] = useState<string | null>(null);
   const role = String(user?.role || "").toUpperCase();
@@ -182,14 +179,33 @@ export default function Home() {
     );
   }, [activeCategory, docQuery]);
 
-  const updates: UpdateItem[] = [
-    { icon: "group_add", title: "Applicants pipeline upgraded", detail: "Stage-based flow (Intro â†’ Tech â†’ NDA â†’ Offer â†’ Welcome) with email history + previews.", when: "Feb 2026" },
-    { icon: "mail", title: "Doc emails now include PDFs", detail: "NDA / Offer / Experience / Welcome emails support PDF attachments with shared vars + optional CC.", when: "Feb 2026" },
-    { icon: "verified_user", title: "Auth & roles hardened", detail: "JWT login, role checks, safe self-updates, and admin create/update/revoke.", when: "Feb 2026" },
-    { icon: "dns", title: "API modules cleaned up", detail: "Projects, updates, retro, timesheet, applicants are routed via a stable Lambda entrypoint.", when: "Feb 2026" },
-    { icon: "notifications_active", title: "Email templates standardized", detail: "Consistent INTRO/TECH/REJECT HTML + admin notifications and applicant thank-you emails.", when: "Feb 2026" },
-    { icon: "admin_panel_settings", title: "Admin panel improved", detail: "Employee management (CRUD) + project/manager assignment + certificate composer consolidated.", when: "Feb 2026" },
-  ];
+  // Same source the onboarding Welcome step reads (getArcadeReleaseConfig) so the
+  // homepage "New Updates" card always matches the current release version instead
+  // of drifting out of sync with a separate hardcoded list.
+  const [releaseConfig, setReleaseConfig] = useState({
+    releaseVersion: DEFAULT_RELEASE_VERSION,
+    releaseNotes: DEFAULT_RELEASE_NOTES,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await (api as any)?.getArcadeReleaseConfig?.();
+        if (cancelled || !resp) return;
+        setReleaseConfig({
+          releaseVersion: String(resp.releaseVersion || "").trim() || DEFAULT_RELEASE_VERSION,
+          releaseNotes: String(resp.releaseNotes ?? "").trim() || DEFAULT_RELEASE_NOTES,
+        });
+      } catch {
+        if (cancelled) return;
+        setReleaseConfig({ releaseVersion: DEFAULT_RELEASE_VERSION, releaseNotes: DEFAULT_RELEASE_NOTES });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   const quarterEvents = useMemo(
     () => [
@@ -599,30 +615,6 @@ export default function Home() {
           box-shadow: 0 1px 0 0 rgba(37,99,235,0.80) !important;
         }
 
-        .updatesBox {
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          overflow:hidden;
-          background: var(--card);
-          backdrop-filter: blur(14px);
-        }
-        .uRow { padding: 14px 14px; border-bottom: 1px solid var(--border); display:flex; gap: 12px; align-items:flex-start; }
-        .uRow:last-child { border-bottom: 0; }
-        .uIco {
-          width: 36px; height: 36px;
-          border-radius: 14px;
-          border: 1px solid var(--border);
-          background: rgba(37,99,235,0.08);
-          display:flex; align-items:center; justify-content:center;
-          flex: 0 0 auto;
-        }
-        .uIco i { font-size: 18px; opacity: 0.88; color: var(--blue); }
-        [data-theme="dark"] .uIco i { color: rgba(255,255,255,0.92); opacity: 0.92; }
-
-        .uTitle { font-weight: 950; color: var(--text); }
-        .uDetail { margin-top: 4px; font-size: 13px; color: var(--muted); line-height: 1.5; }
-        .uWhen { margin-top: 8px; display:flex; align-items:center; gap:6px; font-size: 12px; color: var(--muted); font-weight: 950; text-transform: uppercase; letter-spacing: 1px; }
-
         .scrollBox {
           max-height: 260px;
           overflow:auto;
@@ -824,35 +816,16 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Updates */}
+              {/* Updates — mirrors the onboarding Welcome step's release info */}
               <div className="card pCard">
-                <div className="pHeader">
-                  <div className="pTitleRow">
-                    <div>
-                      <div className="pTitle">New Updates</div>
-                      <div className="pSub">What changed recently</div>
-                    </div>
-                    <span className="pTiny">Changelog</span>
-                  </div>
-                </div>
                 <div className="card-content">
-                  <div className="updatesBox">
-                    {updates.map((u, idx) => (
-                      <div key={idx} className="uRow">
-                        <div className="uIco">
-                          <i className="material-icons">{u.icon}</i>
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="uTitle">{u.title}</div>
-                          <div className="uDetail">{u.detail}</div>
-                          <div className="uWhen">
-                            <i className="material-icons" style={{ fontSize: 16, opacity: 0.75 }}>schedule</i>
-                            {u.when}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <ReleaseHighlightsPanel
+                    title="New Updates"
+                    subtitle="What changed recently, straight from the current release."
+                    releaseVersion={releaseConfig.releaseVersion}
+                    releaseNotes={releaseConfig.releaseNotes}
+                    compact
+                  />
 
                   <div style={{ marginTop: 12 }}>
                     <div className="pTiny" style={{ marginBottom: 8 }}>Quick notes</div>

@@ -13,7 +13,7 @@ export default function ConnectStep({ requirements, onConnect, canContinue }: Pr
         Connect your workflow accounts
       </div>
       <div style={{ marginTop: -6, color: "#475569", lineHeight: 1.7 }}>
-        LinkedIn, Discord, and Jira are required before we unlock the portal.
+        LinkedIn and Discord are required before we unlock the portal. Jira is optional for now.
       </div>
 
       <div style={{ display: "grid", gap: 16 }}>
@@ -92,8 +92,8 @@ export default function ConnectStep({ requirements, onConnect, canContinue }: Pr
 
       <div style={{ borderRadius: 18, border: canContinue ? "1px solid rgba(34,197,94,.22)" : "1px solid rgba(245,158,11,.22)", background: canContinue ? "rgba(34,197,94,.08)" : "rgba(245,158,11,.10)", padding: 16, color: canContinue ? "#166534" : "#92400e", fontWeight: 900 }}>
         {canContinue
-          ? "LinkedIn, Discord, and Jira are connected. Continue to enter the portal."
-          : "Finish LinkedIn, Discord, and Jira to continue."}
+          ? "LinkedIn and Discord are connected. Continue to enter the portal."
+          : "Finish LinkedIn and Discord to continue. Jira is optional for now."}
       </div>
     </section>
   );

@@ -20,6 +20,9 @@ function safeStr(v: any) {
 
 export default function OnboardingJourney() {
   const { api, user, refreshSession, transientPassword, applySessionPatch, clearTransientPassword } = useAuth();
+  const isLocalDevHost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
   const integrations = useIntegrations(api, user, {
     onConnected: async (payload?: any) => {
       const type = safeStr(payload?.type);
@@ -93,10 +96,17 @@ export default function OnboardingJourney() {
   const [savingWelcome, setSavingWelcome] = useState(false);
   const [savingCommitment, setSavingCommitment] = useState(false);
   const [savingAgreement, setSavingAgreement] = useState(false);
+  const [skippingOnboarding, setSkippingOnboarding] = useState(false);
+  const [localDevBypassComplete, setLocalDevBypassComplete] = useState(false);
 
   const onboardingStepStorageKey = useMemo(() => {
     const username = safeStr((user as any)?.username || (user as any)?.sub);
     return username ? `fluke:onboarding-step:${username}` : "";
+  }, [user]);
+
+  const localDevSkipStorageKey = useMemo(() => {
+    const username = safeStr((user as any)?.username || (user as any)?.sub);
+    return username ? `fluke:onboarding-skip:${username}` : "fluke:onboarding-skip";
   }, [user]);
 
   useEffect(() => {
@@ -149,6 +159,12 @@ export default function OnboardingJourney() {
     }
   }, [activeStep, journeyComplete, onboardingStepStorageKey]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !isLocalDevHost) return;
+    const stored = String(window.localStorage.getItem(localDevSkipStorageKey) || "").trim();
+    setLocalDevBypassComplete(stored === "1");
+  }, [isLocalDevHost, localDevSkipStorageKey]);
+
   const releaseVersion = releaseConfig.releaseVersion;
   const releaseSeen = safeStr((user as any)?.last_seen_release_version) === releaseVersion;
   const welcomeDone = releaseSeen || progress.welcomeReleaseVersion === releaseVersion;
@@ -159,7 +175,10 @@ export default function OnboardingJourney() {
   const profileDone = progress.profileReleaseVersion === releaseVersion || isProfileComplete(user);
   const commitmentDone = progress.commitmentReleaseVersion === releaseVersion;
   const agreementDone = progress.agreementReleaseVersion === releaseVersion;
-  const connectedReady = Boolean(integrations.status.linkedin && integrations.status.discord && integrations.status.jira);
+  // Jira is temporarily optional — the Atlassian OAuth app is still in "Development"
+  // distribution status, so only its owner account can authorize it right now. Not gating
+  // onboarding on it until that's fixed on Atlassian's side (unrelated to this app's code).
+  const connectedReady = localDevBypassComplete || Boolean(integrations.status.linkedin && integrations.status.discord);
 
   const nextStep: OnboardingStepId | null = useMemo(
     () =>
@@ -218,11 +237,11 @@ export default function OnboardingJourney() {
         key: "jira",
         label: "Jira",
         subtitle: integrations.status.jiraCloudName
-          ? `Required. Connected site: ${integrations.status.jiraCloudName}`
-          : "Required. Connect Jira now so project workflow hooks are ready from day one.",
+          ? `Connected site: ${integrations.status.jiraCloudName}`
+          : "Optional for now. Connect Jira later once it's available for project workflow hooks.",
         connected: integrations.status.jira,
         icon: "schema",
-        optional: false,
+        optional: true,
       },
     ],
     [integrations.status.discord, integrations.status.jira, integrations.status.jiraCloudName, integrations.status.linkedin, user]
@@ -330,16 +349,74 @@ export default function OnboardingJourney() {
     }
   }
 
+  async function skipOnboardingForLocalDev() {
+    if (!isLocalDevHost || skippingOnboarding || !user) return;
+    setSkippingOnboarding(true);
+    try {
+      const steps: OnboardingStepId[] = ["welcome", "profile", "agreement", "commitment", "connect"];
+
+      try {
+        const seenResp = await (api as any).markReleaseSeen({ releaseVersion });
+        setBackendProgress(seenResp?.onboardingJourneyState || { releaseVersion, welcomeReleaseVersion: releaseVersion });
+      } catch (err) {
+        console.warn("local onboarding skip: markReleaseSeen failed", err);
+      }
+
+      for (const step of steps.slice(1)) {
+        try {
+          const resp = await (api as any).updateOnboardingJourneyProgress({
+            releaseVersion,
+            step,
+          });
+          setBackendProgress(
+            resp?.onboardingJourneyState ||
+              {
+                releaseVersion,
+                [`${step}ReleaseVersion`]: releaseVersion,
+                ...(step === "connect" ? { connectReleaseVersion: releaseVersion } : {}),
+              }
+          );
+        } catch (err) {
+          console.warn(`local onboarding skip: ${step} step failed`, err);
+        }
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(localDevSkipStorageKey, "1");
+        if (onboardingStepStorageKey) {
+          window.localStorage.removeItem(onboardingStepStorageKey);
+        }
+      }
+
+      setLocalDevBypassComplete(true);
+      await refreshSession();
+      setJourneyComplete(true);
+      advanceTo(null);
+    } finally {
+      setSkippingOnboarding(false);
+    }
+  }
+
   if (!user || releaseLoading || journeyComplete || !currentStep || isTestUser) return null;
 
   const canCommitmentContinue = commitmentAccepted && (!commitmentRequired || commitmentPaymentRecorded) && !savingCommitment;
   const canAgreementContinue = timesheetAccepted && discordAccepted && !savingAgreement;
+  const localSkipButton = isLocalDevHost ? (
+    <OnboardingFooterButton
+      icon="skip_next"
+      onClick={() => void skipOnboardingForLocalDev()}
+      disabled={skippingOnboarding}
+    >
+      {skippingOnboarding ? "Skipping..." : "Skip onboarding"}
+    </OnboardingFooterButton>
+  ) : null;
 
   const footer = (() => {
     switch (currentStep) {
       case "welcome":
         return (
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>{localSkipButton}</div>
             <OnboardingFooterButton icon="arrow_forward" onClick={() => void markWelcomeComplete()} primary>
               Continue
             </OnboardingFooterButton>
@@ -347,10 +424,11 @@ export default function OnboardingJourney() {
         );
       case "password":
         return (
-          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <OnboardingFooterButton icon="arrow_back" onClick={goBack}>
               Back
             </OnboardingFooterButton>
+            <div>{localSkipButton}</div>
           </div>
         );
       case "profile":
@@ -359,9 +437,12 @@ export default function OnboardingJourney() {
             <OnboardingFooterButton icon="arrow_back" onClick={goBack}>
               Back
             </OnboardingFooterButton>
-            <OnboardingFooterButton icon="arrow_forward" onClick={() => void markProfileComplete()} primary>
-              Continue
-            </OnboardingFooterButton>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {localSkipButton}
+              <OnboardingFooterButton icon="arrow_forward" onClick={() => void markProfileComplete()} primary>
+                Continue
+              </OnboardingFooterButton>
+            </div>
           </div>
         );
       case "agreement":
@@ -370,14 +451,17 @@ export default function OnboardingJourney() {
             <OnboardingFooterButton icon="arrow_back" onClick={goBack}>
               Back
             </OnboardingFooterButton>
-            <OnboardingFooterButton
-              icon="task_alt"
-              onClick={() => void markAgreementComplete()}
-              disabled={!canAgreementContinue}
-              primary
-            >
-              Agree and continue
-            </OnboardingFooterButton>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {localSkipButton}
+              <OnboardingFooterButton
+                icon="task_alt"
+                onClick={() => void markAgreementComplete()}
+                disabled={!canAgreementContinue}
+                primary
+              >
+                Agree and continue
+              </OnboardingFooterButton>
+            </div>
           </div>
         );
       case "commitment":
@@ -386,14 +470,17 @@ export default function OnboardingJourney() {
             <OnboardingFooterButton icon="arrow_back" onClick={goBack}>
               Back
             </OnboardingFooterButton>
-            <OnboardingFooterButton
-              icon="check_circle"
-              onClick={() => void markCommitmentComplete()}
-              disabled={!canCommitmentContinue}
-              primary
-            >
-              Continue
-            </OnboardingFooterButton>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {localSkipButton}
+              <OnboardingFooterButton
+                icon="check_circle"
+                onClick={() => void markCommitmentComplete()}
+                disabled={!canCommitmentContinue}
+                primary
+              >
+                Continue
+              </OnboardingFooterButton>
+            </div>
           </div>
         );
       case "connect":
@@ -402,14 +489,17 @@ export default function OnboardingJourney() {
             <OnboardingFooterButton icon="arrow_back" onClick={goBack}>
               Back
             </OnboardingFooterButton>
-            <OnboardingFooterButton
-              icon="arrow_forward"
-              onClick={() => void markConnectComplete()}
-              disabled={!connectedReady}
-              primary
-            >
-              Continue
-            </OnboardingFooterButton>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {localSkipButton}
+              <OnboardingFooterButton
+                icon="arrow_forward"
+                onClick={() => void markConnectComplete()}
+                disabled={!connectedReady}
+                primary
+              >
+                Continue
+              </OnboardingFooterButton>
+            </div>
           </div>
         );
       default:
