@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../auth/AuthContext";
+import { PROD_API_BASE, resolveDefaultApiBase, setApiBase } from "../api/config";
 import M from "materialize-css";
 import * as THREE from "three";
 
@@ -32,6 +33,29 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState("");
   const [manualFlip, setManualFlip] = useState(false);
+  const [useProductionApi, setUseProductionApi] = useState(() => {
+    try {
+      return localStorage.getItem("arcade_use_production_api") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("arcade_use_production_api", useProductionApi ? "1" : "0");
+    } catch {}
+  }, [useProductionApi]);
+
+  const isLocalHost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  const localDemoAccounts = [
+    { username: "superuser", password: "Super123", role: "Super" },
+    { username: "adminuser", password: "Admin123", role: "Admin" },
+    { username: "empuser", password: "Emp123", role: "Employee" },
+  ];
 
   const canSubmit = useMemo(
     () => !!username.trim() && !!password && !loading,
@@ -320,9 +344,16 @@ export default function Login() {
     setErrMsg("");
     setLoading(true);
     try {
+      setApiBase(useProductionApi ? PROD_API_BASE : resolveDefaultApiBase());
       const ok = await login(username, password);
       if (!ok) {
-        setErrMsg("Invalid username or password.");
+        const typedUsername = String(username || "").trim().toLowerCase();
+        const isLocalDemoUser = localDemoAccounts.some((account) => account.username === typedUsername);
+        if (isLocalHost && useProductionApi && isLocalDemoUser) {
+          setErrMsg("These demo accounts only work on local API. Turn off 'Switch to production API'.");
+        } else {
+          setErrMsg("Invalid username or password.");
+        }
         M.toast({ html: "Invalid credentials", classes: "red darken-2" });
         setLoading(false);
         return;
@@ -452,6 +483,7 @@ export default function Login() {
       }
 
       .cpCard {
+        position: relative;
         width: 100%;
         background: rgba(10, 10, 25, 0.76);
         backdrop-filter: blur(16px);
@@ -461,6 +493,71 @@ export default function Login() {
         border: 2px solid rgba(100, 200, 255, 0.30);
         box-shadow: 0 0 100px rgba(100, 200, 255, 0.20), inset 0 0 50px rgba(100, 200, 255, 0.05);
         animation: glowPulse 3s ease-in-out infinite;
+      }
+
+      .cpDevLegend {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: min(100%, 260px);
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(4, 12, 26, 0.82);
+        border: 1px solid rgba(100, 200, 255, 0.26);
+        box-shadow: 0 0 30px rgba(0, 255, 136, 0.10);
+        color: #d7f4ff;
+        text-align: left;
+      }
+
+      .cpDevLegendTitle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+        color: #00ff88;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+      }
+
+      .cpDevLegendTag {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(0, 255, 136, 0.12);
+        border: 1px solid rgba(0, 255, 136, 0.18);
+        color: #88ffca;
+        font-size: 10px;
+        font-weight: 900;
+      }
+
+      .cpDevLegendList {
+        display: grid;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .cpDevLegendItem {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .cpDevLegendLabel {
+        color: #8fcde8;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .cpDevLegendCode {
+        color: #ffffff;
+        font-weight: 900;
+        font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
       }
 
       @keyframes glowPulse {
@@ -574,6 +671,39 @@ export default function Login() {
       .cpBtn:active { transform: translateY(-1px); }
       .cpBtn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
 
+      .cpToggleRow {
+        margin-top: -2px;
+        margin-bottom: 4px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(100, 200, 255, 0.16);
+        background: rgba(100, 200, 255, 0.04);
+      }
+      .cpToggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #e2f2ff;
+        font-weight: 800;
+        font-size: 13px;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .cpToggle input {
+        width: 18px;
+        height: 18px;
+        accent-color: #64c8ff;
+        cursor: pointer;
+      }
+      .cpToggleHint {
+        margin-left: 28px;
+        margin-top: 6px;
+        color: #7ba5c3;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
       .cpFoot {
         text-align: center;
         margin-top: 25px;
@@ -593,6 +723,11 @@ export default function Login() {
         .cpCard { padding: 34px 22px 26px; border-radius: 20px; }
         .logoWrap { padding: 34px 22px 26px; border-radius: 20px; min-height: 410px; }
         .cpTitle { font-size: 28px; }
+        .cpDevLegend {
+          position: static;
+          width: 100%;
+          margin: 0 0 18px 0;
+        }
       }
     `}</style>
   );
@@ -645,10 +780,28 @@ export default function Login() {
                 </div>
               </div>
 
-              <div className="flipFace flipBack">
-                <div className="cpCard">
-                  <h1 className="cpTitle">ARCADE</h1>
-                  <p className="cpSub">Enter the portal</p>
+                <div className="flipFace flipBack">
+                  <div className="cpCard">
+                    {isLocalHost ? (
+                      <div className="cpDevLegend" aria-label="Local demo credentials">
+                        <div className="cpDevLegendTitle">
+                          <span>Local Demo Accounts</span>
+                          <span className="cpDevLegendTag">localhost only</span>
+                        </div>
+                        <ul className="cpDevLegendList">
+                          {localDemoAccounts.map((account) => (
+                            <li key={account.username} className="cpDevLegendItem">
+                              <span className="cpDevLegendLabel">{account.role}</span>
+                              <span className="cpDevLegendCode">
+                                {account.username} / {account.password}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    <h1 className="cpTitle">ARCADE</h1>
+                    <p className="cpSub">Enter the portal</p>
 
                   {errMsg ? (
                     <div className="cpErr">
@@ -714,6 +867,25 @@ export default function Login() {
                         </button>
                       </div>
                     </div>
+
+                    {isLocalHost ? (
+                      <div className="cpToggleRow">
+                        <label className="cpToggle">
+                          <input
+                            type="checkbox"
+                            checked={useProductionApi}
+                            onChange={(e) => setUseProductionApi(e.target.checked)}
+                            disabled={loading}
+                          />
+                          <span>Switch to production API</span>
+                        </label>
+                        <div className="cpToggleHint">
+                          {useProductionApi
+                            ? "Using the current AWS backend. Demo accounts will not work here."
+                            : "Using local API. Demo accounts are available."}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <button className="cpBtn" type="submit" disabled={!canSubmit}>
                       {loading ? "Signing in…" : "Access"}

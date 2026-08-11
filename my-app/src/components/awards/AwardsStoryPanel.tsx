@@ -185,18 +185,6 @@ function fmtShortDate(v?: string) {
   });
 }
 
-function fmtWeekLabel(iso?: string) {
-  const s = safeStr(iso);
-  if (!s) return "All Time";
-  const d = new Date(`${s}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return s;
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  });
-}
-
 function getRecipientName(item: StudioRecentItem) {
   const personName = safeStr((item as any)?.person?.name);
   if (personName) return personName;
@@ -364,66 +352,6 @@ function getRequirementText(item: StudioRecentItem) {
   return "No requirement details available for this award yet.";
 }
 
-function buildHeroSummary(summary: StudioSummary | null, weekStart?: string) {
-  const totals = summary?.totals || {};
-  const users = safeNum(totals.users);
-  const achievements = safeNum(totals.achievements);
-  const trophies = safeNum(totals.trophies);
-  const recognition = safeNum(totals.awards) || achievements + trophies;
-  const weekText = weekStart ? `for the week of ${fmtWeekLabel(weekStart)}` : "across all available data";
-
-  if (!summary) {
-    return {
-      title: "Recognition snapshot",
-      body: "Recognition data is not available yet.",
-      bullets: [
-        "No summary payload loaded",
-        "Recent cards will appear once data is returned",
-        "Tier legend remains available for reference",
-      ],
-    };
-  }
-
-  if (!recognition) {
-    return {
-      title: "Recognition snapshot",
-      body: `No recognition items are recorded ${weekText} yet. The panel is ready, contributors are visible, and new achievements or trophies will appear here as soon as they are awarded.`,
-      bullets: [
-        `${users} contributors currently tracked`,
-        "0 achievements recorded",
-        "0 trophies recorded",
-      ],
-    };
-  }
-
-  return {
-    title: "Recognition snapshot",
-    body: `A total of ${recognition} recognition item${recognition === 1 ? "" : "s"} are recorded ${weekText}, spanning ${users} contributor${users === 1 ? "" : "s"}. The strip below highlights the latest visible recognition events.`,
-    bullets: [
-      `${achievements} achievement${achievements === 1 ? "" : "s"}`,
-      `${trophies} troph${trophies === 1 ? "y" : "ies"}`,
-      `${users} active contributor${users === 1 ? "" : "s"} in scope`,
-    ],
-  };
-}
-
-function Pill({
-  icon,
-  text,
-  tone = "blue",
-}: {
-  icon: string;
-  text: string;
-  tone?: "blue" | "green" | "amber" | "purple" | "grey";
-}) {
-  return (
-    <span className={`arsPill ${tone}`}>
-      <i className="material-icons">{icon}</i>
-      <span>{text}</span>
-    </span>
-  );
-}
-
 function StatCard({
   icon,
   label,
@@ -435,7 +363,7 @@ function StatCard({
 }) {
   return (
     <div className="arsStatCard">
-      <div className="arsStatTop">
+      <div className="arsStatLeft">
         <div className="arsStatIcon">
           <i className="material-icons">{icon}</i>
         </div>
@@ -740,10 +668,6 @@ export default function AwardsSummaryPanel() {
   const awardCount = safeNum(totals.awards);
 
   const recentStrip = useMemo(() => recentItems.slice(0, 8), [recentItems]);
-  const heroSummary = useMemo(
-    () => buildHeroSummary(summary, weekStart || undefined),
-    [summary, weekStart]
-  );
 
   const openLegendDetails = (entry: LegendEntry) => {
     setSelectedAward({
@@ -777,6 +701,7 @@ export default function AwardsSummaryPanel() {
 
         .arsHero{
           position:relative;
+          isolation:isolate;
           overflow:visible;
           border-bottom:1px solid #e9eef5;
           background:
@@ -798,10 +723,9 @@ export default function AwardsSummaryPanel() {
 
         .arsHeroInner{
           position:relative;
-          z-index:1;
-          padding:24px;
+          padding:24px 24px 0 24px;
           display:grid;
-          grid-template-columns:minmax(0,1.2fr) minmax(280px,.9fr);
+          grid-template-columns:minmax(0,1fr) auto;
           gap:18px;
           align-items:start;
         }
@@ -836,127 +760,45 @@ export default function AwardsSummaryPanel() {
           max-width:560px;
         }
 
-        .arsTopMeta{
+        .arsHeroLegendWrap{
           display:flex;
-          flex-wrap:wrap;
-          gap:10px;
-          align-items:center;
-        }
-
-        .arsPill{
-          display:inline-flex;
-          align-items:center;
-          gap:7px;
-          max-width:100%;
-          padding:8px 12px;
-          border-radius:999px;
-          font-size:11px;
-          font-weight:900;
-          white-space:normal;
-          backdrop-filter:blur(12px);
-          -webkit-backdrop-filter:blur(12px);
-          box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
-        }
-
-        .arsPill span{
-          white-space:normal;
-          display:-webkit-box;
-          -webkit-line-clamp:2;
-          -webkit-box-orient:vertical;
-          overflow:hidden;
-        }
-
-        .arsPill i{ font-size:15px; flex:0 0 auto; }
-        .arsPill.blue{ background:rgba(59,130,246,.16); color:#dbeafe; border:1px solid rgba(59,130,246,.18); }
-        .arsPill.green{ background:rgba(34,197,94,.16); color:#dcfce7; border:1px solid rgba(34,197,94,.18); }
-        .arsPill.amber{ background:rgba(245,158,11,.18); color:#fef3c7; border:1px solid rgba(245,158,11,.18); }
-        .arsPill.purple{ background:rgba(168,85,247,.18); color:#f3e8ff; border:1px solid rgba(168,85,247,.18); }
-        .arsPill.grey{ background:rgba(255,255,255,.10); color:#e2e8f0; border:1px solid rgba(255,255,255,.14); }
-
-        .arsSummaryCard{
-          min-width:0;
-          border-radius:24px;
-          border:1px solid rgba(255,255,255,.12);
-          background:rgba(255,255,255,.08);
-          box-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 16px 30px rgba(2,6,23,.15);
-          backdrop-filter:blur(14px);
-          -webkit-backdrop-filter:blur(14px);
-          padding:18px;
-        }
-
-        .arsSummaryKicker{
-          font-size:11px;
-          font-weight:900;
-          text-transform:uppercase;
-          letter-spacing:.14em;
-          color:rgba(191,219,254,.84);
-        }
-
-        .arsSummaryTitle{
-          margin-top:10px;
-          font-size:20px;
-          font-weight:950;
-          line-height:1.15;
-          color:#ffffff;
-        }
-
-        .arsSummaryText{
-          margin-top:10px;
-          font-size:14px;
-          line-height:1.7;
-          color:#f8fafc;
-        }
-
-        .arsSummaryBullets{
-          margin-top:14px;
-          display:grid;
-          gap:9px;
-        }
-
-        .arsSummaryBullet{
-          display:flex;
-          align-items:flex-start;
-          gap:8px;
-          font-size:13px;
-          line-height:1.5;
-          color:rgba(226,232,240,.94);
-        }
-
-        .arsSummaryBullet i{
-          font-size:16px;
-          margin-top:1px;
-          color:#93c5fd;
-          flex:0 0 auto;
+          justify-content:flex-end;
         }
 
         .arsHeroStats{
-          padding:16px;
+          padding:20px 24px 24px 24px;
           display:grid;
           grid-template-columns:repeat(4,minmax(0,1fr));
           gap:12px;
         }
 
         .arsStatCard{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:12px;
           border-radius:22px;
-          padding:15px;
+          padding:16px;
           border:1px solid #e4edf4;
           background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);
           box-shadow:0 10px 24px rgba(15,23,42,.05), inset 0 1px 0 rgba(255,255,255,.85);
           min-width:0;
         }
 
-        .arsStatTop{
+        .arsStatLeft{
           display:flex;
           flex-direction:column;
+          justify-content:space-between;
           align-items:flex-start;
-          gap:10px;
+          align-self:stretch;
+          gap:16px;
           min-width:0;
         }
 
         .arsStatIcon{
-          width:36px;
-          height:36px;
-          border-radius:12px;
+          width:48px;
+          height:48px;
+          border-radius:14px;
           display:grid;
           place-items:center;
           background:#f4f8fb;
@@ -965,7 +807,7 @@ export default function AwardsSummaryPanel() {
           flex:0 0 auto;
         }
 
-        .arsStatIcon i{ font-size:18px; }
+        .arsStatIcon i{ font-size:26px; }
 
         .arsStatLabel{
           font-size:11px;
@@ -980,25 +822,13 @@ export default function AwardsSummaryPanel() {
         }
 
         .arsStatValue{
-          margin-top:12px;
-          font-size:32px;
+          font-size:38px;
           line-height:1;
           font-weight:1000;
           color:#0f172a;
           letter-spacing:-.03em;
-          overflow:hidden;
-          text-overflow:ellipsis;
-        }
-
-        @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-          .arsPill{
-            background:rgba(15,23,42,.55) !important;
-            border:1px solid rgba(255,255,255,.18) !important;
-          }
-          .arsSummaryCard{
-            background:rgba(15,23,42,.52) !important;
-            border:1px solid rgba(255,255,255,.16) !important;
-          }
+          flex:0 0 auto;
+          text-align:right;
         }
 
         .arsBody{
@@ -1509,48 +1339,45 @@ export default function AwardsSummaryPanel() {
               <div className="arsSub">
                 A compact view of awards, trophies, contributor recognition, and the most recent highlights.
               </div>
-
-              <div className="arsTopMeta">
-                <Pill
-                  icon="calendar_month"
-                  text={weekStart ? `Week of ${fmtWeekLabel(weekStart)}` : "All available data"}
-                  tone="grey"
-                />
-                <Pill
-                  icon="military_tech"
-                  text={`${safeNum(totals.achievements)} achievements`}
-                  tone="green"
-                />
-                <Pill
-                  icon="emoji_events"
-                  text={`${safeNum(totals.trophies)} trophies`}
-                  tone="amber"
-                />
-              </div>
             </div>
 
-            <div className="arsSummaryCard">
-              <div className="arsSummaryKicker">Metrics Summary</div>
-              <div className="arsSummaryTitle">{heroSummary.title}</div>
-              <div className="arsSummaryText">{heroSummary.body}</div>
+            <div className="arsHeroLegendWrap">
+              <div className="arsLegendWrap">
+                <button type="button" className="arsLegendBtn" aria-label="Award tier legend">
+                  <i className="material-icons">info</i>
+                </button>
 
-              <div className="arsSummaryBullets">
-                {heroSummary.bullets.map((line, idx) => (
-                  <div key={idx} className="arsSummaryBullet">
-                    <i className="material-icons">check_circle</i>
-                    <span>{line}</span>
+                <div className="arsLegendPopover">
+                  <div className="arsLegendTitle">Award Tier Legend</div>
+                  <div className="arsLegendSub">
+                    Click any tier to view requirement details.
                   </div>
-                ))}
+
+                  <div className="arsLegendGrid">
+                    {BADGE_LEGEND.map((entry) => (
+                      <button
+                        key={entry.key}
+                        type="button"
+                        className="arsLegendItem"
+                        title={entry.requirement}
+                        onClick={() => openLegendDetails(entry)}
+                      >
+                        <BadgeIcon badge={entry.key} size={56} />
+                        <div className="arsLegendLabel">{entry.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="arsHeroStats">
-          <StatCard icon="groups" label="Contributors" value={safeNum(totals.users)} />
-          <StatCard icon="auto_awesome" label="Recognition" value={awardCount} />
-          <StatCard icon="military_tech" label="Achievements" value={safeNum(totals.achievements)} />
-          <StatCard icon="emoji_events" label="Trophies" value={safeNum(totals.trophies)} />
+          <div className="arsHeroStats">
+            <StatCard icon="groups" label="Contributors" value={safeNum(totals.users)} />
+            <StatCard icon="auto_awesome" label="Recognition" value={awardCount} />
+            <StatCard icon="military_tech" label="Achievements" value={safeNum(totals.achievements)} />
+            <StatCard icon="emoji_events" label="Trophies" value={safeNum(totals.trophies)} />
+          </div>
         </div>
 
         {loading ? (
@@ -1577,39 +1404,11 @@ export default function AwardsSummaryPanel() {
                   <div>
                     <div className="arsCardTitle">Recognition Strip</div>
                     <div className="arsCardSub">
-                      Recent recognition cards. Hover the info icon for award tier legend.
+                      Recent recognition cards. Hover the info icon above for award tier legend.
                     </div>
                   </div>
 
                   <div className="arsToolbar">
-                    <div className="arsLegendWrap">
-                      <button type="button" className="arsLegendBtn" aria-label="Award tier legend">
-                        <i className="material-icons">info</i>
-                      </button>
-
-                      <div className="arsLegendPopover">
-                        <div className="arsLegendTitle">Award Tier Legend</div>
-                        <div className="arsLegendSub">
-                          Click any tier to view requirement details.
-                        </div>
-
-                        <div className="arsLegendGrid">
-                          {BADGE_LEGEND.map((entry) => (
-                            <button
-                              key={entry.key}
-                              type="button"
-                              className="arsLegendItem"
-                              title={entry.requirement}
-                              onClick={() => openLegendDetails(entry)}
-                            >
-                              <BadgeIcon badge={entry.key} size={56} />
-                              <div className="arsLegendLabel">{entry.label}</div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
                     <select
                       className="arsSelect"
                       value={weekStart}

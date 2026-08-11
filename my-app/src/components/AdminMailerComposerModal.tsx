@@ -15,6 +15,7 @@ type ComposerState = {
   cc: string;
   bcc: string;
   autoCc: boolean;
+  newsletterUseSubscribers: boolean;
 
   // Newsletter
   newsletterSubject: string;
@@ -46,6 +47,7 @@ function defaultComposer(stage: MailStage): ComposerState {
     cc: "",
     bcc: "",
     autoCc: false,
+    newsletterUseSubscribers: true,
 
     newsletterSubject: "Fluke Games Newsletter",
     newsletterHeading: "Fluke Games Newsletter",
@@ -189,6 +191,7 @@ export default function AdminMailerComposerModal({
         ctaUrl: c.newsletterCtaUrl.trim(),
         textBody: c.newsletterTextBody.trim(),
         autoCc: !!c.autoCc,
+        useSubscribers: !!c.newsletterUseSubscribers,
       };
 
       setPreviewJson(
@@ -261,9 +264,10 @@ export default function AdminMailerComposerModal({
           ctaUrl: composer.newsletterCtaUrl.trim(),
           textBody: composer.newsletterTextBody.trim(),
           autoCc: !!composer.autoCc,
+          useSubscribers: !!composer.newsletterUseSubscribers,
         };
 
-        if (!body.to.length) {
+        if (!body.useSubscribers && !body.to.length) {
           M?.toast?.({ html: "Newsletter: at least one recipient is required", classes: "red" });
           return;
         }
@@ -394,6 +398,17 @@ export default function AdminMailerComposerModal({
               onChange={(e) => updateComposer({ autoCc: e.target.checked })}
             />
             <span>autoCc</span>
+          </label>
+        </p>
+
+        <p style={{ marginTop: 6 }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={composer.newsletterUseSubscribers}
+              onChange={(e) => updateComposer({ newsletterUseSubscribers: e.target.checked })}
+            />
+            <span>Send to saved newsletter subscribers</span>
           </label>
         </p>
       </>

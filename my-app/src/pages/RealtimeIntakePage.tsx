@@ -76,6 +76,39 @@ const INTERVIEW_TOOLS = [
 // model is structurally unable to keep drilling, regardless of what it "wants."
 const ADVANCE_AND_OFFTOPIC_TOOLS = INTERVIEW_TOOLS.filter((t) => t.name !== "ask_follow_up_question");
 
+// Post-session open Q&A: only reachable after all fixed questions are done, and only when the
+// context has postSessionQAEnabled. Separate tool set from INTERVIEW_TOOLS — never offered
+// during the main epic phase, only via an explicit per-response override once open Q&A starts.
+const ANSWER_CANDIDATE_QUESTION_TOOL = {
+  type: "function",
+  name: "answer_candidate_question",
+  description:
+    "Call this if the candidate asked a real question. Answer it using ONLY the company information you were given in this turn's instructions — if it doesn't cover what they asked, say a team member will follow up with details. Never invent facts.",
+  parameters: {
+    type: "object",
+    properties: {
+      answer: {
+        type: "string",
+        description: "Your answer, natural and conversational, grounded strictly in the provided company information.",
+      },
+    },
+    required: ["answer"],
+  },
+};
+const CONCLUDE_QA_TOOL = {
+  type: "function",
+  name: "conclude_qa",
+  description:
+    "Call this if the candidate said they have no questions, declined, or gave any closing/negative response (e.g. \"no\", \"I'm good\", \"that's all\"). A short negative answer here is complete by itself — do not ask them to elaborate.",
+  parameters: { type: "object", properties: {}, required: [] },
+};
+const OPEN_QA_TOOLS = [ANSWER_CANDIDATE_QUESTION_TOOL, CONCLUDE_QA_TOOL];
+const OPEN_QA_PROMPT = "Before we wrap up — do you have any questions for me?";
+const OPEN_QA_FOLLOWUP_PROMPT = "Do you have any other questions for me?";
+// Circuit breaker only, same philosophy as SAFETY_MAX_FOLLOWUPS_PER_EPIC — open Q&A is meant to
+// run as long as the candidate has real questions, this just prevents it running forever.
+const MAX_QA_ROUNDS = 5;
+
 const OFF_TOPIC_REDIRECT = "Let's keep focused on the interview.";
 const CLARIFY_PROMPT = "It seems your response may have been incomplete — could you say a bit more about that?";
 // Under 10s: elaboration is forced. Under 30s: elaboration is nudged but the model still
@@ -96,6 +129,9 @@ function buildTranscript(answers: Record<string, string>, questions: string[]): 
     const key = `q${i + 1}`;
     t += `Q${i + 1}: ${q}\nA:  ${answers[key] || "(no answer captured)"}\n\n`;
   });
+  if (answers.qa) {
+    t += `${"─".repeat(52)}\nOPEN Q&A\n${answers.qa}\n\n`;
+  }
   t += `${"─".repeat(52)}\nSubmitted via Fluke Games Internal Intake\n`;
   return t;
 }
@@ -152,6 +188,9 @@ function migrateStored(raw: any): StoredIntakeContext {
     includeJobQuestions: Boolean(raw?.includeJobQuestions),
     transcriptEmailEnabled: Boolean(raw?.transcriptEmailEnabled),
     transcriptEmailTo: String(raw?.transcriptEmailTo || ""),
+    preSessionEnabled: Boolean(raw?.preSessionEnabled),
+    preSessionNote: String(raw?.preSessionNote || ""),
+    postSessionQAEnabled: Boolean(raw?.postSessionQAEnabled),
   };
 }
 
@@ -219,6 +258,9 @@ export default function RealtimeIntakePage() {
   // (<10s case) silently fails, since blindly advancing corrupts qIdx/answer attribution
   // mid-epic. null once a response is scripted (no tool call is ever expected then).
   const pendingKindRef = useRef<"decision" | "forced_elaborate" | "decision_retry" | null>(null);
+  const inOpenQaRef = useRef(false);
+  const qaRoundsRef = useRef(0);
+  const qaGroundingTextRef = useRef("");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
@@ -357,6 +399,17 @@ export default function RealtimeIntakePage() {
     setStatus("connecting");
 
     try {
+      qaGroundingTextRef.current = "";
+      if (ctxRef.current?.postSessionQAEnabled) {
+        try {
+          const groundingRes = await fetch(`${API_BASE}/admin/ai/intake-qa-grounding`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          const groundingData = await groundingRes.json().catch(() => ({}));
+          if (groundingRes.ok) qaGroundingTextRef.current = String(groundingData?.qaGroundingText || "");
+        } catch {}
+      }
+
       const sessionRes = await fetch(`${API_BASE}/ai/realtime/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
@@ -410,6 +463,8 @@ export default function RealtimeIntakePage() {
         counterQuestionCountRef.current = {};
         speechStartedAtRef.current = null;
         lastAnswerDurationMsRef.current = null;
+        inOpenQaRef.current = false;
+        qaRoundsRef.current = 0;
         debugLogRef.current = [];
         setDebugLog([]);
         const qs = allQuestionsRef.current;
@@ -456,17 +511,24 @@ export default function RealtimeIntakePage() {
         dc.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
 
         // First turn has no "advance" decision to make — override to tool_choice:"none" and
-        // hand the model the literal Q1 text to speak.
+        // hand the model the literal Q1 text to speak. If preSessionEnabled, the overview is
+        // folded into this SAME turn (natural paraphrase, not verbatim) rather than a separate
+        // round-trip — simplest way to give "a quick glance of how this interview would look"
+        // without adding a new state to track.
+        const overviewText = liveCtx.preSessionEnabled
+          ? (liveCtx.preSessionNote?.trim() ||
+              `This will be a short interview with ${qs.length} question${qs.length === 1 ? "" : "s"} about ${liveCtx.label || "a few topics"}, and it should take about ${Math.max(3, qs.length * 2)} minutes.`)
+          : "";
         responseInProgressRef.current = true;
         expectingToolCallRef.current = false;
         dc.send(JSON.stringify({
           type: "response.create",
           response: {
-            instructions: `Begin the session now. Greet warmly as your persona, do NOT say your model name or mention ChatGPT, then say exactly and only: "${qs[0]}"`,
+            instructions: `Begin the session now. Greet warmly as your persona, do NOT say your model name or mention ChatGPT.${overviewText ? ` Then say, adapted naturally in your own words but keeping the same meaning: "${overviewText}"` : ""} Then say exactly and only: "${qs[0]}"`,
             tool_choice: "none",
           },
         }));
-        addDebug("out", "response.create", `greet → Q1: "${(qs[0] || "").slice(0, 60)}" (tool_choice=none)`);
+        addDebug("out", "response.create", `greet${overviewText ? " + overview" : ""} → Q1: "${(qs[0] || "").slice(0, 60)}" (tool_choice=none)`);
       };
 
       dc.onmessage = (event) => {
@@ -560,6 +622,19 @@ export default function RealtimeIntakePage() {
           if (type === "conversation.item.input_audio_transcription.completed") {
             const text = String(msg?.transcript || "").trim();
             if (!text || responseInProgressRef.current) return;
+
+            if (inOpenQaRef.current) {
+              // Open Q&A: deliberately NO duration/elaboration logic here — a brief "no" is a
+              // complete, valid answer by definition, unlike a fixed interview question. This
+              // is the actual fix for "AI keeps asking to clarify 'no I don't have questions'".
+              setAnswers((prev) => ({ ...prev, qa: (prev.qa ? `${prev.qa} | ` : "") + text }));
+              const channel = dcRef.current;
+              if (!channel) return;
+              responseInProgressRef.current = true;
+              requestOpenQaDecision();
+              return;
+            }
+
             const currentIdx = qIdxRef.current;
             const key = `q${currentIdx + 1}`;
             setAnswers((prev) => ({ ...prev, [key]: (prev[key] ? `${prev[key]} ` : "") + text }));
@@ -664,6 +739,30 @@ export default function RealtimeIntakePage() {
         }));
       }
 
+      function requestOpenQaDecision() {
+        const channel = dcRef.current;
+        if (!channel) return;
+        responseInProgressRef.current = true;
+        expectingToolCallRef.current = true;
+        pendingKindRef.current = "decision";
+        qaRoundsRef.current += 1;
+        const safetyReached = qaRoundsRef.current > MAX_QA_ROUNDS;
+        const grounding = qaGroundingTextRef.current;
+        addDebug("out", "response.create", safetyReached
+          ? "qa safety cap reached — forcing conclude_qa"
+          : `qa round ${qaRoundsRef.current}/${MAX_QA_ROUNDS} — requesting answer/conclude decision`);
+        channel.send(JSON.stringify({
+          type: "response.create",
+          response: {
+            instructions: safetyReached
+              ? `The candidate has asked several questions already — it's time to wrap up. Call conclude_qa now regardless of what they just said.`
+              : `The candidate just responded to being asked if they have any questions for you. If they asked a real question, call answer_candidate_question and answer it using ONLY this company information — never invent facts beyond it: ${grounding || "(No additional company information is available. If you can't answer from general public knowledge of Fluke Games, say politely that a team member will follow up with details.)"} If they said no, declined, or gave any closing/negative response, call conclude_qa. ${ENGLISH_REMINDER}`,
+            tools: safetyReached ? [CONCLUDE_QA_TOOL] : OPEN_QA_TOOLS,
+            tool_choice: "required",
+          },
+        }));
+      }
+
       function performAdvance(seemsIncomplete: boolean) {
         const qs = allQuestionsRef.current;
         const currentIdx = qIdxRef.current;
@@ -682,6 +781,16 @@ export default function RealtimeIntakePage() {
           setQIdx(nextIdx);
           addDebug("out", "response.create", `→ Q${nextIdx + 1}: "${qs[nextIdx].slice(0, 60)}" (natural ack, tool_choice=none)`);
           sendAckThenQuestion(qs[nextIdx]);
+        } else if (ctxRef.current?.postSessionQAEnabled && !inOpenQaRef.current) {
+          // All fixed questions done — enter open Q&A instead of the rigid "any questions for
+          // me?" list item, which is what caused the elaboration/clarify loop on short "no"s.
+          inOpenQaRef.current = true;
+          qaRoundsRef.current = 0;
+          qIdxRef.current = qs.length;
+          setQIdx(qs.length);
+          currentAskedQuestionRef.current = OPEN_QA_PROMPT;
+          addDebug("out", "response.create", "entering open Q&A (tool_choice=none)");
+          sendScriptedResponse(OPEN_QA_PROMPT);
         } else {
           qIdxRef.current = qs.length;
           setQIdx(qs.length);
@@ -719,6 +828,21 @@ export default function RealtimeIntakePage() {
           currentAskedQuestionRef.current = followUp;
           addDebug("out", "response.create", `follow-up ${counterQuestionCountRef.current[currentIdx]}/${SAFETY_MAX_FOLLOWUPS_PER_EPIC}: "${followUp.slice(0, 60)}" (tool_choice=none)`);
           sendScriptedResponse(followUp);
+          return;
+        }
+
+        if (name === "answer_candidate_question") {
+          const answer = String(args?.answer || "").trim() || "I'm not certain about that, but a team member will follow up with you on it.";
+          currentAskedQuestionRef.current = OPEN_QA_FOLLOWUP_PROMPT;
+          addDebug("out", "response.create", `qa answer: "${answer.slice(0, 60)}" (tool_choice=none)`);
+          sendScriptedResponse(`${answer} ${OPEN_QA_FOLLOWUP_PROMPT}`);
+          return;
+        }
+
+        if (name === "conclude_qa") {
+          inOpenQaRef.current = false;
+          addDebug("out", "response.create", "qa concluded → closing (tool_choice=none)");
+          sendScriptedResponse(closingTextRef.current);
           return;
         }
 
