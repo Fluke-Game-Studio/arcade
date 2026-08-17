@@ -174,7 +174,6 @@ export default function Navbar() {
   };
 
   const displayName = user?.name || user?.username || "";
-  const initial = (displayName || "U").slice(0, 1).toUpperCase();
 
   // Profile summary shown in the navbar chip's dropdown (moved off the Home dashboard card).
   const profileEmail = safeStr((user as any)?.employee_email) || "—";
