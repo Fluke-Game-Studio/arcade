@@ -22,7 +22,7 @@ export type Stage =
   | "Introduction"
   | "AI Intro"
   | "Technical Interview"
-  | "Generic Interview"
+  | "Generic Mailer"
   | "Confirmation"
   | "Reject"
   | "NDA"
@@ -33,7 +33,7 @@ const STAGES: Stage[] = [
   "Introduction",
   "AI Intro",
   "Technical Interview",
-  "Generic Interview",
+  "Generic Mailer",
   "Confirmation",
   "Reject",
   "NDA",
@@ -59,7 +59,7 @@ const STAGE_TO_RICH_TYPE: Record<Stage, RichType | null> = {
   Introduction: "INTRO",
   "AI Intro": "AI_INTRO",
   "Technical Interview": "TECH",
-  "Generic Interview": "GENERIC",
+  "Generic Mailer": "GENERIC",
   Confirmation: "CONFIRMATION",
   Reject: "REJECT",
   NDA: null,
@@ -71,6 +71,7 @@ const STAGE_TO_DOC_TYPE: Record<Stage, ApplicantDocEmailType | null> = {
   Introduction: null,
   "AI Intro": null,
   "Technical Interview": null,
+  "Generic Mailer": null,
   Confirmation: null,
   Reject: null,
   NDA: "NDA",
@@ -82,6 +83,7 @@ const DEFAULT_SET_STATUS: Record<Stage, string> = {
   Introduction: "intro_sent",
   "AI Intro": "intro_sent",
   "Technical Interview": "tech_sent",
+  "Generic Mailer": "generic_sent",
   Confirmation: "confirmation_sent",
   Reject: "rejected",
   NDA: "nda_sent",
@@ -90,6 +92,23 @@ const DEFAULT_SET_STATUS: Record<Stage, string> = {
 };
 
 const INTAKE_CONTEXTS_KEY = "fluke_intake_contexts_v1";
+
+const MAILER_SENDER_OPTIONS = [
+  { label: "noreply@flukegamestudio.com", email: "noreply@flukegamestudio.com" },
+  { label: "admin@flukegamestudio.com", email: "admin@flukegamestudio.com" },
+  { label: "talent@flukegamestudio.com", email: "talent@flukegamestudio.com" },
+];
+
+function parseEmailList(value: string) {
+  return String(value || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function mergeEmailLists(...lists: Array<string[]>) {
+  return Array.from(new Set(lists.flat().map((x) => String(x || "").trim()).filter(Boolean)));
+}
 
 function getStoredIntakeContextMode(contextKey: string): "public" | "arcade" {
   try {
@@ -130,7 +149,6 @@ type ComposerState = {
   stage: Stage;
   roleTitle: string;
   setStatus: string;
-  genericInterviewKind: "AI Interview" | "Tech Interview";
   genericFrom: string;
   genericCc: string[];
   genericCcText: string;
@@ -181,7 +199,6 @@ function defaultComposer(stage: Stage): ComposerState {
     stage,
     roleTitle: "",
     setStatus: DEFAULT_SET_STATUS[stage] || "",
-    genericInterviewKind: "AI Interview",
     genericFrom: "",
     genericCc: [],
     genericCcText: "",
@@ -321,7 +338,6 @@ export default function ApplicantComposerModal({
   const [jobInfo, setJobInfo] = useState<{ title: string; generalCount: number; roleCount: number; roleId: string } | null>(null);
   const [jobInfoLoading, setJobInfoLoading] = useState(false);
   const [allJobs, setAllJobs] = useState<{ jobId: string; title: string }[]>([]);
-  const [senderOptions, setSenderOptions] = useState<{ label: string; email: string }[]>([]);
   const [isGeneratingCalendly, setIsGeneratingCalendly] = useState(false);
 
   async function handleGenerateCalendlyLink() {
@@ -360,28 +376,6 @@ export default function ApplicantComposerModal({
     return () => { mounted = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicant?.id]);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const resp = await api.getUsers();
-        if (!mounted) return;
-        const items = Array.isArray((resp as any)?.items) ? (resp as any).items : Array.isArray(resp) ? resp : [];
-        const options = items
-          .map((u: any) => ({
-            label: String(u?.employee_name || u?.name || u?.username || "").trim(),
-            email: String(u?.employee_email || u?.email || "").trim(),
-          }))
-          .filter((x: any) => x.email)
-          .sort((a: any, b: any) => (a.label || a.email).localeCompare(b.label || b.email));
-        setSenderOptions(options);
-      } catch {}
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [api]);
 
   // init Materialize modal once
   useEffect(() => {
@@ -568,18 +562,18 @@ export default function ApplicantComposerModal({
     const richType = STAGE_TO_RICH_TYPE[stage];
     const docType = STAGE_TO_DOC_TYPE[stage];
 
-    if (stage === "Generic Interview") {
+    if (stage === "Generic Mailer") {
       const body = {
         type: "GENERIC",
         roleTitle: c.roleTitle || "",
         subjectOverride: c.genericSubject?.trim() || undefined,
         from: c.genericFrom || undefined,
-        cc: [...(c.genericCc || []), ...String(c.genericCcText || "").split(",").map((x) => x.trim()).filter(Boolean)],
+        cc: mergeEmailLists(c.genericCc || [], parseEmailList(c.genericCcText || "")),
         customBody: c.genericBody || "",
         customTextBody: c.genericBody || "",
         vars: c.vars_extraInfo?.trim()
-          ? { extraInfo: c.vars_extraInfo.trim(), kind: c.genericInterviewKind }
-          : { kind: c.genericInterviewKind },
+          ? { extraInfo: c.vars_extraInfo.trim(), mode: "generic_mail" }
+          : { mode: "generic_mail" },
         setStatus: c.setStatus?.trim() ? c.setStatus.trim() : undefined,
         attachments: attachments.length ? attachments : undefined,
       } as any;
@@ -776,15 +770,12 @@ export default function ApplicantComposerModal({
         return;
       }
 
-      if (composer.stage === "Generic Interview") {
+      if (composer.stage === "Generic Mailer") {
         if (!composer.genericBody.trim()) {
-          M?.toast?.({ html: "Generic interview body is required.", classes: "red" });
+          M?.toast?.({ html: "Generic mail body is required.", classes: "red" });
           return;
         }
-        const ccList = [
-          ...composer.genericCc,
-          ...String(composer.genericCcText || "").split(",").map((x) => x.trim()).filter(Boolean),
-        ];
+        const ccList = mergeEmailLists(composer.genericCc || [], parseEmailList(composer.genericCcText || ""));
         const body: any = {
           type: "GENERIC",
           roleTitle: composer.roleTitle.trim(),
@@ -793,10 +784,7 @@ export default function ApplicantComposerModal({
           subjectOverride: composer.genericSubject.trim() || undefined,
           customBody: composer.genericBody.trim(),
           customTextBody: composer.genericBody.trim(),
-          vars: {
-            ...(composer.vars_extraInfo.trim() ? { extraInfo: composer.vars_extraInfo.trim() } : {}),
-            kind: composer.genericInterviewKind,
-          },
+          vars: composer.vars_extraInfo.trim() ? { extraInfo: composer.vars_extraInfo.trim(), mode: "generic_mail" } : { mode: "generic_mail" },
           attachments: attachments.length ? attachments : undefined,
           setStatus: composer.setStatus.trim() ? composer.setStatus.trim() : undefined,
         };
@@ -1163,20 +1151,9 @@ export default function ApplicantComposerModal({
               </>
             )}
 
-            {stage === "Generic Interview" && (
+            {stage === "Generic Mailer" && (
               <>
                 <div className="row" style={{ marginBottom: 0 }}>
-                  <div className="input-field col s12 m6">
-                    <select
-                      className="browser-default"
-                      value={composer.genericInterviewKind}
-                      onChange={(e) => updateComposer({ genericInterviewKind: e.target.value as any })}
-                    >
-                      <option value="AI Interview">AI Interview</option>
-                      <option value="Tech Interview">Tech Interview</option>
-                    </select>
-                    <label className="active" style={{ position: "relative", top: -24 }}>Interview Type</label>
-                  </div>
                   <div className="input-field col s12 m6">
                     <select
                       className="browser-default"
@@ -1184,16 +1161,16 @@ export default function ApplicantComposerModal({
                       onChange={(e) => updateComposer({ genericFrom: e.target.value })}
                     >
                       <option value="">Select sender email</option>
-                      {senderOptions.map((s) => (
+                      {MAILER_SENDER_OPTIONS.map((s) => (
                         <option key={s.email} value={s.email}>{s.label ? `${s.label} <${s.email}>` : s.email}</option>
                       ))}
                     </select>
-                    <label className="active" style={{ position: "relative", top: -24 }}>from</label>
+                    <label className="active" style={{ position: "relative", top: -24 }}>From</label>
                   </div>
-                </div>
-                <div className="input-field">
-                  <input value={composer.genericSubject} onChange={(e) => updateComposer({ genericSubject: e.target.value })} />
-                  <label className="active">subject</label>
+                  <div className="input-field col s12 m6">
+                    <input value={composer.genericSubject} onChange={(e) => updateComposer({ genericSubject: e.target.value })} />
+                    <label className="active">subject</label>
+                  </div>
                 </div>
                 <div className="input-field">
                   <select
@@ -1205,7 +1182,7 @@ export default function ApplicantComposerModal({
                       updateComposer({ genericCc: selected });
                     }}
                   >
-                    {senderOptions.map((s) => (
+                    {MAILER_SENDER_OPTIONS.map((s) => (
                       <option key={s.email} value={s.email}>{s.label ? `${s.label} <${s.email}>` : s.email}</option>
                     ))}
                   </select>
@@ -1224,23 +1201,61 @@ export default function ApplicantComposerModal({
                   <label className="active">AI prompt</label>
                 </div>
                 <button type="button" className="btn waves-effect waves-light" onClick={async () => {
-                  const prompt = composer.genericPrompt || `Write a professional ${composer.genericInterviewKind.toLowerCase()} email for applicant ${applicant?.fullName || ""} (${toEmail}) for role ${composer.roleTitle || ""}. Include a subject line and the email body only, with no markdown.`;
+                  const prompt = composer.genericPrompt || `Write a professional generic mail for applicant ${applicant?.fullName || ""} (${toEmail}) for role ${composer.roleTitle || ""}. Keep it concise, polite, and plain text only. Output only the email body with no markdown.`;
                   try {
-                    const r = await fetch(`${API_BASE}/ai/chat/internal`, {
+                    const runId = `applicant_mail_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                    const postRes = await fetch(`${API_BASE}/ai/chat/internal`, {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${authToken}`,
                       },
                       body: JSON.stringify({
-                        clientId: `generic_interview_${Date.now()}`,
-                        requestId: `generic_interview_${Date.now()}`,
+                        clientId: runId,
+                        requestId: runId,
                         context: "internal",
                         question: prompt,
                       }),
                     });
-                    const data = await r.json().catch(() => ({}));
-                    const text = String(data?.reply || data?.resultPayload?.reply || data?.result || data?.message || "").trim();
+                    if (!postRes.ok) {
+                      const err = await postRes.json().catch(() => ({}));
+                      throw new Error(String(err?.error || err?.message || `HTTP ${postRes.status}`));
+                    }
+
+                    let attempts = 0;
+                    const text = await new Promise<string>((resolve, reject) => {
+                      const tick = async () => {
+                        attempts += 1;
+                        if (attempts > 60) {
+                          reject(new Error("Timed out waiting for AI response."));
+                          return;
+                        }
+                        try {
+                          const r = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(runId)}`, {
+                            headers: { Authorization: `Bearer ${authToken}` },
+                          });
+                          if (r.status === 404) {
+                            window.setTimeout(tick, 2000);
+                            return;
+                          }
+                          const data = await r.json().catch(() => ({}));
+                          const run = data?.run || {};
+                          const status = String(run?.status || "").toLowerCase();
+                          if (status === "done") {
+                            resolve(String(run?.resultPayload?.reply || run?.reply || run?.replySummary || "").trim());
+                          } else if (status === "error") {
+                            reject(new Error(String(run?.errorPayload?.error || run?.deniedReason || "AI run failed.")));
+                          } else {
+                            window.setTimeout(tick, 2000);
+                          }
+                        } catch (e: any) {
+                          if (attempts > 60) reject(e);
+                          else window.setTimeout(tick, 2000);
+                        }
+                      };
+                      tick();
+                    });
+
                     if (text) updateComposer({ genericBody: text });
                     else M?.toast?.({ html: "AI did not return a draft.", classes: "orange darken-2" });
                   } catch (e: any) {
