@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import AwardsStoryPanel from "./awards/AwardsStoryPanel";
-import AnalyticsInsightsPanel from "./AnalyticsInsightsPanel";
 
 type EventStatus = "AUTO" | "SCHEDULED" | "LIVE" | "ENDED";
 
@@ -1044,8 +1043,6 @@ export default function EventHero({
       </div>
 
       {showAwardsStory && <AwardsStoryPanel />}
-
-      <AnalyticsInsightsPanel />
     </div>
   );
 }
