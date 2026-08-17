@@ -1,6 +1,7 @@
 // src/pages/Admin.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { API_BASE } from "../api/config";
 import ActivityReport from "./ActivityReport";
 import type {
   ApiUser,
@@ -251,6 +252,7 @@ export default function Admin({
   initialTab?: AdminTab;
 } = {}) {
   const { api, user } = useAuth();
+  const authToken = String((user as any)?.token || "");
 
   const myRole = useMemo(() => getRoleLower(user), [user]);
   const isSuper = myRole === "super";
@@ -276,7 +278,7 @@ export default function Admin({
 
   const [composerEmployee, setComposerEmployee] = useState<ApiUser | null>(null);
   const [composerRoleTitle, setComposerRoleTitle] = useState("");
-  const [composerDocType, setComposerDocType] = useState<"EXPERIENCE" | "RECOMMENDATION">("EXPERIENCE");
+  const [composerDocType, setComposerDocType] = useState<"EXPERIENCE" | "RECOMMENDATION" | "TERMINATION">("EXPERIENCE");
   const [composerSubjectOverride, setComposerSubjectOverride] = useState(
     "Experience Certificate | Fluke Games"
   );
@@ -287,6 +289,8 @@ export default function Admin({
   const [peopleSkills, setPeopleSkills] = useState("");
   const [wordCount, setWordCount] = useState("220");
   const [recommendationBody, setRecommendationBody] = useState("");
+  const [terminationReason, setTerminationReason] = useState("");
+  const [terminationBody, setTerminationBody] = useState("");
   const [generatingRecommendation, setGeneratingRecommendation] = useState(false);
 
   const [dateStarted, setDateStarted] = useState("");
@@ -656,6 +660,82 @@ export default function Admin({
     }
   }
 
+  async function generateTerminationNow() {
+    if (!composerEmployee?.username) {
+      M.toast({ html: "Missing employee username.", classes: "red" });
+      return;
+    }
+    setGeneratingRecommendation(true);
+    try {
+      const prompt = [
+        "Write a professional employee termination letter for internal HR use.",
+        `Employee username: ${composerEmployee.username}`,
+        `Employee email: ${safeStr(composerEmployee.employee_email) || "N/A"}`,
+        `Role title: ${composerRoleTitle || "N/A"}`,
+        `Reason/context: ${safeStr(terminationReason) || "Provide a neutral, concise reason if not specified."}`,
+        "Tone: respectful, concise, and formal.",
+        "Output only the body of the letter in plain text, no markdown headings.",
+      ].join("\n");
+
+      const runId = `termination_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const postRes = await fetch(`${API_BASE}/ai/chat/internal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          clientId: runId,
+          requestId: runId,
+          context: "internal",
+          question: prompt,
+        }),
+      });
+      if (!postRes.ok) {
+        const err = await postRes.json().catch(() => ({}));
+        throw new Error(String(err?.error || err?.message || `HTTP ${postRes.status}`));
+      }
+
+      let attempts = 0;
+      const reply = await new Promise<string>((resolve, reject) => {
+        const tick = async () => {
+          attempts += 1;
+          if (attempts > 60) {
+            reject(new Error("Timed out waiting for AI response."));
+            return;
+          }
+          try {
+            const r = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(runId)}`, {
+              headers: { Authorization: `Bearer ${authToken}` },
+            });
+            if (r.status === 404) {
+              window.setTimeout(tick, 2000);
+              return;
+            }
+            const data = await r.json().catch(() => ({}));
+            const run = data?.run || {};
+            const status = String(run?.status || "").toLowerCase();
+            if (status === "done") {
+              resolve(String(run?.resultPayload?.reply || run?.reply || run?.replySummary || ""));
+            } else if (status === "error") {
+              reject(new Error(String(run?.errorPayload?.error || run?.deniedReason || "AI run failed.")));
+            } else {
+              window.setTimeout(tick, 2000);
+            }
+          } catch (e: any) {
+            if (attempts > 60) reject(e);
+            else window.setTimeout(tick, 2000);
+          }
+        };
+        tick();
+      });
+
+      setTerminationBody(reply);
+      M.toast({ html: "Termination draft generated.", classes: "green" });
+    } catch (e: any) {
+      M.toast({ html: e?.message || "Failed to generate termination", classes: "red" });
+    } finally {
+      setGeneratingRecommendation(false);
+    }
+  }
+
   async function sendNow() {
     if (!composerEmployee?.username) {
       M.toast({ html: "Missing employee username.", classes: "red" });
@@ -687,6 +767,12 @@ export default function Admin({
               RECOMMENDATION_BODY: recommendationBody.trim(),
             }
           : {}),
+        ...(composerDocType === "TERMINATION" && terminationReason.trim()
+          ? { terminationReason: terminationReason.trim(), TERMINATION_REASON: terminationReason.trim() }
+          : {}),
+        ...(composerDocType === "TERMINATION" && terminationBody.trim()
+          ? { terminationBody: terminationBody.trim(), TERMINATION_BODY: terminationBody.trim() }
+          : {}),
       };
 
       const body: SendEmployeeDocEmailBody = {
@@ -701,6 +787,8 @@ export default function Admin({
         peopleSkills: composerDocType === "RECOMMENDATION" ? peopleSkills.trim() || undefined : undefined,
         recommendationBody:
           composerDocType === "RECOMMENDATION" ? recommendationBody.trim() || undefined : undefined,
+        terminationReason: composerDocType === "TERMINATION" ? terminationReason.trim() || undefined : undefined,
+        terminationBody: composerDocType === "TERMINATION" ? terminationBody.trim() || undefined : undefined,
         vars: Object.keys(vars).length ? vars : undefined,
       };
 
@@ -1812,19 +1900,23 @@ export default function Admin({
                 className="browser-default"
                 value={composerDocType}
                 onChange={(e) => {
-                  const next = e.target.value as "EXPERIENCE" | "RECOMMENDATION";
+                  const next = e.target.value as "EXPERIENCE" | "RECOMMENDATION" | "TERMINATION";
                   setComposerDocType(next);
                   if (next === "EXPERIENCE") {
                     setComposerSubjectOverride("Experience Certificate | Fluke Games");
                     setComposerSetStatus("experience_sent");
-                  } else {
+                  } else if (next === "RECOMMENDATION") {
                     setComposerSubjectOverride("Letter of Recommendation | Fluke Games");
                     setComposerSetStatus("recommendation_sent");
+                  } else {
+                    setComposerSubjectOverride("Termination Letter | Fluke Games");
+                    setComposerSetStatus("termination_sent");
                   }
                 }}
               >
                 <option value="EXPERIENCE">EXPERIENCE</option>
                 <option value="RECOMMENDATION">RECOMMENDATION</option>
+                <option value="TERMINATION">TERMINATION</option>
               </select>
               <label className="active" style={{ position: "relative", top: -24 }}>
                 docType
@@ -1960,6 +2052,42 @@ export default function Admin({
                 <label className="active">Recommendation Draft (Editable)</label>
               </div>
             </>
+          ) : composerDocType === "TERMINATION" ? (
+            <>
+              <div className="input-field" style={{ marginTop: 8 }}>
+                <textarea
+                  className="materialize-textarea"
+                  value={terminationReason}
+                  onChange={(e) => setTerminationReason(e.target.value)}
+                  style={{ minHeight: 90 }}
+                  placeholder="Reason for termination, if you want it reflected in the draft."
+                />
+                <label className="active">Termination Reason</label>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginBottom: 4 }}>
+                <button
+                  type="button"
+                  className={`btn ${generatingRecommendation ? "disabled" : ""}`}
+                  disabled={generatingRecommendation}
+                  onClick={generateTerminationNow}
+                >
+                  <i className="material-icons left">{generatingRecommendation ? "hourglass_empty" : "auto_awesome"}</i>
+                  {generatingRecommendation ? "Generating..." : "Generate Termination"}
+                </button>
+              </div>
+
+              <div className="input-field" style={{ marginTop: 8 }}>
+                <textarea
+                  className="materialize-textarea"
+                  value={terminationBody}
+                  onChange={(e) => setTerminationBody(e.target.value)}
+                  style={{ minHeight: 220 }}
+                  placeholder="Generated termination letter will appear here. You can edit it before sending."
+                />
+                <label className="active">Termination Draft (Editable)</label>
+              </div>
+            </>
           ) : null}
 
           <div className="input-field" style={{ marginTop: 10 }}>
@@ -1989,6 +2117,12 @@ export default function Admin({
           peopleSkills: peopleSkills.trim(),
           wordCount: Number(wordCount || "220"),
           recommendationBody: recommendationBody.trim(),
+        }
+      : {}),
+    ...(composerDocType === "TERMINATION"
+      ? {
+          terminationReason: terminationReason.trim(),
+          terminationBody: terminationBody.trim(),
         }
       : {}),
     ...(extraInfo.trim()
