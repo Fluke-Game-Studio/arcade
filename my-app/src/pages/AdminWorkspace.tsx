@@ -3,8 +3,9 @@ import { useAuth } from "../auth/AuthContext";
 import AdminMailerComposerModal from "../components/AdminMailerComposerModal";
 import ActivityReport from "./ActivityReport";
 import EmployeeExplorerPanel from "../components/admin/EmployeeExplorerPanel";
+import AnalyticsInsightsPanel from "../components/AnalyticsInsightsPanel";
 
-type TabKey = "activity" | "employees";
+type TabKey = "activity" | "employees" | "analytics";
 type EmployeeScope = "all" | "team";
 
 export default function AdminWorkspace({
@@ -75,6 +76,27 @@ export default function AdminWorkspace({
               {employeeScope === "team" ? "My Team" : "Each Employee"}
             </span>
           </button>
+          {employeeScope !== "team" && (
+            <button
+              type="button"
+              onClick={() => setTab("analytics")}
+              style={{
+                border: "none",
+                cursor: "pointer",
+                borderRadius: 999,
+                padding: "8px 14px",
+                fontWeight: 1000,
+                fontSize: 12,
+                background: tab === "analytics" ? "rgba(168,85,247,.16)" : "transparent",
+                color: tab === "analytics" ? "#7e22ce" : "#334155",
+              }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <i className="material-icons" style={{ fontSize: 16 }}>query_stats</i>
+                Analytics
+              </span>
+            </button>
+          )}
         </div>
 
         {employeeScope !== "team" ? (
@@ -97,6 +119,12 @@ export default function AdminWorkspace({
       <div style={{ display: tab === "employees" ? "block" : "none", width: "100%" }}>
         <EmployeeExplorerPanel currentUser={user} scope={employeeScope} />
       </div>
+
+      {employeeScope !== "team" && (
+        <div style={{ display: tab === "analytics" ? "block" : "none", width: "100%" }}>
+          <AnalyticsInsightsPanel />
+        </div>
+      )}
       {employeeScope !== "team" ? (
         <AdminMailerComposerModal
           api={api}

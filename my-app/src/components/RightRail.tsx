@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import MyActivitySummary from "./MyActivitySummary";
+import QuickActionsMini from "./QuickActionsMini";
 
 type PersonRow = {
   key: string;
@@ -143,7 +145,13 @@ export default function RightRail() {
 
   return (
     <div className="sticky-panel">
-      <div className="card z-depth-1" style={{ borderRadius: 18, overflow: "hidden" }}>
+      <MyActivitySummary />
+
+      <div style={{ marginTop: 12 }}>
+        <QuickActionsMini />
+      </div>
+
+      <div className="card z-depth-1" style={{ marginTop: 12, borderRadius: 18, overflow: "hidden" }}>
         <div style={{ padding: 14, borderBottom: "1px solid #edf2f7", background: "linear-gradient(135deg, #ffffff 0%, #fbfdff 60%, #f7fafc 100%)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div>
