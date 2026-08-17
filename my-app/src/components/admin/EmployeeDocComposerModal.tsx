@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiUser } from "../../api";
 import { API_BASE } from "../../api/config";
+import { useAuth } from "../../auth/AuthContext";
 
 declare const M: any;
 
@@ -106,6 +107,7 @@ function formatPreview(state: ReturnType<typeof initialState>, username: string,
 }
 
 export default function EmployeeDocComposerModal({ api, open, onClose, employee }: Props) {
+  const { user } = useAuth() as any;
   const modalRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
   const [sending, setSending] = useState(false);
@@ -115,6 +117,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
 
   const employeeUsername = safeStr(employee?.username);
   const employeeEmail = safeStr(employee?.employee_email);
+  const authToken = String(user?.token || "").trim();
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -217,7 +220,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${String((api as any)?.token || "")}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           clientId: runId,
@@ -241,7 +244,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
           }
           try {
             const r = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(runId)}`, {
-              headers: { Authorization: `Bearer ${String((api as any)?.token || "")}` },
+              headers: { Authorization: `Bearer ${authToken}` },
             });
             if (r.status === 404) {
               window.setTimeout(tick, 2000);
