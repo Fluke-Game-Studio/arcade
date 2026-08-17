@@ -435,6 +435,53 @@ export default function Applicants() {
         .fg-filter-dates { grid-template-columns: 1fr; }
         .fg-filter-actions { justify-content: flex-start; }
       }
+
+      /* Mobile applicant list: normal vertical scroll, one card per applicant —
+         replaces Materialize's responsive-table row/column transposition, which
+         reads as a confusing side-scroll on narrow screens. */
+      .fg-applicant-cards { display: none; }
+      @media (max-width: 700px) {
+        .fg-month-table-wrap { display: none; }
+        .fg-applicant-cards { display: grid; gap: 10px; }
+      }
+      .fg-app-card {
+        border-radius: 16px;
+        border: 1px solid rgba(0,0,0,0.08);
+        background: #fff;
+        padding: 14px;
+      }
+      .fg-app-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .fg-app-row {
+        display: grid;
+        grid-template-columns: 82px minmax(0, 1fr);
+        gap: 10px;
+        padding: 7px 0;
+        border-top: 1px solid rgba(0,0,0,0.06);
+        align-items: baseline;
+      }
+      .fg-app-row:first-of-type { border-top: none; }
+      .fg-app-row .fg-app-label {
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+        color: #94a3b8;
+        letter-spacing: 0.4px;
+      }
+      .fg-app-row .fg-app-value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .fg-app-actions {
+        margin-top: 12px;
+        display: flex;
+        gap: 8px;
+      }
     `}</style>
   );
 
@@ -865,7 +912,7 @@ export default function Applicants() {
 
                     <div className="fg-month-body">
                       <div className="fg-month-table-wrap">
-                        <table className="highlight responsive-table" style={{ margin: 0 }}>
+                        <table className="highlight" style={{ margin: 0 }}>
                           <thead>
                             <tr>
                               <th className="fg-th" onClick={() => toggleSort("name")}>Name {sortTriangle(sortKey === "name", sortDir)}</th>
@@ -926,6 +973,70 @@ export default function Applicants() {
                             })}
                           </tbody>
                         </table>
+                      </div>
+
+                      <div className="fg-applicant-cards">
+                        {group.items.map((r) => {
+                          const stageGuess = guessStageFromStatus(r.status);
+                          return (
+                            <div key={r.id} className="fg-app-card">
+                              <div className="fg-app-card-head">
+                                <b style={{ fontWeight: 1100, fontSize: 15 }}>{r.name || "—"}</b>
+                                <StatusPill status={r.status || "—"} stageGuess={stageGuess} />
+                              </div>
+
+                              <div className="fg-app-row">
+                                <span className="fg-app-label">Email</span>
+                                <code className="fg-app-value">{r.email || "—"}</code>
+                              </div>
+                              <div className="fg-app-row">
+                                <span className="fg-app-label">Role</span>
+                                <span className="fg-app-value">
+                                  <div style={{ fontWeight: 1000 }}>{r.roleTitle || "—"}</div>
+                                  {r.roleId ? <div className="grey-text" style={{ fontSize: 12 }}>{r.roleId}</div> : null}
+                                </span>
+                              </div>
+                              <div className="fg-app-row">
+                                <span className="fg-app-label">Gender</span>
+                                <span className="fg-app-value grey-text" style={{ fontWeight: 900 }}>{r.gender || "—"}</span>
+                              </div>
+                              <div className="fg-app-row">
+                                <span className="fg-app-label">Submitted</span>
+                                <span className="fg-app-value grey-text" style={{ fontWeight: 900 }}>
+                                  {fmtDate(r.submittedAt || r.createdAt)}
+                                </span>
+                              </div>
+
+                              <div className="fg-app-actions">
+                                <button
+                                  className="btn-small grey darken-2 fg-btn"
+                                  onClick={() => onView(r)}
+                                  title="View applicant"
+                                  aria-label="View applicant"
+                                  style={{ flex: 1 }}
+                                >
+                                  <i className="material-icons left" style={{ fontSize: 18 }}>visibility</i>
+                                  View
+                                </button>
+                                <button
+                                  className="btn-small blue darken-2 fg-btn"
+                                  onClick={() => {
+                                    setShareApplicantId(r.id);
+                                    setShareApplicantName(r.name);
+                                    setShareApplicantEmail(r.email);
+                                    setShareOpen(true);
+                                  }}
+                                  title="Share applicant"
+                                  aria-label="Share applicant"
+                                  style={{ flex: 1 }}
+                                >
+                                  <i className="material-icons left" style={{ fontSize: 18 }}>share</i>
+                                  Share
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </details>
