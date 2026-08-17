@@ -1197,11 +1197,20 @@ export default function ApplicantComposerModal({
                   <label className="active">cc (comma separated)</label>
                 </div>
                 <div className="input-field">
-                  <input value={composer.genericPrompt} onChange={(e) => updateComposer({ genericPrompt: e.target.value })} placeholder="AI prompt for the draft" />
+                  <input value={composer.genericPrompt} onChange={(e) => updateComposer({ genericPrompt: e.target.value })} placeholder="Optional notes for the draft" />
                   <label className="active">AI prompt</label>
                 </div>
                 <button type="button" className="btn waves-effect waves-light" onClick={async () => {
-                  const prompt = composer.genericPrompt || `Write a professional generic mail for applicant ${applicant?.fullName || ""} (${toEmail}) for role ${composer.roleTitle || ""}. Keep it concise, polite, and plain text only. Output only the email body with no markdown.`;
+                  const notes = String(composer.genericPrompt || "").trim();
+                  const prompt = [
+                    "You are drafting a generic professional email for a studio applicant.",
+                    "Do not mention Fluke AI, do not ask follow-up questions, and do not explain your reasoning.",
+                    "Write ONLY the email body in plain text.",
+                    "No subject line, no markdown, no bullet points, no preface.",
+                    `Recipient: ${applicant?.fullName || "Applicant"} (${toEmail})`,
+                    `Role: ${composer.roleTitle || "N/A"}`,
+                    notes ? `Notes from user: ${notes}` : "Notes from user: keep it polite, concise, and generic.",
+                  ].join("\n");
                   try {
                     const runId = `applicant_mail_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
                     const postRes = await fetch(`${API_BASE}/ai/chat/internal`, {
