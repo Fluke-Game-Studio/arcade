@@ -1,9 +1,7 @@
 ﻿// src/pages/Home.tsx
 import { useEffect, useMemo, useState } from "react";
-import ProfileCard from "../components/ProfileCard";
 import RightRail from "../components/RightRail";
 import EventHero from "../components/EventHero";
-import EmployeeActions from "../components/EmployeeActions";
 import ReleaseHighlightsPanel, {
   DEFAULT_RELEASE_NOTES,
   DEFAULT_RELEASE_VERSION,
@@ -691,16 +689,8 @@ export default function Home() {
 
       <div className="portalWrap" style={{ width: "100%", maxWidth: "none" }}>
         <div className="row portalGridGap">
-          {/* LEFT */}
-          <div className="col s12 m3">
-            <div className="stack stickyCol">
-              <ProfileCard />
-              <EmployeeActions />
-            </div>
-          </div>
-
           {/* CENTER */}
-          <div className="col s12 m6">
+          <div className="col s12 m8">
             <div className="stackTight">
               <EventHero events={quarterEvents} autoRotateMs={8000} />
 
@@ -846,7 +836,7 @@ export default function Home() {
           </div>
 
           {/* RIGHT */}
-          <div className="col s12 m3">
+          <div className="col s12 m4">
             <div className="stickyCol">
               <RightRail />
             </div>

@@ -1,0 +1,42 @@
+/* Navbar responsive tiers — orientation-based, not just width-based.
+   - Portrait (phone portrait, iPad portrait, fold cover screen): classic hamburger + slide-out drawer.
+   - Landscape (phone landscape, tablet/iPad landscape, unfolded fold screens, wide windows): persistent icon rail. */
+
+.nav-rail {
+  display: none;
+}
+.nav-portrait-actions {
+  display: none;
+}
+.nav-landscape-actions {
+  display: none;
+}
+/* Brand mark: top bar in portrait (no rail to hold it), rail header in landscape */
+.nav-logo {
+  display: none;
+}
+
+@media (orientation: portrait) {
+  .nav-portrait-actions {
+    display: flex;
+  }
+  .nav-logo {
+    display: inline-flex;
+  }
+}
+
+@media (orientation: landscape) {
+  .nav-rail {
+    display: flex;
+  }
+  .nav-landscape-actions {
+    display: flex;
+  }
+  /* Push page content over so it doesn't sit under the fixed rail.
+     min-width is reset here so the padding doesn't force horizontal
+     overflow on narrow-landscape screens. */
+  body {
+    padding-left: 64px;
+    min-width: 0;
+  }
+}

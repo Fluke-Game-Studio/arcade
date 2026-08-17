@@ -4,6 +4,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getDirectReports } from "../utils/employeeHierarchy";
 import NotificationBell from "./NotificationBell";
+import "./Navbar.css";
 
 declare const M: any;
 
@@ -20,6 +21,34 @@ type MenuGroup = {
   show: boolean;
 };
 
+const RAIL_W = 64;
+
+const GROUP_ICON: Record<string, string> = {
+  organisation: "apartment",
+  admin: "admin_panel_settings",
+  super: "bolt",
+};
+
+const LINK_ICON: Record<string, string> = {
+  Home: "home",
+  "My Account": "account_circle",
+  Login: "login",
+};
+
+function safeStr(v: any) {
+  if (v === null || v === undefined) return "";
+  return String(v).trim();
+}
+
+function initials(nameOrUser: string) {
+  const s = safeStr(nameOrUser);
+  if (!s) return "FG";
+  const parts = s.split(/\s+/).filter(Boolean);
+  const a = (parts[0]?.[0] || "").toUpperCase();
+  const b = (parts[1]?.[0] || parts[0]?.[1] || "").toUpperCase();
+  return (a + b) || "FG";
+}
+
 export default function Navbar() {
   const { user, logout, api } = useAuth();
   const navigate = useNavigate();
@@ -35,9 +64,10 @@ export default function Navbar() {
 
   const sidenavRef = useRef<HTMLUListElement | null>(null);
   const dropdownRootRef = useRef<HTMLDivElement | null>(null);
+  const railRootRef = useRef<HTMLDivElement | null>(null);
 
   const [scrolled, setScrolled] = useState(false);
-  const [openDesktopMenu, setOpenDesktopMenu] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hasTeamMembers, setHasTeamMembers] = useState(false);
   const [teamCheckReady, setTeamCheckReady] = useState(false);
   const [adminQueueCount, setAdminQueueCount] = useState(0);
@@ -60,10 +90,10 @@ export default function Navbar() {
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
-      if (!dropdownRootRef.current) return;
-      if (!dropdownRootRef.current.contains(e.target as Node)) {
-        setOpenDesktopMenu(null);
-      }
+      const target = e.target as Node;
+      const inNav = dropdownRootRef.current?.contains(target);
+      const inRail = railRootRef.current?.contains(target);
+      if (!inNav && !inRail) setOpenMenu(null);
     };
 
     document.addEventListener("mousedown", onDocClick);
@@ -71,7 +101,7 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    setOpenDesktopMenu(null);
+    setOpenMenu(null);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -146,6 +176,17 @@ export default function Navbar() {
   const displayName = user?.name || user?.username || "";
   const initial = (displayName || "U").slice(0, 1).toUpperCase();
 
+  // Profile summary shown in the navbar chip's dropdown (moved off the Home dashboard card).
+  const profileEmail = safeStr((user as any)?.employee_email) || "—";
+  const profileTitle = safeStr((user as any)?.employee_title) || "";
+  const profileDept = safeStr((user as any)?.department) || "";
+  const profileEmpType = safeStr((user as any)?.employment_type) || "";
+  const profileLocation = safeStr((user as any)?.location) || "";
+  const profilePhone = safeStr((user as any)?.employee_phonenumber) || "";
+  const profileUsername = safeStr(user?.username) || "";
+  const profileAvatarUrl = safeStr((user as any)?.employee_profilepicture || (user as any)?.employee_picture);
+  const profileInitials = initials(displayName);
+
   const baseLinks = useMemo<LinkItem[]>(() => {
     if (!isAuthenticated) return [{ to: `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`, label: "Login" }];
     return [
@@ -179,15 +220,15 @@ export default function Navbar() {
       key: "admin",
       label: "Admin",
       show: isAdminish,
-          items: [
+      items: [
         { to: "/admin", label: "Admin Dashboard" },
         { to: "/admin/customers", label: "Customers" },
         { to: "/applicants", label: "Applicants" },
         { to: "/admin/jobs", label: "Jobs Admin" },
         { to: "/admin/social-media-admin", label: "Social Media Admin", badge: adminQueueCount || undefined },
-        ],
-      }),
-    [isAdminish]
+      ],
+    }),
+    [adminQueueCount, isAdminish]
   );
 
   const superGroup = useMemo<MenuGroup>(
@@ -207,57 +248,27 @@ export default function Navbar() {
     [isSuper]
   );
 
+  const groups = [organisationGroup, adminGroup, superGroup];
+
   const isRouteActive = (to: string) =>
     location.pathname === to || location.pathname.startsWith(`${to}/`);
 
   const isGroupActive = (group: MenuGroup) => group.items.some((x) => isRouteActive(x.to));
+  const groupHasBadge = (group: MenuGroup) => group.items.some((x) => (x.badge || 0) > 0);
 
   const topBarGlow = scrolled
     ? "0 10px 30px rgba(0,0,0,0.34), 0 0 0 1px rgba(96,165,250,0.05)"
     : "0 8px 24px rgba(0,0,0,0.20), 0 0 0 1px rgba(96,165,250,0.04)";
 
-  const desktopLinkStyle = (isActive: boolean): CSSProperties => ({
+  const iconBtnStyle = (isActive: boolean, isOpen: boolean): CSSProperties => ({
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    width: 44,
     height: 44,
-    padding: "0 16px",
-    borderRadius: 14,
-    textDecoration: "none",
-    color: isActive ? "#f8fbff" : "rgba(219,234,254,0.88)",
-    fontSize: 13,
-    fontWeight: isActive ? 900 : 800,
-    letterSpacing: 0.55,
-    textTransform: "uppercase",
-    background: isActive
-      ? "linear-gradient(180deg, rgba(34,211,238,0.22), rgba(59,130,246,0.16) 55%, rgba(168,85,247,0.14))"
-      : "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))",
-    border: isActive
-      ? "1px solid rgba(56,189,248,0.34)"
-      : "1px solid rgba(148,163,184,0.08)",
-    boxShadow: isActive
-      ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 24px rgba(59,130,246,0.14)"
-      : "inset 0 1px 0 rgba(255,255,255,0.03)",
-    transition: "all 180ms ease",
-    overflow: "hidden",
-    whiteSpace: "nowrap",
-  });
-
-  const desktopDropdownButtonStyle = (isActive: boolean, isOpen: boolean): CSSProperties => ({
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 44,
-    padding: "0 16px",
     borderRadius: 14,
     color: isActive || isOpen ? "#f8fbff" : "rgba(219,234,254,0.88)",
-    fontSize: 13,
-    fontWeight: isActive || isOpen ? 900 : 800,
-    letterSpacing: 0.55,
-    textTransform: "uppercase",
     background:
       isActive || isOpen
         ? "linear-gradient(180deg, rgba(34,211,238,0.22), rgba(59,130,246,0.16) 55%, rgba(168,85,247,0.14))"
@@ -272,87 +283,268 @@ export default function Navbar() {
         : "inset 0 1px 0 rgba(255,255,255,0.03)",
     transition: "all 180ms ease",
     cursor: "pointer",
-    whiteSpace: "nowrap",
-    userSelect: "none",
-    outline: "none",
+    textDecoration: "none",
   });
 
-  const TopLink = (props: { to: string; label: string }) => (
-    <li style={{ display: "flex", alignItems: "center" }}>
-      <NavLink to={props.to} style={({ isActive }) => desktopLinkStyle(isActive)}>
-        <span
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            background:
-              "linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)",
-            opacity: 0.5,
-          }}
-        />
-        <span style={{ position: "relative", zIndex: 1 }}>{props.label}</span>
-      </NavLink>
-    </li>
+  const railBtnStyle = (isActive: boolean, isOpen: boolean): CSSProperties => ({
+    ...iconBtnStyle(isActive, isOpen),
+    width: 46,
+    height: 46,
+  });
+
+  // Glass "console" pill that groups the bell + profile chip into one designed
+  // cluster instead of two icons floating loose on the bare nav background.
+  const actionsPillStyle: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: 6,
+    borderRadius: 999,
+    background: "linear-gradient(180deg, rgba(11,18,31,0.85), rgba(8,14,24,0.80))",
+    border: "1px solid rgba(56,189,248,0.14)",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05)",
+  };
+
+  const badgeDot: CSSProperties = {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg,#ef4444,#f97316)",
+    boxShadow: "0 0 8px rgba(239,68,68,.5)",
+  };
+
+  const DropdownPanel = ({ group, open }: { group: MenuGroup; open: boolean }) => (
+    <div
+      onMouseEnter={() => setOpenMenu(group.key)}
+      onMouseLeave={() => setOpenMenu((prev) => (prev === group.key ? null : prev))}
+      style={{
+        position: "absolute",
+        left: "calc(100% + 12px)",
+        top: 0,
+        minWidth: 260,
+        padding: 10,
+        borderRadius: 20,
+        background: "linear-gradient(180deg, rgba(8,14,24,0.98), rgba(10,18,34,0.97))",
+        border: "1px solid rgba(56,189,248,0.18)",
+        boxShadow:
+          "0 24px 70px rgba(0,0,0,0.50), 0 0 0 1px rgba(168,85,247,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+        backdropFilter: "blur(18px)",
+        WebkitBackdropFilter: "blur(18px)",
+        opacity: open ? 1 : 0,
+        transform: open ? "translate(0,0) scale(1)" : "translateX(-8px) scale(0.985)",
+        pointerEvents: open ? "auto" : "none",
+        transition: "all 180ms ease",
+        zIndex: 1300,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: -8,
+          top: 20,
+          width: 16,
+          height: 16,
+          transform: "rotate(45deg)",
+          background: "rgba(9,15,27,0.98)",
+          borderLeft: "1px solid rgba(56,189,248,0.18)",
+          borderBottom: "1px solid rgba(56,189,248,0.18)",
+        }}
+      />
+
+      <div
+        style={{
+          padding: "8px 10px 10px",
+          fontSize: 10,
+          fontWeight: 900,
+          letterSpacing: 1.3,
+          textTransform: "uppercase",
+          color: "rgba(125,211,252,0.82)",
+        }}
+      >
+        {group.label} Systems
+      </div>
+
+      {group.items.map((item) => {
+        const itemActive = isRouteActive(item.to);
+        return (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            onClick={() => setOpenMenu(null)}
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "13px 14px",
+              borderRadius: 14,
+              textDecoration: "none",
+              color: itemActive ? "#ffffff" : "rgba(226,232,240,0.90)",
+              fontWeight: itemActive ? 900 : 800,
+              fontSize: 13,
+              marginBottom: 6,
+              background: itemActive
+                ? "linear-gradient(135deg, rgba(6,182,212,0.22), rgba(37,99,235,0.16), rgba(168,85,247,0.14))"
+                : "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))",
+              border: itemActive
+                ? "1px solid rgba(56,189,248,0.25)"
+                : "1px solid rgba(148,163,184,0.07)",
+              boxShadow: itemActive
+                ? "0 0 22px rgba(59,130,246,0.12), inset 0 1px 0 rgba(255,255,255,0.06)"
+                : "inset 0 1px 0 rgba(255,255,255,0.03)",
+              transition: "all 160ms ease",
+              overflow: "hidden",
+            }}
+          >
+            <span
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent)",
+                opacity: 0.55,
+              }}
+            />
+            <span style={{ position: "relative", zIndex: 1 }}>{item.label}</span>
+            {typeof item.badge === "number" && item.badge > 0 ? (
+              <span
+                style={{
+                  position: "relative",
+                  zIndex: 1,
+                  minWidth: 22,
+                  height: 22,
+                  padding: "0 7px",
+                  borderRadius: 999,
+                  background: "linear-gradient(135deg,#ef4444,#f97316)",
+                  color: "#fff",
+                  fontSize: 11,
+                  fontWeight: 950,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 8px 18px rgba(239,68,68,.22)",
+                }}
+              >
+                {item.badge}
+              </span>
+            ) : null}
+            <i className="material-icons" style={{ position: "relative", zIndex: 1, fontSize: 17, opacity: 0.78 }}>
+              chevron_right
+            </i>
+          </NavLink>
+        );
+      })}
+    </div>
   );
 
-  const DesktopDropdown = ({ group }: { group: MenuGroup }) => {
+  const RailLinkItem = ({ to, label }: { to: string; label: string }) => (
+    <NavLink to={to} title={label} aria-label={label} style={({ isActive }) => railBtnStyle(isActive, false)}>
+      <i className="material-icons" style={{ fontSize: 22 }}>
+        {LINK_ICON[label] || "circle"}
+      </i>
+    </NavLink>
+  );
+
+  const RailGroupTrigger = ({ group }: { group: MenuGroup }) => {
     if (!group.show) return null;
 
     const active = isGroupActive(group);
-    const open = openDesktopMenu === group.key;
+    const open = openMenu === group.key;
 
     return (
-      <li
-        style={{
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-        }}
-        onMouseEnter={() => setOpenDesktopMenu(group.key)}
-      >
+      <div style={{ position: "relative" }}>
         <button
           type="button"
-          onClick={() => setOpenDesktopMenu((prev) => (prev === group.key ? null : group.key))}
-          style={desktopDropdownButtonStyle(active, open)}
+          onClick={() => setOpenMenu((prev) => (prev === group.key ? null : group.key))}
+          title={group.label}
+          aria-label={group.label}
+          style={railBtnStyle(active, open)}
         >
+          <i className="material-icons" style={{ fontSize: 22 }}>
+            {GROUP_ICON[group.key] || "apps"}
+          </i>
+          {groupHasBadge(group) && <span style={badgeDot} />}
+        </button>
+
+        <DropdownPanel group={group} open={open} />
+      </div>
+    );
+  };
+
+  const ProfileChip = () => {
+    if (!isAuthenticated) return null;
+    const open = openMenu === "profile";
+
+    return (
+      <div style={{ position: "relative" }}>
+        <button
+          type="button"
+          onClick={() => setOpenMenu((prev) => (prev === "profile" ? null : "profile"))}
+          title={displayName}
+          aria-label="Profile"
+          style={{
+            position: "relative",
+            display: "inline-flex",
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            padding: 0,
+            border: open
+              ? "2px solid rgba(56,189,248,0.65)"
+              : "2px solid rgba(56,189,248,0.22)",
+            background: "rgba(255,255,255,0.04)",
+            cursor: "pointer",
+            overflow: "hidden",
+            boxShadow: open ? "0 0 20px rgba(56,189,248,0.25)" : "none",
+            transition: "all 180ms ease",
+          }}
+        >
+          {profileAvatarUrl ? (
+            <img src={profileAvatarUrl} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <span
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "linear-gradient(135deg, rgba(6,182,212,1), rgba(37,99,235,1), rgba(168,85,247,1))",
+                color: "white",
+                fontWeight: 900,
+                fontSize: 13,
+              }}
+            >
+              {profileInitials}
+            </span>
+          )}
           <span
             style={{
               position: "absolute",
-              inset: 0,
-              pointerEvents: "none",
-              background:
-                "linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)",
-              opacity: 0.5,
+              right: 1,
+              bottom: 1,
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              background: "#22c55e",
+              border: "2px solid rgba(7,14,26,0.95)",
             }}
           />
-          <span style={{ position: "relative", zIndex: 1 }}>{group.label}</span>
-          <i
-            className="material-icons"
-            style={{
-              position: "relative",
-              zIndex: 1,
-              fontSize: 18,
-              opacity: 0.9,
-              transform: open ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 180ms ease",
-            }}
-          >
-            expand_more
-          </i>
         </button>
 
         <div
-          onMouseEnter={() => setOpenDesktopMenu(group.key)}
-          onMouseLeave={() => setOpenDesktopMenu((prev) => (prev === group.key ? null : prev))}
           style={{
             position: "absolute",
             top: "calc(100% + 12px)",
-            left: 0,
-            minWidth: 260,
-            padding: 10,
+            right: 0,
+            width: "min(280px, calc(100vw - 24px))",
+            padding: 16,
             borderRadius: 20,
-            background:
-              "linear-gradient(180deg, rgba(8,14,24,0.98), rgba(10,18,34,0.97))",
+            background: "linear-gradient(180deg, rgba(8,14,24,0.98), rgba(10,18,34,0.97))",
             border: "1px solid rgba(56,189,248,0.18)",
             boxShadow:
               "0 24px 70px rgba(0,0,0,0.50), 0 0 0 1px rgba(168,85,247,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
@@ -365,110 +557,150 @@ export default function Navbar() {
             zIndex: 1300,
           }}
         >
-          <div
-            style={{
-              position: "absolute",
-              top: -8,
-              left: 24,
-              width: 16,
-              height: 16,
-              transform: "rotate(45deg)",
-              background: "rgba(9,15,27,0.98)",
-              borderLeft: "1px solid rgba(56,189,248,0.18)",
-              borderTop: "1px solid rgba(56,189,248,0.18)",
-            }}
-          />
-
-          <div
-            style={{
-              padding: "8px 10px 10px",
-              fontSize: 10,
-              fontWeight: 900,
-              letterSpacing: 1.3,
-              textTransform: "uppercase",
-              color: "rgba(125,211,252,0.82)",
-            }}
-          >
-            {group.label} Systems
-          </div>
-
-          {group.items.map((item) => {
-            const itemActive = isRouteActive(item.to);
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={() => setOpenDesktopMenu(null)}
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  padding: "13px 14px",
-                  borderRadius: 14,
-                  textDecoration: "none",
-                  color: itemActive ? "#ffffff" : "rgba(226,232,240,0.90)",
-                  fontWeight: itemActive ? 900 : 800,
-                  fontSize: 13,
-                  marginBottom: 6,
-                  background: itemActive
-                    ? "linear-gradient(135deg, rgba(6,182,212,0.22), rgba(37,99,235,0.16), rgba(168,85,247,0.14))"
-                    : "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))",
-                  border: itemActive
-                    ? "1px solid rgba(56,189,248,0.25)"
-                    : "1px solid rgba(148,163,184,0.07)",
-                  boxShadow: itemActive
-                    ? "0 0 22px rgba(59,130,246,0.12), inset 0 1px 0 rgba(255,255,255,0.06)"
-                    : "inset 0 1px 0 rgba(255,255,255,0.03)",
-                  transition: "all 160ms ease",
-                  overflow: "hidden",
-                }}
-              >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                overflow: "hidden",
+                flexShrink: 0,
+                border: "2px solid rgba(56,189,248,0.3)",
+              }}
+            >
+              {profileAvatarUrl ? (
+                <img src={profileAvatarUrl} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
                 <span
                   style={{
-                    position: "absolute",
-                    inset: 0,
-                    pointerEvents: "none",
-                    background:
-                      "linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent)",
-                    opacity: 0.55,
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "linear-gradient(135deg, rgba(6,182,212,1), rgba(37,99,235,1), rgba(168,85,247,1))",
+                    color: "white",
+                    fontWeight: 900,
+                    fontSize: 15,
                   }}
-                />
-                <span style={{ position: "relative", zIndex: 1 }}>{item.label}</span>
-                {typeof item.badge === "number" && item.badge > 0 ? (
+                >
+                  {profileInitials}
+                </span>
+              )}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  color: "#f8fbff",
+                  fontWeight: 900,
+                  fontSize: 14,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {displayName}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 900,
+                    letterSpacing: 0.6,
+                    textTransform: "uppercase",
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.08)",
+                    color: "rgba(226,232,240,0.9)",
+                  }}
+                >
+                  {roleLower}
+                </span>
+                {profileDept && (
                   <span
                     style={{
-                      position: "relative",
-                      zIndex: 1,
-                      minWidth: 22,
-                      height: 22,
-                      padding: "0 7px",
+                      fontSize: 10,
+                      fontWeight: 900,
+                      letterSpacing: 0.6,
+                      textTransform: "uppercase",
+                      padding: "3px 8px",
                       borderRadius: 999,
-                      background: "linear-gradient(135deg,#ef4444,#f97316)",
-                      color: "#fff",
-                      fontSize: 11,
-                      fontWeight: 950,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      boxShadow: "0 8px 18px rgba(239,68,68,.22)",
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.08)",
+                      color: "rgba(226,232,240,0.9)",
                     }}
                   >
-                    {item.badge}
+                    {profileDept}
                   </span>
-                ) : null}
-                <i
-                  className="material-icons"
-                  style={{ position: "relative", zIndex: 1, fontSize: 17, opacity: 0.78 }}
-                >
-                  chevron_right
-                </i>
-              </NavLink>
-            );
-          })}
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+              <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>alternate_email</i>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileEmail}</span>
+            </div>
+            {profileTitle && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>work</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileTitle}</span>
+              </div>
+            )}
+            {profileLocation && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>location_on</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileLocation}</span>
+              </div>
+            )}
+            {profilePhone && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>call</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profilePhone}</span>
+              </div>
+            )}
+            {profileEmpType && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>business_center</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileEmpType}</span>
+              </div>
+            )}
+            {profileUsername && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>person</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileUsername}</span>
+              </div>
+            )}
+          </div>
+
+          <NavLink
+            to="/account"
+            onClick={() => setOpenMenu(null)}
+            style={{
+              marginTop: 14,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              height: 38,
+              borderRadius: 12,
+              textDecoration: "none",
+              color: "#f8fbff",
+              fontWeight: 900,
+              fontSize: 12.5,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <i className="material-icons" style={{ fontSize: 16 }}>account_circle</i>
+            My Account
+          </NavLink>
         </div>
-      </li>
+      </div>
     );
   };
 
@@ -550,9 +782,9 @@ export default function Navbar() {
           height: NAV_H,
           lineHeight: "normal",
           background: scrolled
-            ? "linear-gradient(180deg, rgba(4,8,15,0.96), rgba(7,12,22,0.93))"
-            : "linear-gradient(180deg, rgba(5,9,18,0.88), rgba(7,12,22,0.82))",
-          borderBottom: "1px solid rgba(56,189,248,0.10)",
+            ? "radial-gradient(1100px 140px at 12% 0%, rgba(34,211,238,0.10), transparent 60%), radial-gradient(900px 140px at 88% 0%, rgba(168,85,247,0.08), transparent 60%), linear-gradient(180deg, rgba(4,8,15,0.97), rgba(7,12,22,0.94))"
+            : "radial-gradient(1100px 140px at 12% 0%, rgba(34,211,238,0.14), transparent 60%), radial-gradient(900px 140px at 88% 0%, rgba(168,85,247,0.11), transparent 60%), linear-gradient(180deg, rgba(5,9,18,0.90), rgba(7,12,22,0.84))",
+          borderBottom: "1px solid rgba(56,189,248,0.12)",
           boxShadow: topBarGlow,
           backdropFilter: "blur(18px)",
           WebkitBackdropFilter: "blur(18px)",
@@ -560,23 +792,39 @@ export default function Navbar() {
           overflow: "visible",
         }}
       >
+        {/* Top highlight line — subtle brand accent */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: "linear-gradient(90deg, transparent, rgba(56,189,248,0.55) 20%, rgba(168,85,247,0.5) 55%, transparent 85%)",
+            opacity: 0.8,
+            pointerEvents: "none",
+          }}
+        />
+
         <div
           ref={dropdownRootRef}
           className="container"
           style={{
+            position: "relative",
             height: NAV_H,
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
+            display: "flex",
             alignItems: "center",
+            justifyContent: "space-between",
             gap: 18,
             overflow: "visible",
           }}
         >
+          {/* Portrait only — landscape shows the brand mark in the rail instead */}
           <NavLink
             to={isAuthenticated ? "/" : `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`}
+            className="nav-logo"
             style={{
               minWidth: 0,
-              display: "inline-flex",
               alignItems: "center",
               gap: 14,
               textDecoration: "none",
@@ -658,186 +906,26 @@ export default function Navbar() {
             </div>
           </NavLink>
 
+          {/* Landscape: compact bell + profile chip — nav links live in the rail */}
           <div
-            className="hide-on-small-only"
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              overflow: "visible",
-            }}
+            className="nav-landscape-actions"
+            style={{ alignItems: "center", justifyContent: "flex-end", gap: 10, minWidth: 0, marginLeft: "auto" }}
           >
-            <ul
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                margin: 0,
-                padding: 7,
-                borderRadius: 20,
-                background:
-                  "linear-gradient(180deg, rgba(11,18,31,0.92), rgba(8,14,24,0.90))",
-                border: "1px solid rgba(56,189,248,0.10)",
-                boxShadow:
-                  "0 12px 35px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.04)",
-                overflow: "visible",
-              }}
-            >
-              {baseLinks.map((l) => (
-                <TopLink key={l.to} to={l.to} label={l.label} />
-              ))}
-              <DesktopDropdown group={organisationGroup} />
-              <DesktopDropdown group={adminGroup} />
-              <DesktopDropdown group={superGroup} />
-            </ul>
+            <div style={actionsPillStyle}>
+              {isAuthenticated ? <NotificationBell compact /> : null}
+              <ProfileChip />
+            </div>
           </div>
 
+          {/* Portrait: compact bell + hamburger trigger for the slide-out drawer */}
           <div
-            className="hide-on-small-only"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              gap: 10,
-              minWidth: 0,
-            }}
+            className="nav-portrait-actions"
+            style={{ justifyContent: "flex-end", alignItems: "center", gap: 10 }}
           >
-            {isAuthenticated && (
-              <>
-                <NotificationBell />
-                <div
-                  title={displayName}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 11px 8px 8px",
-                    borderRadius: 16,
-                    background:
-                      "linear-gradient(180deg, rgba(12,20,34,0.95), rgba(8,14,25,0.92))",
-                    border: "1px solid rgba(56,189,248,0.12)",
-                    maxWidth: 260,
-                    boxShadow:
-                      "0 0 18px rgba(59,130,246,0.08), inset 0 1px 0 rgba(255,255,255,0.04)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 12,
-                      background:
-                        "linear-gradient(135deg, rgba(6,182,212,1), rgba(37,99,235,1), rgba(168,85,247,1))",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "white",
-                      fontWeight: 900,
-                      fontSize: 12,
-                      flexShrink: 0,
-                      boxShadow: "0 0 24px rgba(59,130,246,0.22)",
-                    }}
-                  >
-                    {initial}
-                  </div>
-
-                  <div
-                    style={{
-                      minWidth: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: "#f8fbff",
-                        fontWeight: 800,
-                        fontSize: 13,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {displayName}
-                    </span>
-                    <span
-                      style={{
-                        color: "rgba(125,211,252,0.72)",
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        letterSpacing: 1.0,
-                      }}
-                    >
-                      {roleLower}
-                    </span>
-                  </div>
-                </div>
-
-                <a
-                  href="#!"
-                  onClick={handleLogout}
-                  style={{
-                    height: 44,
-                    padding: "0 15px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    borderRadius: 14,
-                    textDecoration: "none",
-                    color: "#f8fbff",
-                    fontWeight: 900,
-                    fontSize: 13,
-                    letterSpacing: 0.45,
-                    textTransform: "uppercase",
-                    background:
-                      "linear-gradient(135deg, rgba(239,68,68,0.16), rgba(244,63,94,0.12))",
-                    border: "1px solid rgba(248,113,113,0.18)",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-                    transition: "all 180ms ease",
-                  }}
-                >
-                  <i className="material-icons" style={{ fontSize: 18 }}>
-                    logout
-                  </i>
-                  Logout
-                </a>
-              </>
-            )}
-
-            {!isAuthenticated && (
-              <a
-                href="#!"
-                onClick={() => navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`)}
-                style={{
-                  height: 44,
-                  padding: "0 16px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  borderRadius: 14,
-                  textDecoration: "none",
-                  color: "#f8fbff",
-                  fontWeight: 900,
-                  fontSize: 13,
-                  letterSpacing: 0.55,
-                  textTransform: "uppercase",
-                  background:
-                    "linear-gradient(135deg, rgba(6,182,212,0.92), rgba(37,99,235,0.92), rgba(168,85,247,0.92))",
-                  border: "1px solid rgba(56,189,248,0.30)",
-                  boxShadow: "0 0 26px rgba(59,130,246,0.18)",
-                }}
-              >
-                Login
-              </a>
-            )}
-          </div>
-
-          <div
-            className="hide-on-med-and-up"
-            style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 10 }}
-          >
-            {isAuthenticated ? <NotificationBell compact /> : null}
+            <div style={actionsPillStyle}>
+              {isAuthenticated ? <NotificationBell compact /> : null}
+              <ProfileChip />
+            </div>
             <a
               href="#!"
               data-target="mobile-sidenav"
@@ -862,6 +950,87 @@ export default function Navbar() {
         </div>
       </nav>
 
+      {/* Landscape: persistent icon rail (Facebook-style), replaces the drawer */}
+      <div
+        ref={railRootRef}
+        className="nav-rail"
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: RAIL_W,
+          zIndex: 999,
+          flexDirection: "column",
+          alignItems: "center",
+          paddingTop: NAV_H + 16,
+          paddingBottom: 16,
+          gap: 10,
+          background: "linear-gradient(180deg, rgba(5,9,18,0.96), rgba(7,12,22,0.94))",
+          borderRight: "1px solid rgba(56,189,248,0.10)",
+          boxShadow: "8px 0 30px rgba(0,0,0,0.20)",
+        }}
+      >
+        <NavLink
+          to={isAuthenticated ? "/" : `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`}
+          title="Fluke Games Arcade"
+          aria-label="Fluke Games Arcade — Home"
+          style={{
+            position: "relative",
+            width: 46,
+            height: 46,
+            marginBottom: 6,
+            borderRadius: 15,
+            background: "linear-gradient(180deg, rgba(18,32,55,0.95), rgba(8,16,28,0.96))",
+            border: "1px solid rgba(56,189,248,0.22)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            flexShrink: 0,
+            boxShadow: "0 0 24px rgba(59,130,246,0.16), inset 0 1px 0 rgba(255,255,255,0.07)",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "radial-gradient(circle at 30% 25%, rgba(34,211,238,0.20), transparent 42%), radial-gradient(circle at 75% 70%, rgba(168,85,247,0.15), transparent 35%)",
+              pointerEvents: "none",
+            }}
+          />
+          <img
+            src={logoSrc}
+            alt="Fluke Games Logo"
+            style={{ width: "72%", height: "72%", objectFit: "contain", display: "block", position: "relative", zIndex: 1 }}
+          />
+        </NavLink>
+        <div style={{ width: 28, height: 1, background: "rgba(56,189,248,0.16)", marginBottom: 4 }} />
+
+        {baseLinks.map((l) => (
+          <RailLinkItem key={l.to} to={l.to} label={l.label} />
+        ))}
+        {groups.map((g) => (
+          <RailGroupTrigger key={g.key} group={g} />
+        ))}
+
+        {isAuthenticated && (
+          <a
+            href="#!"
+            onClick={handleLogout}
+            title="Logout"
+            aria-label="Logout"
+            style={{ ...railBtnStyle(false, false), marginTop: "auto" }}
+          >
+            <i className="material-icons" style={{ fontSize: 22, color: "#fda4af" }}>
+              logout
+            </i>
+          </a>
+        )}
+      </div>
+
+      {/* Portrait: classic slide-out drawer */}
       <ul
         id="mobile-sidenav"
         className="sidenav"
