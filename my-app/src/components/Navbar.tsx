@@ -255,10 +255,6 @@ export default function Navbar() {
   const isGroupActive = (group: MenuGroup) => group.items.some((x) => isRouteActive(x.to));
   const groupHasBadge = (group: MenuGroup) => group.items.some((x) => (x.badge || 0) > 0);
 
-  const topBarGlow = scrolled
-    ? "0 10px 26px rgba(15,23,42,0.10), 0 0 0 1px rgba(148,163,184,0.10)"
-    : "0 8px 20px rgba(15,23,42,0.08), 0 0 0 1px rgba(148,163,184,0.08)";
-
   const iconBtnStyle = (isActive: boolean, isOpen: boolean): CSSProperties => ({
     position: "relative",
     display: "inline-flex",
@@ -972,7 +968,6 @@ export default function Navbar() {
               fontWeight: 900,
               letterSpacing: 1.3,
               textTransform: "uppercase",
-              color: "rgba(125,211,252,0.86)",
               color: "#0f172a",
             }}
           >
