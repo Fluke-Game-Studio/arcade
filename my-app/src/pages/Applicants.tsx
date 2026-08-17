@@ -62,6 +62,7 @@ const STAGE_BADGE: Record<Stage, BadgeStyle> = {
   Reject: { bg: "#FDE8E8", border: "#F9B4B4", fg: "#8B1E1E" },
   Introduction: { bg: "#FCE7F3", border: "#F9A8D4", fg: "#9D174D" },
   "Technical Interview": { bg: "#E3EEFF", border: "#94BFFF", fg: "#163A8A" },
+  "Generic Mailer": { bg: "#EAF2FF", border: "#B7D1FF", fg: "#234A8A" },
   Confirmation: { bg: "#F2E8FF", border: "#CFA7FF", fg: "#4B1E8B" },
   NDA: { bg: "#FEF3C7", border: "#FCD34D", fg: "#92400E" },
   Offer: { bg: "#CFFAFE", border: "#67E8F9", fg: "#155E75" },
