@@ -36,7 +36,8 @@ export type ApplicantRichEmailType =
   | "INTRO"
   | "TECH"
   | "REJECT"
-  | "CONFIRMATION";
+  | "CONFIRMATION"
+  | "GENERIC";
 
 export type SendApplicantRichEmailBody = {
   type: ApplicantRichEmailType;
@@ -49,6 +50,12 @@ export type SendApplicantRichEmailBody = {
   meetingLink?: string;
   subjectOverride?: string;
   attachments?: EmailAttachment[];
+  from?: string;
+  cc?: string[];
+  bcc?: string[];
+  customHtmlBody?: string;
+  customTextBody?: string;
+  customBody?: string;
 };
 
 export type ApplicantDocEmailType = "NDA" | "OFFER";
