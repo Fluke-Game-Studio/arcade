@@ -48,6 +48,7 @@ export type SendApplicantRichEmailBody = {
   meetingWhen?: string;
   meetingLink?: string;
   subjectOverride?: string;
+  attachments?: EmailAttachment[];
 };
 
 export type ApplicantDocEmailType = "NDA" | "OFFER";
@@ -62,6 +63,7 @@ export type SendApplicantDocEmailBody = {
   employment_type?: string;
   employee_role?: "super" | "admin" | "employee";
   createEmployeeUser?: boolean;
+  attachments?: EmailAttachment[];
 };
 
 export type SendApplicantWelcomeEmailBody = {
@@ -78,9 +80,17 @@ export type SendApplicantWelcomeEmailBody = {
   setStatus?: string;
   createEmployeeUser?: boolean;
   requireCommitment?: boolean;
+  attachments?: EmailAttachment[];
 };
 
-export type EmployeeDocEmailType = "EXPERIENCE" | "RECOMMENDATION";
+export type EmailAttachment = {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+  size: number;
+};
+
+export type EmployeeDocEmailType = "EXPERIENCE" | "RECOMMENDATION" | "TERMINATION";
 
 export type SendEmployeeDocEmailBody = {
   type: EmployeeDocEmailType;
@@ -93,5 +103,7 @@ export type SendEmployeeDocEmailBody = {
   coreSkills?: string;
   peopleSkills?: string;
   recommendationBody?: string;
+  terminationReason?: string;
+  terminationBody?: string;
   vars?: Record<string, any>;
 };

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiUser } from "../../api";
+import { API_BASE } from "../../api/config";
 
 declare const M: any;
 
-type EmployeeDocType = "EXPERIENCE" | "RECOMMENDATION";
+type EmployeeDocType = "EXPERIENCE" | "RECOMMENDATION" | "TERMINATION";
 
 type Props = {
   api: any;
@@ -31,6 +32,8 @@ function initialState() {
     peopleSkills: "",
     wordCount: "220",
     recommendationBody: "",
+    terminationReason: "",
+    terminationBody: "",
   };
 }
 
@@ -49,7 +52,7 @@ function formatPreview(state: ReturnType<typeof initialState>, username: string,
       vars.END_DATE = state.dateEnded;
       vars.dateEnded = state.dateEnded;
     }
-  } else {
+  } else if (state.docType === "RECOMMENDATION") {
     if (state.coreSkills.trim()) {
       vars.coreSkills = state.coreSkills.trim();
       vars.CORE_SKILLS = state.coreSkills.trim();
@@ -65,6 +68,15 @@ function formatPreview(state: ReturnType<typeof initialState>, username: string,
     if (state.recommendationBody.trim()) {
       vars.recommendationBody = state.recommendationBody.trim();
       vars.RECOMMENDATION_BODY = state.recommendationBody.trim();
+    }
+  } else {
+    if (state.terminationReason.trim()) {
+      vars.terminationReason = state.terminationReason.trim();
+      vars.TERMINATION_REASON = state.terminationReason.trim();
+    }
+    if (state.terminationBody.trim()) {
+      vars.terminationBody = state.terminationBody.trim();
+      vars.TERMINATION_BODY = state.terminationBody.trim();
     }
   }
 
@@ -83,6 +95,8 @@ function formatPreview(state: ReturnType<typeof initialState>, username: string,
         coreSkills: state.docType === "RECOMMENDATION" ? state.coreSkills.trim() || undefined : undefined,
         peopleSkills: state.docType === "RECOMMENDATION" ? state.peopleSkills.trim() || undefined : undefined,
         recommendationBody: state.docType === "RECOMMENDATION" ? state.recommendationBody.trim() || undefined : undefined,
+        terminationReason: state.docType === "TERMINATION" ? state.terminationReason.trim() || undefined : undefined,
+        terminationBody: state.docType === "TERMINATION" ? state.terminationBody.trim() || undefined : undefined,
         vars: Object.keys(vars).length ? vars : undefined,
       },
     },
@@ -184,6 +198,82 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
     }
   }
 
+  async function generateTerminationPreview() {
+    if (!employeeUsername) return;
+    try {
+      setGenerating(true);
+      const prompt = [
+        "Write a professional employee termination letter for internal HR use.",
+        `Employee username: ${employeeUsername}`,
+        `Employee email: ${employeeEmail || "N/A"}`,
+        `Role title: ${safeStr(state.roleTitle) || "N/A"}`,
+        `Reason/context: ${safeStr(state.terminationReason) || "Provide a neutral, concise reason if not specified."}`,
+        `Tone: respectful, concise, and formal.`,
+        `Output only the body of the letter in plain text, no markdown headings.`,
+      ].join("\n");
+
+      const runId = `termination_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const postRes = await fetch(`${API_BASE}/ai/chat/internal`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${String((api as any)?.token || "")}`,
+        },
+        body: JSON.stringify({
+          clientId: runId,
+          requestId: runId,
+          context: "internal",
+          question: prompt,
+        }),
+      });
+      if (!postRes.ok) {
+        const err = await postRes.json().catch(() => ({}));
+        throw new Error(String(err?.error || err?.message || `HTTP ${postRes.status}`));
+      }
+
+      let attempts = 0;
+      const reply = await new Promise<string>((resolve, reject) => {
+        const tick = async () => {
+          attempts += 1;
+          if (attempts > 60) {
+            reject(new Error("Timed out waiting for AI response."));
+            return;
+          }
+          try {
+            const r = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(runId)}`, {
+              headers: { Authorization: `Bearer ${String((api as any)?.token || "")}` },
+            });
+            if (r.status === 404) {
+              window.setTimeout(tick, 2000);
+              return;
+            }
+            const data = await r.json().catch(() => ({}));
+            const run = data?.run || {};
+            const status = String(run?.status || "").toLowerCase();
+            if (status === "done") {
+              resolve(String(run?.resultPayload?.reply || run?.reply || run?.replySummary || ""));
+            } else if (status === "error") {
+              reject(new Error(String(run?.errorPayload?.error || run?.deniedReason || "AI run failed.")));
+            } else {
+              window.setTimeout(tick, 2000);
+            }
+          } catch (e: any) {
+            if (attempts > 60) reject(e);
+            else window.setTimeout(tick, 2000);
+          }
+        };
+        tick();
+      });
+
+      updateState({ terminationBody: reply });
+      M?.toast?.({ html: "Termination draft generated.", classes: "green" });
+    } catch (error: any) {
+      M?.toast?.({ html: error?.message || "Failed to generate termination", classes: "red" });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function sendNow() {
     if (!employeeUsername) return;
     if (state.docType === "EXPERIENCE" && (!state.dateStarted || !state.dateEnded)) {
@@ -217,6 +307,12 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
               RECOMMENDATION_BODY: state.recommendationBody.trim(),
             }
           : {}),
+        ...(state.docType === "TERMINATION" && state.terminationReason.trim()
+          ? { terminationReason: state.terminationReason.trim(), TERMINATION_REASON: state.terminationReason.trim() }
+          : {}),
+        ...(state.docType === "TERMINATION" && state.terminationBody.trim()
+          ? { terminationBody: state.terminationBody.trim(), TERMINATION_BODY: state.terminationBody.trim() }
+          : {}),
       };
 
       await api.sendEmployeeDocEmail(employeeUsername, {
@@ -229,6 +325,8 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
         coreSkills: state.docType === "RECOMMENDATION" ? state.coreSkills.trim() || undefined : undefined,
         peopleSkills: state.docType === "RECOMMENDATION" ? state.peopleSkills.trim() || undefined : undefined,
         recommendationBody: state.docType === "RECOMMENDATION" ? state.recommendationBody.trim() || undefined : undefined,
+        terminationReason: state.docType === "TERMINATION" ? state.terminationReason.trim() || undefined : undefined,
+        terminationBody: state.docType === "TERMINATION" ? state.terminationBody.trim() || undefined : undefined,
         vars,
       });
 
@@ -246,7 +344,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
       <div className="modal-content">
         <h5 style={{ fontWeight: 1000, marginBottom: 6 }}>Employee Letter Composer</h5>
         <p className="grey-text" style={{ marginTop: 0, fontWeight: 700 }}>
-          Experience and Recommendation letters for the selected employee.
+          Experience, Recommendation, and Termination letters for the selected employee.
         </p>
 
         <div className="row" style={{ marginBottom: 0 }}>
@@ -273,7 +371,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
                   subject: next === "EXPERIENCE"
                     ? "Experience Certificate | Fluke Games"
                     : "Letter of Recommendation | Fluke Games",
-                  status: next === "EXPERIENCE" ? "experience_sent" : "recommendation_sent",
+                  status: next === "EXPERIENCE" ? "experience_sent" : next === "RECOMMENDATION" ? "recommendation_sent" : "termination_sent",
                 };
                 setState(nextState);
                 setPreviewJson(formatPreview(nextState, employeeUsername, employeeEmail));
@@ -281,6 +379,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
             >
               <option value="EXPERIENCE">EXPERIENCE</option>
               <option value="RECOMMENDATION">RECOMMENDATION</option>
+              <option value="TERMINATION">TERMINATION</option>
             </select>
             <label className="active" style={{ position: "relative", top: -24 }}>
               docType
@@ -318,7 +417,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
               <input type="date" value={state.currentDate} onChange={(e) => updateState({ currentDate: e.target.value })} />
             </div>
           </div>
-        ) : (
+        ) : state.docType === "RECOMMENDATION" ? (
           <>
             <div className="row" style={{ marginTop: 8 }}>
               <div className="input-field col s12 m6">
@@ -358,6 +457,40 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
                 style={{ minHeight: 220 }}
               />
               <label className="active">Recommendation Draft (Editable)</label>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="input-field" style={{ marginTop: 8 }}>
+              <textarea
+                className="materialize-textarea"
+                value={state.terminationReason}
+                onChange={(e) => updateState({ terminationReason: e.target.value })}
+                style={{ minHeight: 90 }}
+                placeholder="Reason for termination, if you want it reflected in the draft."
+              />
+              <label className="active">Termination Reason</label>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginBottom: 4 }}>
+              <button
+                type="button"
+                className={`btn ${generating ? "disabled" : ""}`}
+                disabled={generating}
+                onClick={generateTerminationPreview}
+              >
+                <i className="material-icons left">{generating ? "hourglass_empty" : "auto_awesome"}</i>
+                {generating ? "Generating..." : "Generate Termination"}
+              </button>
+            </div>
+            <div className="input-field">
+              <textarea
+                className="materialize-textarea"
+                value={state.terminationBody}
+                onChange={(e) => updateState({ terminationBody: e.target.value })}
+                style={{ minHeight: 220 }}
+                placeholder="Generated termination letter will appear here. You can edit it before sending."
+              />
+              <label className="active">Termination Draft (Editable)</label>
             </div>
           </>
         )}

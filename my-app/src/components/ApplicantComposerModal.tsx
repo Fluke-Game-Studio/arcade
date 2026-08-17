@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import type {
   ApplicantRichEmailType,
   ApplicantDocEmailType,
+  EmailAttachment,
   SendApplicantRichEmailBody,
   SendApplicantDocEmailBody,
   SendApplicantWelcomeEmailBody,
@@ -299,6 +300,7 @@ export default function ApplicantComposerModal({
   const [composerApplicantId, setComposerApplicantId] = useState<string>("");
   const [composer, setComposer] = useState<ComposerState>(() => defaultComposer("Introduction"));
   const [previewJson, setPreviewJson] = useState<string>("{}");
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
   const [jobInfo, setJobInfo] = useState<{ title: string; generalCount: number; roleCount: number; roleId: string } | null>(null);
   const [jobInfoLoading, setJobInfoLoading] = useState(false);
   const [allJobs, setAllJobs] = useState<{ jobId: string; title: string }[]>([]);
@@ -406,6 +408,7 @@ export default function ApplicantComposerModal({
     if (prefillCity) base.welcome_city = prefillCity;
 
     setComposer(base);
+    setAttachments([]);
     setToEmail(applicant.email || "");
     setComposerApplicantId(applicant.id);
     buildPreview(base, applicant.email || "", applicant.id);
@@ -615,6 +618,35 @@ export default function ApplicantComposerModal({
     buildPreview(next, toEmail, composerApplicantId || "");
   }
 
+  async function handleAttachmentChange(fileList: FileList | null) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    const next: EmailAttachment[] = [];
+    for (const file of files) {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+
+      next.push({
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        dataUrl,
+        size: file.size,
+      });
+    }
+
+    setAttachments((prev) => [...prev, ...next]);
+    M?.toast?.({ html: `${next.length} attachment${next.length === 1 ? "" : "s"} added`, classes: "green" });
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function requestClose() {
     closeMaterializeModal(instRef.current, onCloseRef.current);
   }
@@ -663,6 +695,7 @@ export default function ApplicantComposerModal({
           createEmployeeUser: composer.welcome_createEmployeeUser,
           requireCommitment: composer.welcome_createEmployeeUser ? composer.welcome_requireCommitment : false,
           vars,
+          attachments: attachments.length ? attachments : undefined,
           setStatus: composer.setStatus.trim() ? composer.setStatus.trim() : undefined,
         };
 
@@ -774,6 +807,7 @@ export default function ApplicantComposerModal({
             ...(composer.vars_extraInfo.trim() ? { extraInfo: composer.vars_extraInfo.trim() } : {}),
             ...(intakeLink ? { intakeLink } : {}),
           },
+          attachments: attachments.length ? attachments : undefined,
           setStatus: composer.setStatus.trim() ? composer.setStatus.trim() : undefined,
         };
 
@@ -811,6 +845,7 @@ export default function ApplicantComposerModal({
           subjectOverride: composer.subjectOverride.trim() ? composer.subjectOverride.trim() : undefined,
           setStatus: composer.setStatus.trim() ? composer.setStatus.trim() : undefined,
           vars: Object.keys(vars).length ? vars : undefined,
+          attachments: attachments.length ? attachments : undefined,
           ...(docType === "OFFER"
             ? {
                 dateStarted: composer.dateStarted,
@@ -847,6 +882,44 @@ export default function ApplicantComposerModal({
 
     return (
       <>
+        <div style={{ marginBottom: 14 }}>
+          <div className="grey-text" style={{ fontWeight: 900, marginBottom: 8 }}>
+            Attachments
+          </div>
+          <input type="file" multiple onChange={(e) => void handleAttachmentChange(e.target.files)} />
+          <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)", marginTop: 6 }}>
+            These files will be bundled with the outgoing email if the backend mailer supports attachments.
+          </div>
+          {attachments.length > 0 && (
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              {attachments.map((file, index) => (
+                <div
+                  key={`${file.name}-${index}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    background: "rgba(0,0,0,0.03)",
+                    border: "1px solid rgba(0,0,0,0.08)",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+                    <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>
+                      {file.mimeType} · {(file.size / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                  <button type="button" className="btn-flat red-text" onClick={() => removeAttachment(index)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="row" style={{ marginBottom: 0 }}>
           <div className="input-field col s12 m8">
             {allJobs.length > 0 ? (
