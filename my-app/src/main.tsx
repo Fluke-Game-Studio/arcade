@@ -204,6 +204,10 @@ const router = createBrowserRouter([
           </Protected>
         ),
       },
+      // Legacy notification/email links pointed at a fake sub-route before tabs
+      // were query-param-based — already-sent notifications and emails still
+      // have these baked into their href, so keep redirecting them.
+      { path: "/account/wallet", element: <Navigate to="/account?tab=wallet" replace /> },
       {
         path: "/store",
         element: (
@@ -212,6 +216,7 @@ const router = createBrowserRouter([
           </Protected>
         ),
       },
+      { path: "/store/orders", element: <Navigate to="/store?tab=orders" replace /> },
       { path: "/social/posts", element: <Navigate to="/organisation/social-media" replace /> },
 
       {
@@ -327,6 +332,7 @@ const router = createBrowserRouter([
           </Protected>
         ),
       },
+      { path: "/admin/users", element: <Navigate to="/admin?tab=employees" replace /> },
 
       {
         path: "/super",

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import MentionTextarea from "../components/MentionTextarea";
 import SocialPostCard, { type SocialPostCardData } from "../components/SocialPostCard";
 import SocialMediaReviewAdmin from "./SocialMediaReviewAdmin";
 import { uploadFileToWeeklyBucket } from "../lib/socialUploads";
 import type { ApiUser } from "../api/types";
+import Tabs, { type TabDef } from "../components/shared/Tabs";
+import { useTabState } from "../lib/useTabState";
+
+type StudioTab = "submit" | "mine" | "reviews";
 
 type EditForm = {
   title: string;
@@ -301,8 +304,10 @@ export default function SocialPostStudio({
   includeReviewTab?: boolean;
 }) {
   const { api, user } = useAuth();
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"submit" | "mine" | "reviews">("submit");
+  const [activeTab, setActiveTab] = useTabState<StudioTab>(
+    includeReviewTab ? ["submit", "mine", "reviews"] : ["submit", "mine"],
+    "submit"
+  );
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [internalReviewNote, setInternalReviewNote] = useState("");
@@ -327,21 +332,6 @@ export default function SocialPostStudio({
   const [submitOk, setSubmitOk] = useState("");
   const [editUploadStates, setEditUploadStates] = useState<Record<string, { uploading: boolean; progress: number; name: string; error: string; file?: File | null }>>({});
   const [editMessages, setEditMessages] = useState<Record<string, { type: "error" | "ok"; text: string }>>({});
-
-  useEffect(() => {
-    const requested = safeStr(searchParams.get("tab")).toLowerCase();
-    if (requested === "mine") {
-      setActiveTab("mine");
-      return;
-    }
-    if (requested === "reviews" && includeReviewTab) {
-      setActiveTab("reviews");
-      return;
-    }
-    if (requested === "submit") {
-      setActiveTab("submit");
-    }
-  }, [includeReviewTab, searchParams]);
 
   async function loadMine() {
     setLoading(true);
@@ -582,10 +572,10 @@ export default function SocialPostStudio({
     }
   }
 
-  const tabs = [
-    { key: "submit" as const, label: "Submit draft" },
-    { key: "mine" as const, label: "My submissions" },
-    ...(includeReviewTab ? [{ key: "reviews" as const, label: "My reviews" }] : []),
+  const tabs: TabDef<StudioTab>[] = [
+    { key: "submit", label: "Submit draft", icon: "edit_note" },
+    { key: "mine", label: "My submissions", icon: "folder_shared" },
+    ...(includeReviewTab ? [{ key: "reviews" as const, label: "My reviews", icon: "fact_check" }] : []),
   ];
 
   return (
@@ -599,27 +589,7 @@ export default function SocialPostStudio({
         </div>
       ) : null}
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              border: "1px solid rgba(148,163,184,.22)",
-              borderRadius: 999,
-              padding: "10px 16px",
-              background: activeTab === tab.key ? "linear-gradient(135deg,#2563eb,#0f766e)" : "#fff",
-              color: activeTab === tab.key ? "#fff" : "#1e293b",
-              fontWeight: 900,
-              cursor: "pointer",
-              boxShadow: activeTab === tab.key ? "0 10px 18px rgba(37,99,235,.16)" : "none",
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={tabs} activeKey={activeTab} onChange={setActiveTab} ariaLabel="Social Post Studio tabs" />
 
       {activeTab === "submit" ? (
         <section style={{ display: "grid", gap: 16 }}>

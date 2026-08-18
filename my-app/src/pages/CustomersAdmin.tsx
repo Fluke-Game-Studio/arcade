@@ -2,17 +2,24 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import type { ApiCustomer } from "../api";
 import { useReleaseProductsData } from "../components/admin/useReleaseProductsData";
+import Tabs, { type TabDef } from "../components/shared/Tabs";
+import { useTabState } from "../lib/useTabState";
 
 function safe(v: any) {
   return String(v ?? "").trim();
 }
 
 type TabKey = "products" | "customers";
+const TAB_KEYS: TabKey[] = ["products", "customers"];
+const TABS: TabDef<TabKey>[] = [
+  { key: "products", label: "Products", icon: "inventory_2" },
+  { key: "customers", label: "Customers", icon: "groups" },
+];
 
 export default function CustomersAdmin() {
   const { api } = useAuth();
   const releaseData = useReleaseProductsData(api as any);
-  const [tab, setTab] = useState<TabKey>("products");
+  const [tab, setTab] = useTabState<TabKey>(TAB_KEYS, "products");
   const [customers, setCustomers] = useState<ApiCustomer[]>([]);
   const [selected, setSelected] = useState<ApiCustomer | null>(null);
   const [customerUsers, setCustomerUsers] = useState<any[]>([]);
@@ -206,14 +213,7 @@ export default function CustomersAdmin() {
         </div>
       </div>
 
-      <div style={{ display: "inline-flex", gap: 8, padding: 6, borderRadius: 999, background: "rgba(15,23,42,.04)", border: "1px solid rgba(148,163,184,.14)", marginBottom: 14 }}>
-        <button type="button" onClick={() => setTab("products")} style={{ border: "none", borderRadius: 999, padding: "8px 14px", fontWeight: 900, background: tab === "products" ? "rgba(59,130,246,.16)" : "transparent", color: tab === "products" ? "#1d4ed8" : "#334155", cursor: "pointer" }}>
-          Products
-        </button>
-        <button type="button" onClick={() => setTab("customers")} style={{ border: "none", borderRadius: 999, padding: "8px 14px", fontWeight: 900, background: tab === "customers" ? "rgba(34,197,94,.16)" : "transparent", color: tab === "customers" ? "#166534" : "#334155", cursor: "pointer" }}>
-          Customers
-        </button>
-      </div>
+      <Tabs tabs={TABS} activeKey={tab} onChange={setTab} ariaLabel="Customers admin tabs" />
 
       {error ? <div style={{ color: "#b91c1c", marginBottom: 10 }}>{error}</div> : null}
       {msg ? <div style={{ color: "#166534", marginBottom: 10 }}>{msg}</div> : null}

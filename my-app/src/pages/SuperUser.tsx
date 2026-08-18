@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import type { ApiProject, ApiUser } from "../api";
 import { useReleaseProductsData } from "../components/admin/useReleaseProductsData";
-import SuperConsoleTabs, { type SuperTab } from "../components/super/SuperConsoleTabs";
+import SuperConsoleTabs, { type SuperTab, SUPER_TAB_KEYS } from "../components/super/SuperConsoleTabs";
+import { useTabState } from "../lib/useTabState";
 import SuperProjectsTab from "../components/super/SuperProjectsTab";
 import SuperArcadeReleaseTab from "../components/super/SuperArcadeReleaseTab";
 import SuperReleasesTab from "../components/super/SuperReleasesTab";
@@ -70,7 +71,7 @@ function visibleByStatus(status: string) {
 
 export default function SuperUser({ initialTab = "users" }: { initialTab?: SuperTab } = {}) {
   const { api, user } = useAuth();
-  const [tab, setTab] = useState<SuperTab>(initialTab);
+  const [tab, setTab] = useTabState<SuperTab>(SUPER_TAB_KEYS, initialTab);
   const [rows, setRows] = useState<ApiUser[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -102,10 +103,6 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
   const [customPlatform, setCustomPlatform] = useState("");
   const isSuperUser = normalizeRole((user as any)?.employee_role || (user as any)?.role) === "super";
   const releaseData = useReleaseProductsData(api as any);
-
-  useEffect(() => {
-    setTab(initialTab);
-  }, [initialTab]);
 
   const [projectForm, setProjectForm] = useState<ProjectForm>({
     name: "",

@@ -12,6 +12,7 @@ import type {
 import { API_BASE, PUBLIC_WEBSITE_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
 import { uploadFileToWeeklyBucket } from "../lib/socialUploads";
+import { DRAFT_LENGTH_OPTIONS, draftLengthMaxTokens, draftLengthWordsHint, type DraftLength } from "../lib/aiDraftLength";
 import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
 
 declare const M: any;
@@ -156,6 +157,7 @@ type ComposerState = {
   genericSubject: string;
   genericBody: string;
   genericPrompt: string;
+  genericDraftLength: DraftLength;
 
   // vars.common
   vars_extraInfo: string;
@@ -206,6 +208,7 @@ function defaultComposer(stage: Stage): ComposerState {
     genericSubject: "",
     genericBody: "",
     genericPrompt: "",
+    genericDraftLength: "medium",
 
     vars_extraInfo: "",
 
@@ -331,6 +334,7 @@ export default function ApplicantComposerModal({
   const onCloseRef = useRef(onClose);
 
   const [sending, setSending] = useState(false);
+  const [draftingGeneric, setDraftingGeneric] = useState(false);
   const [toEmail, setToEmail] = useState("");
   const [composerApplicantId, setComposerApplicantId] = useState<string>("");
   const [composer, setComposer] = useState<ComposerState>(() => defaultComposer("Introduction"));
@@ -1206,77 +1210,110 @@ export default function ApplicantComposerModal({
                   <input value={composer.genericPrompt} onChange={(e) => updateComposer({ genericPrompt: e.target.value })} placeholder="Optional notes for the draft" />
                   <label className="active">AI prompt</label>
                 </div>
-                <button type="button" className="btn waves-effect waves-light" onClick={async () => {
-                  const notes = String(composer.genericPrompt || "").trim();
-                  const prompt = [
-                    "You are drafting a generic professional email for a studio applicant.",
-                    "Do not mention Fluke AI, do not ask follow-up questions, and do not explain your reasoning.",
-                    "Write ONLY the email body in plain text.",
-                    "No subject line, no markdown, no bullet points, no preface.",
-                    `Recipient: ${applicant?.fullName || "Applicant"} (${toEmail})`,
-                    `Role: ${composer.roleTitle || "N/A"}`,
-                    notes ? `Notes from user: ${notes}` : "Notes from user: keep it polite, concise, and generic.",
-                  ].join("\n");
-                  try {
-                    const runId = `applicant_mail_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-                    const postRes = await fetch(`${API_BASE}/ai/chat/internal`, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${authToken}`,
-                      },
-                      body: JSON.stringify({
-                        clientId: runId,
-                        requestId: runId,
-                        context: "internal",
-                        question: prompt,
-                      }),
-                    });
-                    if (!postRes.ok) {
-                      const err = await postRes.json().catch(() => ({}));
-                      throw new Error(String(err?.error || err?.message || `HTTP ${postRes.status}`));
-                    }
-
-                    let attempts = 0;
-                    const text = await new Promise<string>((resolve, reject) => {
-                      const tick = async () => {
-                        attempts += 1;
-                        if (attempts > 60) {
-                          reject(new Error("Timed out waiting for AI response."));
-                          return;
-                        }
+                <div className="row" style={{ marginBottom: 0, alignItems: "center" }}>
+                  <div className="input-field col s12 m6">
+                    <select
+                      className="browser-default"
+                      value={composer.genericDraftLength}
+                      onChange={(e) => updateComposer({ genericDraftLength: e.target.value as DraftLength })}
+                    >
+                      {DRAFT_LENGTH_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label} ({o.words})</option>
+                      ))}
+                    </select>
+                    <label className="active" style={{ position: "relative", top: -24 }}>Draft length</label>
+                  </div>
+                  <div className="col s12 m6" style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      className={`btn waves-effect waves-light ${draftingGeneric ? "disabled" : ""}`}
+                      disabled={draftingGeneric}
+                      onClick={async () => {
+                        const notes = String(composer.genericPrompt || "").trim();
+                        const lengthHint = draftLengthWordsHint(composer.genericDraftLength);
+                        const prompt = [
+                          "You are drafting a generic professional email for a studio applicant.",
+                          "Do not mention Fluke AI, do not ask follow-up questions, and do not explain your reasoning.",
+                          "Write ONLY the email body in plain text.",
+                          "No subject line, no markdown, no bullet points, no preface.",
+                          `Target length: ${lengthHint}.`,
+                          "Stay close to the target length, but always finish your last sentence completely —",
+                          "never stop mid-sentence or mid-thought. A slightly shorter, complete email is better",
+                          "than a longer one that cuts off.",
+                          `Recipient: ${applicant?.fullName || "Applicant"} (${toEmail})`,
+                          `Role: ${composer.roleTitle || "N/A"}`,
+                          notes ? `Notes from user: ${notes}` : "Notes from user: keep it polite, concise, and generic.",
+                        ].join("\n");
+                        setDraftingGeneric(true);
                         try {
-                          const r = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(runId)}`, {
-                            headers: { Authorization: `Bearer ${authToken}` },
+                          const runId = `applicant_mail_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                          const postRes = await fetch(`${API_BASE}/ai/chat/internal`, {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${authToken}`,
+                            },
+                            body: JSON.stringify({
+                              clientId: runId,
+                              requestId: runId,
+                              context: "internal",
+                              question: prompt,
+                              maxTokens: draftLengthMaxTokens(composer.genericDraftLength),
+                            }),
                           });
-                          if (r.status === 404) {
-                            window.setTimeout(tick, 2000);
-                            return;
+                          if (!postRes.ok) {
+                            const err = await postRes.json().catch(() => ({}));
+                            throw new Error(String(err?.error || err?.message || `HTTP ${postRes.status}`));
                           }
-                          const data = await r.json().catch(() => ({}));
-                          const run = data?.run || {};
-                          const status = String(run?.status || "").toLowerCase();
-                          if (status === "done") {
-                            resolve(String(run?.resultPayload?.reply || run?.reply || run?.replySummary || "").trim());
-                          } else if (status === "error") {
-                            reject(new Error(String(run?.errorPayload?.error || run?.deniedReason || "AI run failed.")));
-                          } else {
-                            window.setTimeout(tick, 2000);
-                          }
-                        } catch (e: any) {
-                          if (attempts > 60) reject(e);
-                          else window.setTimeout(tick, 2000);
-                        }
-                      };
-                      tick();
-                    });
 
-                    if (text) updateComposer({ genericBody: text });
-                    else M?.toast?.({ html: "AI did not return a draft.", classes: "orange darken-2" });
-                  } catch (e: any) {
-                    M?.toast?.({ html: e?.message || "Failed to draft with AI", classes: "red" });
-                  }
-                }}>AI Draft</button>
+                          let attempts = 0;
+                          const text = await new Promise<string>((resolve, reject) => {
+                            const tick = async () => {
+                              attempts += 1;
+                              if (attempts > 60) {
+                                reject(new Error("Timed out waiting for AI response."));
+                                return;
+                              }
+                              try {
+                                const r = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(runId)}`, {
+                                  headers: { Authorization: `Bearer ${authToken}` },
+                                });
+                                if (r.status === 404) {
+                                  window.setTimeout(tick, 2000);
+                                  return;
+                                }
+                                const data = await r.json().catch(() => ({}));
+                                const run = data?.run || {};
+                                const status = String(run?.status || "").toLowerCase();
+                                if (status === "done") {
+                                  resolve(String(run?.resultPayload?.reply || run?.reply || run?.replySummary || "").trim());
+                                } else if (status === "error") {
+                                  reject(new Error(String(run?.errorPayload?.error || run?.deniedReason || "AI run failed.")));
+                                } else {
+                                  window.setTimeout(tick, 2000);
+                                }
+                              } catch (e: any) {
+                                if (attempts > 60) reject(e);
+                                else window.setTimeout(tick, 2000);
+                              }
+                            };
+                            tick();
+                          });
+
+                          if (text) updateComposer({ genericBody: text });
+                          else M?.toast?.({ html: "AI did not return a draft.", classes: "orange darken-2" });
+                        } catch (e: any) {
+                          M?.toast?.({ html: e?.message || "Failed to draft with AI", classes: "red" });
+                        } finally {
+                          setDraftingGeneric(false);
+                        }
+                      }}
+                    >
+                      <i className="material-icons left">{draftingGeneric ? "hourglass_empty" : "auto_awesome"}</i>
+                      {draftingGeneric ? "Drafting..." : "AI Draft"}
+                    </button>
+                  </div>
+                </div>
               </>
             )}
 
