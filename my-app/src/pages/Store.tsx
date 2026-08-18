@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import FgcAmount from "../components/credits/FgcAmount";
 import type { ApiRequestRecord, ApiStoreItem, ApiStoreOrder, ApiWallet } from "../api";
+import Tabs, { type TabDef } from "../components/shared/Tabs";
+import { useTabState } from "../lib/useTabState";
+
+type StoreTab = "store" | "orders";
+const STORE_TAB_KEYS: StoreTab[] = ["store", "orders"];
+const STORE_TABS: TabDef<StoreTab>[] = [
+  { key: "store", label: "Store", icon: "storefront" },
+  { key: "orders", label: "My Orders", icon: "receipt_long" },
+];
 
 declare const M: any;
 
@@ -66,7 +75,7 @@ export default function Store() {
   const [loading, setLoading] = useState(true);
   const [busyItemId, setBusyItemId] = useState("");
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<"store" | "orders">("store");
+  const [activeTab, setActiveTab] = useTabState<StoreTab>(STORE_TAB_KEYS, "store");
   const [activeCategory, setActiveCategory] = useState("all");
   const [selectedItem, setSelectedItem] = useState<ApiStoreItem | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -250,22 +259,7 @@ export default function Store() {
             </div>
           </div>
 
-          <div className="boutiqueTabs" role="tablist" aria-label="Fluke Store tabs">
-            <button
-              type="button"
-              className={`boutiqueTabBtn ${activeTab === "store" ? "active" : ""}`}
-              onClick={() => setActiveTab("store")}
-            >
-              Store
-            </button>
-            <button
-              type="button"
-              className={`boutiqueTabBtn ${activeTab === "orders" ? "active" : ""}`}
-              onClick={() => setActiveTab("orders")}
-            >
-              My Orders
-            </button>
-          </div>
+          <Tabs tabs={STORE_TABS} activeKey={activeTab} onChange={setActiveTab} ariaLabel="Fluke Store tabs" />
 
           {error ? (
             <div className="emptyState" style={{ marginTop: 16, borderColor: "#fecaca", color: "#991b1b", background: "#fff5f5" }}>

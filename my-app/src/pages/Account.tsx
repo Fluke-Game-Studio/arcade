@@ -8,14 +8,29 @@ import AccountSettingsPanel from "../components/account/AccountSettingsPanel";
 import AccountWallet from "../components/account/AccountWallet";
 import AccountMyOrders from "../components/account/AccountMyOrders";
 import AwardUnlockModal from "../components/account/AwardUnlockModal";
+import Tabs, { type TabDef } from "../components/shared/Tabs";
+import { useTabState } from "../lib/useTabState";
 
 declare const M: any;
 
 type AccountTabKey = "updates" | "details" | "password" | "gamification" | "downloads" | "wallet" | "orders" | "settings";
 
+const ACCOUNT_TAB_KEYS: AccountTabKey[] = ["updates", "details", "password", "gamification", "downloads", "wallet", "orders", "settings"];
+
+const ACCOUNT_TABS: TabDef<AccountTabKey>[] = [
+  { key: "updates", label: "My Updates", icon: "event_note" },
+  { key: "details", label: "Edit Details", icon: "edit" },
+  { key: "password", label: "Edit Password", icon: "lock" },
+  { key: "gamification", label: "Achievements", icon: "emoji_events" },
+  { key: "downloads", label: "Customer Downloads", icon: "cloud_download" },
+  { key: "wallet", label: "Wallet", icon: "account_balance_wallet" },
+  { key: "orders", label: "My Orders", icon: "receipt_long" },
+  { key: "settings", label: "Settings", icon: "settings" },
+];
+
 export default function Account() {
   const { user, api, refreshSession, applySessionPatch } = useAuth();
-  const [activeTab, setActiveTab] = useState<AccountTabKey>("updates");
+  const [activeTab, setActiveTab] = useTabState<AccountTabKey>(ACCOUNT_TAB_KEYS, "updates");
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const saved = (localStorage.getItem("fg_theme") || "").toLowerCase();
     return saved === "dark" ? "dark" : "light";
@@ -692,50 +707,10 @@ export default function Account() {
 
         .input-field { margin: 0.2rem 0 0.6rem !important; }
         input:focus { box-shadow: none !important; }
-
-        .accountTabBar{
-          display:flex;
-          align-items:center;
-          justify-content:flex-start;
-          gap:10px;
-          flex-wrap:wrap;
-          margin: 0 0 14px 0;
-          padding: 6px;
-          border: 1px solid #dbe5ef;
-          border-radius: 999px;
-          background: #f8fbff;
-          width: fit-content;
-          max-width: 100%;
-        }
-        .suTabBtn {
-          border: 0;
-          border-radius: 999px;
-          padding: 9px 14px;
-          font-weight: 900;
-          font-size: 13px;
-          cursor: pointer;
-          color: #334155;
-          background: transparent;
-          transition: all .15s ease;
-        }
-        .suTabBtn.active {
-          background: rgba(59,130,246,.16);
-          color: #1d4ed8;
-          box-shadow: inset 0 0 0 1px rgba(59,130,246,.12);
-        }
       `}</style>
 
       <div className="accWrap">
-        <div className="accountTabBar" role="tablist" aria-label="Account tabs">
-          <button type="button" className={`suTabBtn ${activeTab === "updates" ? "active" : ""}`} onClick={() => setActiveTab("updates")}>My Updates</button>
-          <button type="button" className={`suTabBtn ${activeTab === "details" ? "active" : ""}`} onClick={() => setActiveTab("details")}>Edit Details</button>
-          <button type="button" className={`suTabBtn ${activeTab === "password" ? "active" : ""}`} onClick={() => setActiveTab("password")}>Edit Password</button>
-          <button type="button" className={`suTabBtn ${activeTab === "gamification" ? "active" : ""}`} onClick={() => setActiveTab("gamification")}>Achievements</button>
-          <button type="button" className={`suTabBtn ${activeTab === "downloads" ? "active" : ""}`} onClick={() => setActiveTab("downloads")}>Customer Downloads</button>
-          <button type="button" className={`suTabBtn ${activeTab === "wallet" ? "active" : ""}`} onClick={() => setActiveTab("wallet")}>Wallet</button>
-          <button type="button" className={`suTabBtn ${activeTab === "orders" ? "active" : ""}`} onClick={() => setActiveTab("orders")}>My Orders</button>
-          <button type="button" className={`suTabBtn ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>Settings</button>
-        </div>
+        <Tabs tabs={ACCOUNT_TABS} activeKey={activeTab} onChange={setActiveTab} ariaLabel="Account tabs" />
 
         {activeTab === "updates" && <AccountMyUpdates api={api} />}
 

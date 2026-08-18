@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, Dispatch, ReactNode, SetStateAction } from "react";
 import { useAuth } from "../auth/AuthContext";
+import Tabs, { type TabDef } from "../components/shared/Tabs";
 
 type InstagramStatus = {
   ok?: boolean;
@@ -90,6 +91,12 @@ type TestResult = {
 type PlatformKey = "instagram" | "facebook" | "linkedin" | "discord";
 type PlatformTab = "debug" | "setup" | "test";
 
+const PLATFORM_MODE_TABS: TabDef<PlatformTab>[] = [
+  { key: "debug", label: "Debug", icon: "bug_report" },
+  { key: "setup", label: "Setup", icon: "settings" },
+  { key: "test", label: "Test", icon: "science" },
+];
+
 function safeStr(value: any) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
@@ -174,35 +181,6 @@ function RowStat({
         <i className="material-icons" style={{ fontSize: 22 }}>{icon}</i>
       </div>
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        border: "1px solid rgba(148,163,184,.18)",
-        borderRadius: 999,
-        padding: "9px 14px",
-        fontWeight: 900,
-        cursor: "pointer",
-        background: active ? "linear-gradient(135deg, rgba(59,130,246,.16), rgba(37,99,235,.10))" : "#fff",
-        color: active ? "#1d4ed8" : "#334155",
-        boxShadow: active ? "0 10px 24px rgba(37,99,235,.10)" : "none",
-      }}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -869,11 +847,12 @@ export default function SocialMediaAdmin() {
                   Meta token chain and Instagram publishing readiness.
                 </p>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <TabButton active={activeTabs.instagram === "debug"} onClick={() => setPlatformTab("instagram", "debug")}>Debug</TabButton>
-                <TabButton active={activeTabs.instagram === "setup"} onClick={() => setPlatformTab("instagram", "setup")}>Setup</TabButton>
-                <TabButton active={activeTabs.instagram === "test"} onClick={() => setPlatformTab("instagram", "test")}>Test</TabButton>
-              </div>
+              <Tabs
+                tabs={PLATFORM_MODE_TABS}
+                activeKey={activeTabs.instagram}
+                onChange={(k) => setPlatformTab("instagram", k)}
+                ariaLabel="Instagram mode tabs"
+              />
             </div>
 
             {activeTabs.instagram === "debug" ? (
@@ -1000,11 +979,12 @@ export default function SocialMediaAdmin() {
                 <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>Facebook page</h3>
                 <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Page token controls plus a visible post count and a locked test composer.</p>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <TabButton active={activeTabs.facebook === "debug"} onClick={() => setPlatformTab("facebook", "debug")}>Debug</TabButton>
-                <TabButton active={activeTabs.facebook === "setup"} onClick={() => setPlatformTab("facebook", "setup")}>Setup</TabButton>
-                <TabButton active={activeTabs.facebook === "test"} onClick={() => setPlatformTab("facebook", "test")}>Test</TabButton>
-              </div>
+              <Tabs
+                tabs={PLATFORM_MODE_TABS}
+                activeKey={activeTabs.facebook}
+                onChange={(k) => setPlatformTab("facebook", k)}
+                ariaLabel="Facebook mode tabs"
+              />
             </div>
 
             {activeTabs.facebook === "debug" ? (
@@ -1129,11 +1109,12 @@ export default function SocialMediaAdmin() {
                 <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>LinkedIn org</h3>
                 <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Organization posting credential only. Employee sign-in stays separate.</p>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <TabButton active={activeTabs.linkedin === "debug"} onClick={() => setPlatformTab("linkedin", "debug")}>Debug</TabButton>
-                <TabButton active={activeTabs.linkedin === "setup"} onClick={() => setPlatformTab("linkedin", "setup")}>Setup</TabButton>
-                <TabButton active={activeTabs.linkedin === "test"} onClick={() => setPlatformTab("linkedin", "test")}>Test</TabButton>
-              </div>
+              <Tabs
+                tabs={PLATFORM_MODE_TABS}
+                activeKey={activeTabs.linkedin}
+                onChange={(k) => setPlatformTab("linkedin", k)}
+                ariaLabel="LinkedIn mode tabs"
+              />
             </div>
 
             {activeTabs.linkedin === "debug" ? (
@@ -1203,11 +1184,12 @@ export default function SocialMediaAdmin() {
                 <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>Discord webhook</h3>
                 <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Outbound announcement posting only. No bot commands or moderation.</p>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <TabButton active={activeTabs.discord === "debug"} onClick={() => setPlatformTab("discord", "debug")}>Debug</TabButton>
-                <TabButton active={activeTabs.discord === "setup"} onClick={() => setPlatformTab("discord", "setup")}>Setup</TabButton>
-                <TabButton active={activeTabs.discord === "test"} onClick={() => setPlatformTab("discord", "test")}>Test</TabButton>
-              </div>
+              <Tabs
+                tabs={PLATFORM_MODE_TABS}
+                activeKey={activeTabs.discord}
+                onChange={(k) => setPlatformTab("discord", k)}
+                ariaLabel="Discord mode tabs"
+              />
             </div>
 
             {activeTabs.discord === "debug" ? (

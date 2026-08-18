@@ -312,8 +312,6 @@ export default function Navbar() {
 
   const DropdownPanel = ({ group, open }: { group: MenuGroup; open: boolean }) => (
     <div
-      onMouseEnter={() => setOpenMenu(group.key)}
-      onMouseLeave={() => setOpenMenu((prev) => (prev === group.key ? null : prev))}
       style={{
         position: "absolute",
         left: "calc(100% + 12px)",

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import MentionTextarea from "../components/MentionTextarea";
 import SocialPostCard, { type SocialPostCardData } from "../components/SocialPostCard";
 import type { ApiUser } from "../api/types/users";
+import Tabs, { type TabDef } from "../components/shared/Tabs";
+import { useTabState } from "../lib/useTabState";
 
 declare const M: any;
 
@@ -269,7 +270,6 @@ export default function SocialMediaReviewAdmin({
   onlyTaggedUsername?: string;
 }) {
   const { api } = useAuth();
-  const [searchParams] = useSearchParams();
   const isOrgMode = mode === "org";
   const [posts, setPosts] = useState<SocialPostCardData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -279,26 +279,18 @@ export default function SocialMediaReviewAdmin({
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [approvalPrompts, setApprovalPrompts] = useState<Record<string, boolean>>({});
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
-  const [topTab, setTopTab] = useState<TopTab>("requests");
-  const [requestTab, setRequestTab] = useState<RequestTab>("pending");
-  const [mediaTab, setMediaTab] = useState<MediaTab>("discord");
+  const [topTab, setTopTab] = useTabState<TopTab>(["requests", "media"], "requests", "topTab");
+  const [requestTab, setRequestTab] = useTabState<RequestTab>(
+    ["pending", "approved", "rejected", "published"],
+    "pending",
+    "requestTab"
+  );
+  const [mediaTab, setMediaTab] = useTabState<MediaTab>(
+    ["discord", "linkedin", "instagram", "facebook"],
+    "discord",
+    "mediaTab"
+  );
   const [mentionUsers, setMentionUsers] = useState<ApiUser[]>([]);
-
-  useEffect(() => {
-    const requestedTop = safeStr(searchParams.get("topTab")).toLowerCase();
-    const requestedRequest = safeStr(searchParams.get("requestTab")).toLowerCase();
-    const requestedMedia = safeStr(searchParams.get("mediaTab")).toLowerCase();
-
-    if (!isOrgMode && (requestedTop === "requests" || requestedTop === "media")) {
-      setTopTab(requestedTop as TopTab);
-    }
-    if (requestedRequest === "pending" || requestedRequest === "approved" || requestedRequest === "rejected" || requestedRequest === "published") {
-      setRequestTab(requestedRequest as RequestTab);
-    }
-    if (requestedMedia === "discord" || requestedMedia === "linkedin" || requestedMedia === "instagram" || requestedMedia === "facebook") {
-      setMediaTab(requestedMedia as MediaTab);
-    }
-  }, [isOrgMode, searchParams]);
 
   async function load() {
     setLoading(true);
@@ -592,14 +584,19 @@ export default function SocialMediaReviewAdmin({
     });
   }, [posts, mediaTab]);
 
-  const requestTabs: Array<{ key: RequestTab; label: string }> = [
-    { key: "pending", label: "Pending" },
-    { key: "approved", label: "Approved" },
-    { key: "rejected", label: "Rejected" },
-    { key: "published", label: "Published" },
+  const topTabs: TabDef<TopTab>[] = [
+    { key: "requests", label: "Requests", icon: "inbox" },
+    { key: "media", label: "Media", icon: "perm_media" },
   ];
 
-  const mediaTabs: Array<{ key: MediaTab; label: string }> = [
+  const requestTabs: TabDef<RequestTab>[] = [
+    { key: "pending", label: "Pending", icon: "hourglass_empty" },
+    { key: "approved", label: "Approved", icon: "check_circle" },
+    { key: "rejected", label: "Rejected", icon: "cancel" },
+    { key: "published", label: "Published", icon: "public" },
+  ];
+
+  const mediaTabs: TabDef<MediaTab>[] = [
     { key: "discord", label: "Discord" },
     { key: "linkedin", label: "LinkedIn" },
     { key: "instagram", label: "Instagram" },
@@ -654,22 +651,15 @@ export default function SocialMediaReviewAdmin({
       ) : null}
 
       {!isOrgMode ? (
-        <div style={{ display: "inline-flex", gap: 0, padding: 6, borderRadius: 999, border: "1px solid rgba(148,163,184,.18)", background: "rgba(255,255,255,.82)", boxShadow: "0 8px 24px rgba(15,23,42,.05)", marginBottom: 16, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => setTopTab("requests")} style={{ ...tabButton(topTab === "requests"), border: "none" }}>Requests</button>
-          <button type="button" onClick={() => setTopTab("media")} style={{ ...tabButton(topTab === "media"), border: "none" }}>Media</button>
+        <div style={{ marginBottom: 16 }}>
+          <Tabs tabs={topTabs} activeKey={topTab} onChange={setTopTab} ariaLabel="Social media top tabs" />
         </div>
       ) : null}
 
       {isOrgMode || topTab === "requests" ? (
         <section style={{ display: "grid", gap: 12 }}>
           {!isOrgMode ? (
-            <div style={{ display: "inline-flex", gap: 0, padding: 5, borderRadius: 999, border: "1px solid rgba(148,163,184,.18)", background: "rgba(255,255,255,.82)", boxShadow: "0 8px 24px rgba(15,23,42,.05)", flexWrap: "wrap" }}>
-              {requestTabs.map((tab) => (
-                <button key={tab.key} type="button" onClick={() => setRequestTab(tab.key)} style={{ ...tabButton(requestTab === tab.key), border: "none" }}>
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            <Tabs tabs={requestTabs} activeKey={requestTab} onChange={setRequestTab} ariaLabel="Request status tabs" />
           ) : null}
 
           <div style={{ display: "grid", gap: 12 }}>
@@ -1036,13 +1026,7 @@ export default function SocialMediaReviewAdmin({
         </section>
       ) : (
         <section style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "inline-flex", gap: 0, padding: 5, borderRadius: 999, border: "1px solid rgba(148,163,184,.18)", background: "rgba(255,255,255,.82)", boxShadow: "0 8px 24px rgba(15,23,42,.05)", flexWrap: "wrap" }}>
-            {mediaTabs.map((tab) => (
-              <button key={tab.key} type="button" onClick={() => setMediaTab(tab.key)} style={{ ...tabButton(mediaTab === tab.key), border: "none" }}>
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <Tabs tabs={mediaTabs} activeKey={mediaTab} onChange={setMediaTab} ariaLabel="Media channel tabs" />
 
           <div style={{ display: "grid", gap: 12 }}>
             {media.map((p) => {
