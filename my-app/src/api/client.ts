@@ -1925,6 +1925,21 @@ export class ApiClient {
     };
   }
 
+  async discardStagedUpload(s3Key: string): Promise<{ ok: boolean; s3Key: string }> {
+    const r = await fetch(`${API_BASE}/updates/discard-upload`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({ s3Key }),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `discardStagedUpload failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return { ok: !!payload?.ok, s3Key: payload?.s3Key || s3Key };
+  }
+
   async createStoreImageUploadUrls(
     body: CreateStoreImageUploadUrlsBody
   ): Promise<CreateStoreImageUploadUrlsResponse> {
