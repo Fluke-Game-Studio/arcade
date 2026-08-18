@@ -53,8 +53,10 @@ export default function Tabs<T extends string>({ tabs, activeKey, onChange, aria
           transition: all .15s ease;
           display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: 6px;
           white-space: nowrap;
+          flex: 1 1 auto;
         }
         .fgTabBar--light .fgTabBtn { color: #334155; }
         .fgTabBar--light .fgTabBtn:hover { color: #1d4ed8; }

@@ -840,20 +840,18 @@ export default function SocialMediaAdmin() {
 
         <section style={fullRowCardStyle(activeTabs.instagram !== "debug", "#2563eb")}>
           <div style={{ padding: 18, display: "grid", gap: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>Instagram</h3>
-                <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>
-                  Meta token chain and Instagram publishing readiness.
-                </p>
-              </div>
-              <Tabs
-                tabs={PLATFORM_MODE_TABS}
-                activeKey={activeTabs.instagram}
-                onChange={(k) => setPlatformTab("instagram", k)}
-                ariaLabel="Instagram mode tabs"
-              />
+            <div>
+              <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>Instagram</h3>
+              <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>
+                Meta token chain and Instagram publishing readiness.
+              </p>
             </div>
+            <Tabs
+              tabs={PLATFORM_MODE_TABS}
+              activeKey={activeTabs.instagram}
+              onChange={(k) => setPlatformTab("instagram", k)}
+              ariaLabel="Instagram mode tabs"
+            />
 
             {activeTabs.instagram === "debug" ? (
               <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.3fr) minmax(260px, 1fr) minmax(260px, 1fr)", gap: 12 }}>
@@ -974,18 +972,16 @@ export default function SocialMediaAdmin() {
 
         <section style={fullRowCardStyle(activeTabs.facebook !== "debug", "#1877f2")}>
           <div style={{ padding: 18, display: "grid", gap: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>Facebook page</h3>
-                <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Page token controls plus a visible post count and a locked test composer.</p>
-              </div>
-              <Tabs
-                tabs={PLATFORM_MODE_TABS}
-                activeKey={activeTabs.facebook}
-                onChange={(k) => setPlatformTab("facebook", k)}
-                ariaLabel="Facebook mode tabs"
-              />
+            <div>
+              <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>Facebook page</h3>
+              <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Page token controls plus a visible post count and a locked test composer.</p>
             </div>
+            <Tabs
+              tabs={PLATFORM_MODE_TABS}
+              activeKey={activeTabs.facebook}
+              onChange={(k) => setPlatformTab("facebook", k)}
+              ariaLabel="Facebook mode tabs"
+            />
 
             {activeTabs.facebook === "debug" ? (
               <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.3fr) minmax(260px, 1fr) minmax(260px, 1fr)", gap: 12 }}>
@@ -1104,18 +1100,16 @@ export default function SocialMediaAdmin() {
 
         <section style={fullRowCardStyle(activeTabs.linkedin !== "debug", "#0a66c2")}>
           <div style={{ padding: 18, display: "grid", gap: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>LinkedIn org</h3>
-                <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Organization posting credential only. Employee sign-in stays separate.</p>
-              </div>
-              <Tabs
-                tabs={PLATFORM_MODE_TABS}
-                activeKey={activeTabs.linkedin}
-                onChange={(k) => setPlatformTab("linkedin", k)}
-                ariaLabel="LinkedIn mode tabs"
-              />
+            <div>
+              <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>LinkedIn org</h3>
+              <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Organization posting credential only. Employee sign-in stays separate.</p>
             </div>
+            <Tabs
+              tabs={PLATFORM_MODE_TABS}
+              activeKey={activeTabs.linkedin}
+              onChange={(k) => setPlatformTab("linkedin", k)}
+              ariaLabel="LinkedIn mode tabs"
+            />
 
             {activeTabs.linkedin === "debug" ? (
               <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.3fr) minmax(260px, 1fr) minmax(260px, 1fr)", gap: 12 }}>
@@ -1179,18 +1173,16 @@ export default function SocialMediaAdmin() {
 
         <section style={fullRowCardStyle(activeTabs.discord !== "debug", "#5865f2")}>
           <div style={{ padding: 18, display: "grid", gap: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>Discord webhook</h3>
-                <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Outbound announcement posting only. No bot commands or moderation.</p>
-              </div>
-              <Tabs
-                tabs={PLATFORM_MODE_TABS}
-                activeKey={activeTabs.discord}
-                onChange={(k) => setPlatformTab("discord", k)}
-                ariaLabel="Discord mode tabs"
-              />
+            <div>
+              <h3 style={{ margin: 0, fontSize: 24, fontWeight: 1000, color: "#0f172a" }}>Discord webhook</h3>
+              <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 700, fontSize: 13, lineHeight: 1.5 }}>Outbound announcement posting only. No bot commands or moderation.</p>
             </div>
+            <Tabs
+              tabs={PLATFORM_MODE_TABS}
+              activeKey={activeTabs.discord}
+              onChange={(k) => setPlatformTab("discord", k)}
+              ariaLabel="Discord mode tabs"
+            />
 
             {activeTabs.discord === "debug" ? (
               <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.3fr) minmax(260px, 1fr) minmax(260px, 1fr)", gap: 12 }}>

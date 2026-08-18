@@ -40,7 +40,7 @@ export default function AdminWorkspace({
 
   return (
     <div style={{ width: "100%", maxWidth: "none", padding: "24px 32px 28px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 28, fontWeight: 1000, color: "#0f172a" }}>
             {employeeScope === "team" ? "My Team Workspace" : "Admin Workspace"}
@@ -51,8 +51,6 @@ export default function AdminWorkspace({
               : "One place for cumulative activity and employee-level inspection."}
           </div>
         </div>
-
-        <Tabs tabs={tabs} activeKey={tab} onChange={setTab} ariaLabel="Admin workspace tabs" />
 
         {employeeScope !== "team" ? (
           <button
@@ -65,6 +63,10 @@ export default function AdminWorkspace({
             Mail Composer
           </button>
         ) : null}
+      </div>
+
+      <div style={{ marginTop: 18, marginBottom: 18 }}>
+        <Tabs tabs={tabs} activeKey={tab} onChange={setTab} ariaLabel="Admin workspace tabs" />
       </div>
 
       <div style={{ display: tab === "activity" ? "block" : "none", width: "100%" }}>

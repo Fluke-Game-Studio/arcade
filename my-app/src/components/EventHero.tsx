@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AwardsStoryPanel from "./awards/AwardsStoryPanel";
 
 type EventStatus = "AUTO" | "SCHEDULED" | "LIVE" | "ENDED";
@@ -132,61 +132,6 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-function buildIcsBlobUrl(args: {
-  title: string;
-  description?: string;
-  location?: string;
-  start: Date;
-  end?: Date;
-  url?: string;
-}) {
-  const dt = (d: Date) => {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const yy = d.getUTCFullYear();
-    const mm = pad(d.getUTCMonth() + 1);
-    const dd = pad(d.getUTCDate());
-    const hh = pad(d.getUTCHours());
-    const mi = pad(d.getUTCMinutes());
-    const ss = pad(d.getUTCSeconds());
-    return `${yy}${mm}${dd}T${hh}${mi}${ss}Z`;
-  };
-
-  const uid = `event-${Math.random().toString(16).slice(2)}@flukegames`;
-  const end = args.end || new Date(args.start.getTime() + 60 * 60_000);
-
-  const escape = (s?: string) =>
-    (s || "")
-      .replace(/\\/g, "\\\\")
-      .replace(/\n/g, "\\n")
-      .replace(/,/g, "\\,")
-      .replace(/;/g, "\\;");
-
-  const ics =
-    [
-      "BEGIN:VCALENDAR",
-      "VERSION:2.0",
-      "PRODID:-//Fluke Games//EventHero//EN",
-      "CALSCALE:GREGORIAN",
-      "METHOD:PUBLISH",
-      "BEGIN:VEVENT",
-      `UID:${uid}`,
-      `DTSTAMP:${dt(new Date())}`,
-      `DTSTART:${dt(args.start)}`,
-      `DTEND:${dt(end)}`,
-      `SUMMARY:${escape(args.title)}`,
-      args.location ? `LOCATION:${escape(args.location)}` : "",
-      args.description ? `DESCRIPTION:${escape(args.description)}` : "",
-      args.url ? `URL:${escape(args.url)}` : "",
-      "END:VEVENT",
-      "END:VCALENDAR",
-    ]
-      .filter(Boolean)
-      .join("\r\n") + "\r\n";
-
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  return URL.createObjectURL(blob);
-}
-
 function getAccentGradient(accent: EventHeroProps["accent"]) {
   switch (accent) {
     case "red":
@@ -303,9 +248,6 @@ export default function EventHero({
   shareHref,
   videoUrl,
   youtubeEmbedUrl,
-  onJoin,
-  onAgenda,
-  onAddToCalendar,
   onShare,
   status = "AUTO",
   timezoneLabel,
@@ -527,48 +469,6 @@ export default function EventHero({
     return "ON" as const;
   }, [remindOn, resolvedStatus, diffMs]);
 
-  const [icsUrl, setIcsUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (active.calendarHref) {
-      setIcsUrl(null);
-      return;
-    }
-
-    const url = buildIcsBlobUrl({
-      title: active.title,
-      description: active.subtitle,
-      location: active.location,
-      start: active.at,
-      end: activeEndAt,
-      url: active.shareHref || active.joinHref,
-    });
-
-    setIcsUrl(url);
-
-    return () => {
-      try {
-        URL.revokeObjectURL(url);
-      } catch {}
-    };
-  }, [
-    active.calendarHref,
-    active.title,
-    active.subtitle,
-    active.location,
-    active.at.getTime(),
-    activeEndAt.getTime(),
-    active.shareHref,
-    active.joinHref,
-    active.id,
-  ]);
-
-  const doAddToCalendar = () => {
-    if (onAddToCalendar) return onAddToCalendar();
-    if (active.calendarHref) return safeOpen(active.calendarHref);
-    if (icsUrl) return safeOpen(icsUrl);
-  };
-
   const [copied, setCopied] = useState(false);
 
   const doShare = async () => {
@@ -597,15 +497,8 @@ export default function EventHero({
     }
   };
 
-  const joinDisabled = resolvedStatus === "ENDED";
-  const joinTone: "red" | "blue" | "grey" =
-    resolvedStatus === "LIVE" ? "red" : resolvedStatus === "SCHEDULED" ? "blue" : "grey";
-
   const accentBg = getAccentGradient(accent);
   const tiltRef = useParallaxTilt(!motionOff && showParallax);
-
-  const doJoin = () => (onJoin ? onJoin() : safeOpen(active.joinHref));
-  const doAgenda = () => (onAgenda ? onAgenda() : safeOpen(active.agendaHref));
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -653,7 +546,7 @@ export default function EventHero({
           style={{
             position: "relative",
             width: "100%",
-            height: 320,
+            height: 600,
             overflow: "hidden",
             background: "#eee",
           }}
@@ -1007,39 +900,6 @@ export default function EventHero({
           </div>
         )}
 
-        <div style={{ padding: 16 }}>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ color: "rgba(0,0,0,0.70)", fontSize: 13 }}>
-              {resolvedStatus === "SCHEDULED" ? (
-                <>Join on time — updates, roadmap, and Q&amp;A.</>
-              ) : resolvedStatus === "LIVE" ? (
-                <>We’re live. Jump in and ask questions in chat.</>
-              ) : (
-                <>Event ended. Use agenda for recap / notes.</>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <ActionBtn
-                tone={joinTone}
-                icon="ondemand_video"
-                label={resolvedStatus === "LIVE" ? "Join Live" : "Join Stream"}
-                disabled={joinDisabled}
-                onClick={doJoin}
-              />
-              <ActionBtn tone="grey" icon="description" label="Agenda" onClick={doAgenda} />
-              <ActionBtn tone="light" icon="event" label="Calendar (.ics)" onClick={doAddToCalendar} />
-            </div>
-          </div>
-        </div>
       </div>
 
       {showAwardsStory && <AwardsStoryPanel />}
@@ -1226,57 +1086,6 @@ function EndedRow({ when }: { when: string }) {
       <div style={{ fontWeight: 950 }}>Event ended</div>
       <div style={{ marginLeft: "auto", opacity: 0.9, fontSize: 12 }}>{when}</div>
     </div>
-  );
-}
-
-function ActionBtn({
-  tone,
-  icon,
-  label,
-  disabled,
-  onClick,
-}: {
-  tone: "red" | "blue" | "grey" | "light";
-  icon: string;
-  label: string;
-  disabled?: boolean;
-  onClick?: () => void;
-}) {
-  const className =
-    tone === "red"
-      ? "btn waves-effect waves-light red lighten-1"
-      : tone === "blue"
-      ? "btn waves-effect waves-light blue"
-      : tone === "grey"
-      ? "btn waves-effect waves-light grey lighten-1 black-text"
-      : "btn waves-effect waves-light white black-text";
-
-  const style: React.CSSProperties =
-    tone === "light" ? { border: "1px solid rgba(0,0,0,0.12)", boxShadow: "none" } : {};
-
-  return (
-    <button
-      type="button"
-      className={className}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        borderRadius: 12,
-        paddingLeft: 14,
-        paddingRight: 14,
-        ...style,
-        opacity: disabled ? 0.55 : 1,
-        cursor: disabled ? "not-allowed" : "pointer",
-      }}
-      disabled={disabled}
-      onClick={disabled ? undefined : onClick}
-    >
-      <i className="material-icons" style={{ fontSize: 18 }}>
-        {icon}
-      </i>
-      <span style={{ fontWeight: 900 }}>{label}</span>
-    </button>
   );
 }
 
