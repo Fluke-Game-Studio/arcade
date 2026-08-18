@@ -11,6 +11,7 @@ import type {
 } from "../api";
 import { API_BASE, PUBLIC_WEBSITE_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
+import { uploadFileToWeeklyBucket } from "../lib/socialUploads";
 import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
 
 declare const M: any;
@@ -689,27 +690,32 @@ export default function ApplicantComposerModal({
 
     const next: EmailAttachment[] = [];
     for (const file of files) {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
-        reader.readAsDataURL(file);
-      });
-
+      // Staged straight to S3 — the backend fetches the bytes from s3Key itself,
+      // so there's no need to also inline the file as base64 in the request body.
+      const uploaded = await uploadFileToWeeklyBucket(api as any, file, () => {});
       next.push({
-        name: file.name,
-        mimeType: file.type || "application/octet-stream",
-        dataUrl,
-        size: file.size,
+        name: uploaded.name,
+        mimeType: uploaded.mimeType,
+        size: uploaded.size,
+        s3Key: uploaded.s3Key,
+        publicUrl: uploaded.publicUrl,
       });
     }
 
     setAttachments((prev) => [...prev, ...next]);
-    M?.toast?.({ html: `${next.length} attachment${next.length === 1 ? "" : "s"} added`, classes: "green" });
+    M?.toast?.({ html: `${next.length} attachment${next.length === 1 ? "" : "s"} uploaded`, classes: "green" });
   }
 
   function removeAttachment(index: number) {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
+    setAttachments((prev) => {
+      const removed = prev[index];
+      if (removed?.s3Key) {
+        // Best-effort — the file was already uploaded to S3 for this attachment
+        // to exist; discard it now instead of leaving it staged forever.
+        void (api as any).discardStagedUpload?.(removed.s3Key).catch(() => {});
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   }
 
   function requestClose() {
@@ -977,7 +983,7 @@ export default function ApplicantComposerModal({
           </div>
           <input type="file" multiple onChange={(e) => void handleAttachmentChange(e.target.files)} />
           <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)", marginTop: 6 }}>
-            These files will be bundled with the outgoing email if the backend mailer supports attachments.
+            These files are uploaded first, then attached to the outgoing email.
           </div>
           {attachments.length > 0 && (
             <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
@@ -998,7 +1004,7 @@ export default function ApplicantComposerModal({
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
                     <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>
-                      {file.mimeType} · {(file.size / 1024).toFixed(1)} KB
+                      {file.mimeType} · {(file.size / 1024).toFixed(1)} KB{file.s3Key ? " · uploaded" : ""}
                     </div>
                   </div>
                   <button type="button" className="btn-flat red-text" onClick={() => removeAttachment(index)}>
