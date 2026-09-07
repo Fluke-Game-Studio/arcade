@@ -33,6 +33,7 @@ type ProjectForm = {
   channel: string;
   platform: string;
   promoteFromVersion: string;
+  downloadUrl: string;
   jiraEnabled: boolean;
   jiraProjectKey: string;
   jiraCloudId: string;
@@ -336,6 +337,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
       channel: "v0.0.0",
       platform: "",
       promoteFromVersion: "",
+      downloadUrl: "",
       jiraEnabled: false,
       jiraProjectKey: "",
       jiraCloudId: "",
@@ -368,6 +370,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
         platform: projectForm.platform,
         release_version: projectForm.channel,
         promote_from_version: projectForm.promoteFromVersion || undefined,
+        download_url: projectForm.downloadUrl.trim() || undefined,
         jira_enabled: projectForm.jiraEnabled,
         jira_project_key: projectForm.jiraProjectKey || undefined,
         jira_cloud_id: projectForm.jiraCloudId || undefined,
@@ -400,6 +403,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
       channel: safeStr((p as any).channel || "v0.0.0"),
       platform: selectedPlatform,
       promoteFromVersion: safeStr((p as any).promote_from_version),
+      downloadUrl: safeStr((p as any).download_url),
       jiraEnabled:
         (p as any).jira_enabled === true ||
         String((p as any).jira_enabled || "").toLowerCase() === "true",
@@ -423,6 +427,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
         channel: safeStr((p as any).channel || "v0.0.0"),
         platform: safeStr((p as any).platform || ""),
         promote_from_version: safeStr((p as any).promote_from_version),
+        download_url: safeStr((p as any).download_url),
         status: p.status || "active",
       });
       M.toast({ html: "Product sync triggered", classes: "green" });

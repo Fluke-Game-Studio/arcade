@@ -1810,6 +1810,7 @@ export class ApiClient {
     release_status: "internal" | "candidate" | "released" | string;
     channel?: "alpha" | "beta" | "stable" | string;
     platform?: string;
+    download_url?: string;
     status?: "active" | "archived" | string;
   }): Promise<{ ok: true; product_id: string }> {
     const r = await fetch(`${API_BASE}/admin/products/sync-from-project`, {

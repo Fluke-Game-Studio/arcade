@@ -13,6 +13,7 @@ type ProjectForm = {
   channel: string;
   platform: string;
   promoteFromVersion: string;
+  downloadUrl: string;
   jiraEnabled: boolean;
   jiraProjectKey: string;
   jiraCloudId: string;
@@ -207,6 +208,18 @@ export default function SuperProjectsTab(props: Props) {
                     </div>
                   </div>
                   <div className="col s12 m6"><div className="input-field"><input placeholder="v1.0.0" value={projectForm.channel} onChange={(e) => onProjectChange("channel", e.target.value)} /><label className="active">Release Version</label></div></div>
+                </div>
+                <div className="row">
+                  <div className="col s12 m12">
+                    <div className="input-field">
+                      <input
+                        placeholder="https://downloads.flukegamestudio.com/dev/GoatSuperHuaman_Setup_..."
+                        value={projectForm.downloadUrl}
+                        onChange={(e) => onProjectChange("downloadUrl", e.target.value)}
+                      />
+                      <label className={projectForm.downloadUrl ? "active" : undefined}>Download URL (Cloudflare)</label>
+                    </div>
+                  </div>
                 </div>
                 <div className="row">
                   <div className="col s12 m12">

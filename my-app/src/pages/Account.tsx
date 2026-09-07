@@ -798,7 +798,14 @@ export default function Account() {
                                 <div style={{ fontWeight: 800 }}>{String(r.version || "v0.0.0")}</div>
                                 <div style={{ fontSize: 12, color: "#64748b" }}>{String(r.release_status || "-")} | {String(r.platform || "all")}</div>
                               </div>
-                              <button type="button" className="accBtn subtle" title="Download">
+                              <button
+                                type="button"
+                                className="accBtn subtle"
+                                title={r.download_url ? "Download" : "No download available yet"}
+                                disabled={!r.download_url}
+                                style={!r.download_url ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                                onClick={() => { if (r.download_url) window.open(r.download_url, "_blank"); }}
+                              >
                                 <i className="material-icons" style={{ fontSize: 18 }}>download</i>
                               </button>
                             </div>
