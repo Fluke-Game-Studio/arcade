@@ -588,7 +588,7 @@ export default function EventHero({
     <div style={{ display: "grid", gap: 14 }}>
       <div
         ref={tiltRef}
-        className="card hoverable"
+        className="card hoverable event-hero-card"
         style={{
           borderRadius: 18,
           overflow: "hidden",
@@ -757,6 +757,7 @@ export default function EventHero({
 
           {active.quote && activeQuote && (
             <div
+              className="event-hero-quote"
               key={`hero-quote-${active.id}-${quoteTreatment.animation}-${quoteTreatment.align}`}
               style={{
                 position: "absolute",
@@ -801,6 +802,7 @@ export default function EventHero({
           )}
 
           <div
+            className="event-hero-bottom"
             style={{
               position: "absolute",
               top: 14,

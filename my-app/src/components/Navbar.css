@@ -104,3 +104,20 @@
     0 14px 24px rgba(15, 23, 42, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
+
+@media (orientation: portrait) and (max-width: 700px) {
+  .nav-portrait-actions {
+    gap: 6px !important;
+    padding: 6px !important;
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    box-shadow: 0 8px 20px rgba(2, 6, 23, 0.22);
+  }
+  .nav-portrait-actions > div:first-child { padding: 0 !important; background: transparent !important; border: 0 !important; box-shadow: none !important; }
+  .nav-portrait-actions .sidenav-trigger { width: 38px !important; height: 38px !important; border-radius: 11px !important; }
+  .sidenav { width: min(330px, calc(100vw - 28px)) !important; }
+  .sidenav a { color: #1e293b !important; }
+  .sidenav a span { color: inherit !important; }
+  .sidenav a:hover, .sidenav a:focus-visible { color: #0f172a !important; background: #dbeafe !important; }
+}

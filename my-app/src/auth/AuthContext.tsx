@@ -241,8 +241,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setSession(session, "authenticated");
         return true;
-      } catch {
-        if (user?.token) setSession(null, "unauthenticated");
+      } catch (error: any) {
+        // Only a definitive auth response means the refresh session is dead.
+        // Network failures, Lambda timeouts, and browser wake-up races must not
+        // destroy a still-valid local session.
+        const statusCode = Number(error?.status || 0);
+        if (user?.token && (statusCode === 401 || statusCode === 403)) {
+          setSession(null, "unauthenticated");
+        }
         return false;
       } finally {
         refreshInFlight.current = null;
@@ -288,7 +294,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        if (!(await ensureAuthFresh())) throw new Error("refresh failed (401)");
+        if (!(await ensureAuthFresh())) {
+          if (!api.getToken()) throw new Error("refresh failed (401)");
+          // Keep the existing session during a transient refresh failure. The
+          // focus listener and interval will retry without forcing a logout.
+          setStatus("authenticated");
+          setBootReason("network");
+          return;
+        }
         let me: any;
         try {
           me = await api.getMe();
@@ -341,9 +354,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user?.token) return;
-    // Returning to the tab should use the refresh session as the source of
-    // truth, rather than trusting a JWT that may have been rejected server-side.
-    const refreshIfNeeded = () => { void ensureAuthFresh(true); };
+    // Returning to the tab refreshes only when the access token is near expiry
+    // or expired. Do not force-refresh a healthy token: a transient cookie or
+    // network problem must not log the user out just by switching tabs.
+    const refreshIfNeeded = () => { void ensureAuthFresh(); };
     window.addEventListener("focus", refreshIfNeeded);
     document.addEventListener("visibilitychange", refreshIfNeeded);
     const interval = window.setInterval(() => { void ensureAuthFresh(); }, 60 * 1000);

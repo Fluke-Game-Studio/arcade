@@ -263,7 +263,11 @@ export class ApiClient {
       credentials: "include",
       body: JSON.stringify({ platform: this.platform }),
     });
-    if (!res.ok) throw new Error(`Refresh failed: HTTP ${res.status}`);
+    if (!res.ok) {
+      const error = new Error(`Refresh failed: HTTP ${res.status}`) as Error & { status?: number };
+      error.status = res.status;
+      throw error;
+    }
     const json = (await res.json()) as ApiLoginResponse;
     if (!json?.token) throw new Error("Refresh response missing token");
     this.setToken(json.token);
