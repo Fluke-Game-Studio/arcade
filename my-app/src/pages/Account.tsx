@@ -857,6 +857,16 @@ export default function Account() {
                             </div>
                           </div>
                           <div style={{ display: "flex", gap: 6 }}>
+                            {b.logUrl ? (
+                              <button
+                                type="button"
+                                className="accBtn subtle"
+                                title="View build log"
+                                onClick={() => window.open(b.logUrl, "_blank")}
+                              >
+                                <i className="material-icons" style={{ fontSize: 18 }}>visibility</i>
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               className="accBtn subtle"
