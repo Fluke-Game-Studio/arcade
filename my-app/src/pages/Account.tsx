@@ -13,19 +13,26 @@ import { useTabState } from "../lib/useTabState";
 
 declare const M: any;
 
-type AccountTabKey = "updates" | "details" | "password" | "gamification" | "downloads" | "wallet" | "orders" | "settings";
+type AccountTabKey = "updates" | "details" | "password" | "gamification" | "builds" | "wallet" | "orders" | "settings";
 
-const ACCOUNT_TAB_KEYS: AccountTabKey[] = ["updates", "details", "password", "gamification", "downloads", "wallet", "orders", "settings"];
+const ACCOUNT_TAB_KEYS: AccountTabKey[] = ["updates", "details", "password", "gamification", "builds", "wallet", "orders", "settings"];
 
 const ACCOUNT_TABS: TabDef<AccountTabKey>[] = [
   { key: "updates", label: "My Updates", icon: "event_note" },
   { key: "details", label: "Edit Details", icon: "edit" },
   { key: "password", label: "Edit Password", icon: "lock" },
   { key: "gamification", label: "Achievements", icon: "emoji_events" },
-  { key: "downloads", label: "Customer Downloads", icon: "cloud_download" },
+  { key: "builds", label: "Builds & Downloads", icon: "inventory_2" },
   { key: "wallet", label: "Wallet", icon: "account_balance_wallet" },
   { key: "orders", label: "My Orders", icon: "receipt_long" },
   { key: "settings", label: "Settings", icon: "settings" },
+];
+
+const BUILD_STAGES: Array<{ value: string; label: string }> = [
+  { value: "dev", label: "Dev" },
+  { value: "internal", label: "Stable" },
+  { value: "candidate", label: "RC" },
+  { value: "released", label: "Production" },
 ];
 
 export default function Account() {
@@ -37,10 +44,15 @@ export default function Account() {
   });
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [unlockItems, setUnlockItems] = useState<any[]>([]);
-  const [dlLoading, setDlLoading] = useState(false);
-  const [dlError, setDlError] = useState("");
-  const [dlData, setDlData] = useState<{ customer?: any; items?: any[] } | null>(null);
-  const [scopeByProduct, setScopeByProduct] = useState<Record<string, string>>({});
+  const [buildProjects, setBuildProjects] = useState<Array<{ projectId: string; name: string }>>([]);
+  const [buildProjectsLoading, setBuildProjectsLoading] = useState(false);
+  const [buildProjectsError, setBuildProjectsError] = useState("");
+  const [selectedBuildProjectId, setSelectedBuildProjectId] = useState("");
+  const [selectedBuildStage, setSelectedBuildStage] = useState("");
+  const [buildsList, setBuildsList] = useState<any[]>([]);
+  const [buildsEntitled, setBuildsEntitled] = useState(false);
+  const [buildsLoading, setBuildsLoading] = useState(false);
+  const [buildsError, setBuildsError] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -104,27 +116,56 @@ export default function Account() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab !== "downloads") return;
+    if (activeTab !== "builds") return;
     let cancelled = false;
     (async () => {
       try {
-        setDlLoading(true);
-        const data = await (api as any).getEmployeeCustomerDownloads();
+        setBuildProjectsLoading(true);
+        const data = await (api as any).getEmployeeBuildProjects();
         if (cancelled) return;
-        setDlData(data || null);
-        setDlError("");
+        setBuildProjects(Array.isArray(data?.projects) ? data.projects : []);
+        setBuildProjectsError("");
       } catch (e: any) {
         if (cancelled) return;
-        setDlData(null);
-        setDlError(humanizeDownloadsError(String(e?.message || "Failed to load customer downloads")));
+        setBuildProjects([]);
+        setBuildProjectsError(humanizeDownloadsError(String(e?.message || "Failed to load projects")));
       } finally {
-        if (!cancelled) setDlLoading(false);
+        if (!cancelled) setBuildProjectsLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [activeTab, api]);
+
+  useEffect(() => {
+    if (activeTab !== "builds" || !selectedBuildProjectId || !selectedBuildStage) {
+      setBuildsList([]);
+      setBuildsEntitled(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setBuildsLoading(true);
+        const data = await (api as any).getEmployeeBuilds(selectedBuildProjectId, selectedBuildStage);
+        if (cancelled) return;
+        setBuildsList(Array.isArray(data?.builds) ? data.builds : []);
+        setBuildsEntitled(Boolean(data?.entitled));
+        setBuildsError("");
+      } catch (e: any) {
+        if (cancelled) return;
+        setBuildsList([]);
+        setBuildsEntitled(false);
+        setBuildsError(String(e?.message || "Failed to load builds"));
+      } finally {
+        if (!cancelled) setBuildsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, api, selectedBuildProjectId, selectedBuildStage]);
 
   function showUnlocks(resp: any, achievement: any) {
     const achievementItem =
@@ -724,97 +765,124 @@ export default function Account() {
 
         {activeTab === "gamification" && <AccountGamification />}
 
-        {activeTab === "downloads" && (
+        {activeTab === "builds" && (
           <section className="panelCard" style={{ background: "#fff" }}>
             <div className="panelHead">
               <div>
-                <div className="h">Customer Downloads</div>
-                <div className="p">Internal/Test customer account linked to your employee email</div>
+                <div className="h">Builds & Downloads</div>
+                <div className="p">Pick a project and a stage to see the latest builds. Download is only enabled if you're entitled to that project/stage.</div>
               </div>
             </div>
             <div style={{ padding: 16 }}>
-              {dlLoading ? <div style={{ color: "#64748b" }}>Loading...</div> : null}
-              {dlError ? (
+              {buildProjectsLoading ? <div style={{ color: "#64748b" }}>Loading projects...</div> : null}
+              {buildProjectsError ? (
                 <div
                   style={{
-                    color: dlError.toLowerCase().includes("(politely)") ? "#15803d" : "#b91c1c",
+                    color: buildProjectsError.toLowerCase().includes("(politely)") ? "#15803d" : "#b91c1c",
                     fontWeight: 700,
                   }}
                 >
-                  {dlError}
+                  {buildProjectsError}
                 </div>
               ) : null}
-              {!dlLoading && !dlError && !dlData?.customer ? (
-                <div className="emptyState">No linked internal/test customer account found.</div>
+              {!buildProjectsLoading && !buildProjectsError && !buildProjects.length ? (
+                <div className="emptyState">No project build access is assigned yet. Please ask your manager/lead to assign product entitlements.</div>
               ) : null}
-              {!dlLoading && !dlError && dlData?.customer ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12 }}>
-                    <div style={{ fontWeight: 900 }}>{String((dlData as any)?.customer?.name || "Customer")}</div>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>
-                      {(dlData as any)?.customer?.customer_id} | {(dlData as any)?.customer?.customer_type} | {(dlData as any)?.customer?.status}
-                    </div>
-                  </div>
-                  {!Array.isArray((dlData as any)?.items) || !(dlData as any)?.items?.length ? (
-                    <div
-                      style={{
-                        border: "1px dashed #cbd5e1",
-                        borderRadius: 12,
-                        padding: 12,
-                        color: "#475569",
-                        fontWeight: 700,
-                        background: "#f8fafc",
-                      }}
-                    >
-                      No project build access is assigned yet for this customer. Please ask your manager/lead to assign product entitlements.
-                    </div>
+              {!buildProjectsLoading && buildProjects.length ? (
+                <table cellPadding={0} cellSpacing={0}>
+                  <tbody>
+                    <tr>
+                      <td style={{ paddingRight: 24 }}>
+                        <p>Project</p>
+                        <select
+                          className="browser-default"
+                          size={1}
+                          value={selectedBuildProjectId}
+                          onChange={(e) => { setSelectedBuildProjectId(e.target.value); setSelectedBuildStage(""); }}
+                        >
+                          <option value="">Select a project...</option>
+                          {buildProjects.map((p) => (
+                            <option key={p.projectId} value={p.projectId}>{p.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <p>Stage</p>
+                        <select
+                          className="browser-default"
+                          size={1}
+                          value={selectedBuildStage}
+                          onChange={(e) => setSelectedBuildStage(e.target.value)}
+                          disabled={!selectedBuildProjectId}
+                        >
+                          <option value="">Select a stage...</option>
+                          {BUILD_STAGES.map((s) => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              ) : null}
+              {!buildProjectsLoading && buildProjects.length ? (
+                <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+
+                  {buildsLoading ? <div style={{ color: "#64748b" }}>Loading builds...</div> : null}
+                  {buildsError ? <div style={{ color: "#b91c1c", fontWeight: 700 }}>{buildsError}</div> : null}
+                  {selectedBuildProjectId && selectedBuildStage && !buildsLoading && !buildsError && !buildsList.length ? (
+                    <div className="emptyState">No builds published yet for this project/stage.</div>
                   ) : null}
-                  {((dlData as any)?.items || []).map((it: any) => {
-                    const scopes = Array.isArray(it?.scopes) && it.scopes.length ? it.scopes : ["internal"];
-                    const selectedScope = scopeByProduct[it.product_id] || scopes[0];
-                    const releases = Array.isArray(it?.releasesByScope?.[selectedScope]) ? it.releasesByScope[selectedScope] : [];
-                    return (
-                      <div key={String(it.product_id)} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12 }}>
-                        <div style={{ fontWeight: 900 }}>{String(it.name || it.product_id)}</div>
-                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                          Project: {String(it.project_id || "-")} | Product: {String(it.product_id || "-")}
+                  {buildsList.length ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {!buildsEntitled ? (
+                        <div
+                          style={{ border: "1px dashed #cbd5e1", borderRadius: 10, padding: 10, fontSize: 12, color: "#475569", background: "#f8fafc" }}
+                        >
+                          You can see these builds, but you're not entitled to download them yet.
                         </div>
-                        <div style={{ marginTop: 8 }}>
-                          <label style={{ fontSize: 12, color: "#64748b", marginRight: 8 }}>Environment</label>
-                          <select
-                            value={selectedScope}
-                            onChange={(e) => setScopeByProduct((p) => ({ ...p, [it.product_id]: e.target.value }))}
-                            style={{ height: 32, minWidth: 160, border: "1px solid #d1d5db", borderRadius: 8 }}
-                          >
-                            {scopes.map((s: string) => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
-                          {releases.map((r: any, idx: number) => (
-                            <div key={`${it.product_id}-${selectedScope}-${idx}`} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, minHeight: 92, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                              <div>
-                                <div style={{ fontWeight: 800 }}>{String(r.version || "v0.0.0")}</div>
-                                <div style={{ fontSize: 12, color: "#64748b" }}>{String(r.release_status || "-")} | {String(r.platform || "all")}</div>
-                              </div>
+                      ) : null}
+                      {buildsList.map((b: any, idx: number) => (
+                        <div
+                          key={`${b.fileName}-${idx}`}
+                          style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 800 }}>{String(b.version || b.fileName)}</div>
+                            <div style={{ fontSize: 12, color: "#64748b" }}>
+                              CL {String(b.changelist || "-")} | Published by {String(b.uploadedBy || "-")}{b.uploadedByRole ? ` (${b.uploadedByRole})` : ""}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                              {b.uploadedAt ? new Date(b.uploadedAt).toLocaleString() : ""}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button
+                              type="button"
+                              className="accBtn subtle"
+                              title={buildsEntitled ? "Download" : "Not entitled to download this build"}
+                              disabled={!buildsEntitled}
+                              style={!buildsEntitled ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                              onClick={() => { if (buildsEntitled) window.open(b.downloadUrl, "_blank"); }}
+                            >
+                              <i className="material-icons" style={{ fontSize: 18 }}>download</i>
+                            </button>
+                            {!buildsEntitled ? (
                               <button
                                 type="button"
                                 className="accBtn subtle"
-                                title={r.download_url ? "Download" : "No download available yet"}
-                                disabled={!r.download_url}
-                                style={!r.download_url ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-                                onClick={() => { if (r.download_url) window.open(r.download_url, "_blank"); }}
+                                title="Request access (coming soon)"
+                                disabled
+                                style={{ opacity: 0.4, cursor: "not-allowed" }}
                               >
-                                <i className="material-icons" style={{ fontSize: 18 }}>download</i>
+                                Request Access
                               </button>
-                            </div>
-                          ))}
-                          {!releases.length ? <div className="emptyState">No releases in this scope.</div> : null}
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

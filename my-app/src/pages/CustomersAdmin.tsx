@@ -26,7 +26,7 @@ export default function CustomersAdmin() {
   const [editingCustomerLogin, setEditingCustomerLogin] = useState(false);
   const [projectSettings, setProjectSettings] = useState<Record<string, {
     status: "none" | "active" | "paused" | "restricted" | "revoked";
-    types: Array<"internal" | "test" | "final">;
+    types: Array<"dev" | "internal" | "candidate" | "released">;
     tier: "default" | "basic" | "pro" | "premium";
     env: "dev" | "test" | "prod";
   }>>({});
@@ -87,7 +87,7 @@ export default function CustomersAdmin() {
             safe(r.SK).startsWith("USER#")
           );
           const ents = (Array.isArray(rows) ? rows : []).filter((r: any) => safe(r.SK).startsWith("ENTITLEMENT#"));
-          const next: Record<string, { status: "none" | "active" | "paused" | "restricted" | "revoked"; types: Array<"internal" | "test" | "final">; tier: "default" | "basic" | "pro" | "premium"; env: "dev" | "test" | "prod"; }> = {};
+          const next: Record<string, { status: "none" | "active" | "paused" | "restricted" | "revoked"; types: Array<"dev" | "internal" | "candidate" | "released">; tier: "default" | "basic" | "pro" | "premium"; env: "dev" | "test" | "prod"; }> = {};
           for (const e of ents) {
             const pid = safe((e as any).product_id);
             if (!pid) continue;
@@ -101,7 +101,7 @@ export default function CustomersAdmin() {
             const types = tRaw
               .split(",")
               .map((x: string) => x.trim())
-              .filter((x: string) => x === "internal" || x === "test" || x === "final") as Array<"internal" | "test" | "final">;
+              .filter((x: string) => x === "dev" || x === "internal" || x === "candidate" || x === "released") as Array<"dev" | "internal" | "candidate" | "released">;
             const tierRaw = safe((e as any).tier).toLowerCase();
             const tier = (["default", "basic", "pro", "premium"].includes(tierRaw) ? tierRaw : "default") as "default" | "basic" | "pro" | "premium";
             const envRaw = safe((e as any).env).toLowerCase();
@@ -353,14 +353,13 @@ export default function CustomersAdmin() {
                       {Array.from(
                         new Map(
                           releaseData.releaseRows
-                            .filter((r) => r.release_status !== "dev")
                             .map((r) => [r.product_id, r] as const)
                         ).values()
                       ).map((r) => {
                         const configured = Boolean(projectSettings[r.product_id]);
                         const state = projectSettings[r.product_id] || {
                           status: "none" as const,
-                          types: ["internal"] as Array<"internal" | "test" | "final">,
+                          types: ["internal"] as Array<"dev" | "internal" | "candidate" | "released">,
                           tier: "default" as const,
                           env: (r.release_status === "released" ? "prod" : r.release_status === "candidate" ? "test" : "dev") as "dev" | "test" | "prod",
                         };
@@ -425,8 +424,9 @@ export default function CustomersAdmin() {
                                     : state.status.toUpperCase()
                                 }`}
                               </button>
-                              {(["internal", "test", "final"] as const).map((t) => {
+                              {(["dev", "internal", "candidate", "released"] as const).map((t) => {
                                 const checked = state.types.includes(t);
+                                const scopeLabel = t === "dev" ? "Dev" : t === "internal" ? "Stable" : t === "candidate" ? "RC" : "Production";
                                 return (
                                   <label key={t} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: checked ? "1px solid #1d4ed8" : "1px solid #cbd5e1", borderRadius: 999, padding: "6px 8px", fontSize: 12 }}>
                                     <input
@@ -446,7 +446,7 @@ export default function CustomersAdmin() {
                                       }
                                       style={{ width: 14, height: 14, accentColor: "#2563eb" }}
                                     />
-                                    {t}
+                                    {scopeLabel}
                                   </label>
                                 );
                               })}
