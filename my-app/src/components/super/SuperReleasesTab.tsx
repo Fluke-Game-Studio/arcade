@@ -104,7 +104,8 @@ export default function SuperReleasesTab({ api, isSuperUser }: Props) {
   }
 
   async function promoteBuild(build: any) {
-    const targetStage = build?.stage === "internal" ? "candidate" : build?.stage === "candidate" ? "released" : "";
+    const targetStage =
+      build?.stage === "dev" ? "internal" : build?.stage === "internal" ? "candidate" : build?.stage === "candidate" ? "released" : "";
     if (!isSuperUser || !projectId || !targetStage || !build?.releaseKey) return;
     const key = `${projectId}|${build.releaseKey}|promote`;
     setSavingKey(key);
@@ -112,7 +113,15 @@ export default function SuperReleasesTab({ api, isSuperUser }: Props) {
       await api.promoteSuperBuild({ projectId, releaseKey: build.releaseKey, targetStage });
       await loadBuilds();
       if (typeof M !== "undefined") {
-        M.toast({ html: targetStage === "candidate" ? "Build promoted to Release Candidate" : "Build promoted to Production", classes: "green" });
+        M.toast({
+          html:
+            targetStage === "internal"
+              ? "Build promoted to Stable"
+              : targetStage === "candidate"
+              ? "Build promoted to Release Candidate"
+              : "Build promoted to Production",
+          classes: "green",
+        });
       }
     } catch (e: any) {
       setError(e?.message || "Failed to promote build");
@@ -198,6 +207,11 @@ export default function SuperReleasesTab({ api, isSuperUser }: Props) {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    {build.logUrl ? (
+                      <button type="button" className="accBtn subtle" title="View build log" onClick={() => window.open(build.logUrl, "_blank")}>
+                        <i className="material-icons" style={{ fontSize: 18 }}>visibility</i>
+                      </button>
+                    ) : null}
                     {build.downloadUrl ? (
                       <button type="button" className="accBtn subtle" onClick={() => window.open(build.downloadUrl, "_blank")}>
                         <i className="material-icons" style={{ fontSize: 18 }}>download</i>
@@ -211,7 +225,7 @@ export default function SuperReleasesTab({ api, isSuperUser }: Props) {
                     >
                       {savingKey === key ? "Saving..." : build.visible ? "Hide" : "Show"}
                     </button>
-                    {build.stage === "internal" || build.stage === "candidate" ? (
+                    {build.stage === "dev" || build.stage === "internal" || build.stage === "candidate" ? (
                       <button
                         type="button"
                         className="accBtn subtle"
@@ -220,6 +234,8 @@ export default function SuperReleasesTab({ api, isSuperUser }: Props) {
                       >
                         {savingKey === `${projectId}|${build.releaseKey}|promote`
                           ? "Promoting..."
+                          : build.stage === "dev"
+                          ? "Promote to Stable"
                           : build.stage === "internal"
                           ? "Promote to RC"
                           : "Promote to Production"}
