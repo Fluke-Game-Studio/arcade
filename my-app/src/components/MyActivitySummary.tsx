@@ -435,13 +435,19 @@ function ActivityLineChart({
   );
 }
 
-export default function MyActivitySummary() {
+export default function MyActivitySummary({
+  initialHeatmapOpen = false,
+  allTimeOnly = false,
+}: {
+  initialHeatmapOpen?: boolean;
+  allTimeOnly?: boolean;
+}) {
   const { api } = useAuth();
   const [rows, setRows] = useState<WeekRow[] | null>(null);
   const [dailyHours, setDailyHours] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState("");
 
-  const [heatmapOpen, setHeatmapOpen] = useState(false);
+  const [heatmapOpen, setHeatmapOpen] = useState(initialHeatmapOpen);
   const [allTime, setAllTime] = useState<{ weekStarts: string[]; daily: Map<string, number> } | null>(null);
   const [allTimeLoading, setAllTimeLoading] = useState(false);
   const [allTimeError, setAllTimeError] = useState("");
@@ -577,6 +583,12 @@ export default function MyActivitySummary() {
     }
   }
 
+  useEffect(() => {
+    if (initialHeatmapOpen) void loadAllTimeIfNeeded();
+    // The all-time grid is loaded automatically when embedded as a standalone view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialHeatmapOpen, api]);
+
   const stats = useMemo(() => {
     const list = rows || [];
     const filled = list.filter((r) => r.filled).length;
@@ -596,7 +608,7 @@ export default function MyActivitySummary() {
           borderTopRightRadius: 18,
         }}
       >
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+        {!allTimeOnly && <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div>
             <div style={{ fontWeight: 900, fontSize: 15, color: "#0f172a" }}>My Activity</div>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 3, fontWeight: 700 }}>
@@ -626,16 +638,16 @@ export default function MyActivitySummary() {
           >
             <i className="material-icons" style={{ fontSize: 15 }}>history</i>
           </button>
-        </div>
+        </div>}
 
         {heatmapOpen && (
           <div
             style={{
-              position: "absolute",
-              top: "calc(100% + 8px)",
-              right: 14,
+              position: allTimeOnly ? "relative" : "absolute",
+              top: allTimeOnly ? undefined : "calc(100% + 8px)",
+              right: allTimeOnly ? undefined : 14,
               zIndex: 20,
-              width: "min(420px, 90vw)",
+              width: allTimeOnly ? "100%" : "min(420px, 90vw)",
               borderRadius: 16,
               border: "1px solid rgba(148,163,184,.22)",
               background: "#fff",
@@ -670,7 +682,7 @@ export default function MyActivitySummary() {
         )}
       </div>
 
-      <div style={{ padding: 16 }}>
+      {!allTimeOnly && <div style={{ padding: 16 }}>
         {rows === null ? (
           <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textAlign: "center", padding: "20px 0" }}>Loading…</div>
         ) : error ? (
@@ -711,7 +723,7 @@ export default function MyActivitySummary() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

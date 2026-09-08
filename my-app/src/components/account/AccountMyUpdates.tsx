@@ -1,5 +1,6 @@
 // src/components/account/AccountMyUpdates.tsx
 import { useEffect, useMemo, useState } from "react";
+import MyActivitySummary from "../MyActivitySummary";
 
 function safeStr(v: any) {
   if (v === null || v === undefined) return "";
@@ -446,7 +447,10 @@ export default function AccountMyUpdates({ api }: { api: any }) {
   }
 
   return (
-    <div className="card z-depth-1 panelCard" style={{ marginTop: 14, overflow: "hidden" }}>
+    <div className="card z-depth-1 panelCard" style={{ marginTop: 14, overflow: "visible" }}>
+      <div style={{ padding: "14px 14px 0" }}>
+        <MyActivitySummary initialHeatmapOpen allTimeOnly />
+      </div>
       <style>{`
         .amuWrap{
           display:grid;
