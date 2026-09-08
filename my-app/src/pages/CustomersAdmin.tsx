@@ -168,7 +168,7 @@ export default function CustomersAdmin() {
           env: s.env,
           status: s.status,
           customer_type_scope: s.types.join(","),
-          allow_prod_override: s.types.includes("test"),
+          allow_prod_override: s.env === "test",
         });
       }
       await loadBase();

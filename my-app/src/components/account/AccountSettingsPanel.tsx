@@ -305,6 +305,7 @@ export default function AccountSettingsPanel({
                       { key: "weekly_updates", label: "Weekly updates" },
                       { key: "applicants", label: "Applicants / admin" },
                       { key: "commerce", label: "Commerce / wallet" },
+                      { key: "builds", label: "Builds" },
                       { key: "system", label: "System" },
                     ].map((row) => (
                       <div key={row.key} style={{ display: "contents" }}>
@@ -351,6 +352,7 @@ export default function AccountSettingsPanel({
 
                   <div style={{ fontSize: 12, color: "#64748b" }}>
                     Discord DMs use your connected bot-linked account. Discord Channel posts use the notifications webhook when an event involving you is echoed into the team feed.
+                    Commerce and Builds are always delivered by Email, Discord DM, and Discord Channel regardless of those checkboxes below (only the In-app bell can be turned off for them) -- they're operational alerts, not preference-gated ones.
                   </div>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
