@@ -63,6 +63,7 @@ type AuthCtx = {
   login: (username: string, password: string) => Promise<boolean>;
   refreshSession: () => Promise<void>;
   ensureAuthFresh: (force?: boolean) => Promise<boolean>;
+  isRefreshing: boolean;
   applySessionPatch: (patch: Partial<SessionUser>) => void;
   clearTransientPassword: () => void;
   logout: () => void;
@@ -164,6 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     hadStoredToken ? "" : "no_token"
   );
   const refreshInFlight = useRef<Promise<boolean> | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   function setSession(next: SessionUser | null, nextStatus: AuthStatus) {
     setUser(next);
@@ -219,6 +221,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (refreshInFlight.current) return refreshInFlight.current;
 
     const task = (async () => {
+      const startedAt = Date.now();
+      setIsRefreshing(true);
       try {
         let refreshed;
         try {
@@ -251,6 +255,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return false;
       } finally {
+        const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+        if (remaining) await new Promise((resolve) => window.setTimeout(resolve, remaining));
+        setIsRefreshing(false);
         refreshInFlight.current = null;
       }
     })();
@@ -377,12 +384,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       refreshSession,
       ensureAuthFresh,
+      isRefreshing,
       applySessionPatch,
       clearTransientPassword,
       logout,
       api,
     }),
-    [user, transientPassword, status, bootReason, refreshSession, ensureAuthFresh]
+    [user, transientPassword, status, bootReason, refreshSession, ensureAuthFresh, isRefreshing]
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import FloatingAIChat from "../components/FloatingAIChat";
 import RequiredConnectionsGate from "../components/RequiredConnectionsGate";
+import SessionRefreshOverlay from "../components/SessionRefreshOverlay";
 
 export default function App() {
   const location = useLocation();
@@ -11,6 +12,7 @@ export default function App() {
   return (
     <>
       <Navbar />
+      <SessionRefreshOverlay />
       <Outlet />
       <RequiredConnectionsGate />
       {!hideFloatingAI && <FloatingAIChat />}
