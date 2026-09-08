@@ -62,7 +62,7 @@ type AuthCtx = {
   bootReason: AuthBootReason;
   login: (username: string, password: string) => Promise<boolean>;
   refreshSession: () => Promise<void>;
-  ensureAuthFresh: () => Promise<boolean>;
+  ensureAuthFresh: (force?: boolean) => Promise<boolean>;
   applySessionPatch: (patch: Partial<SessionUser>) => void;
   clearTransientPassword: () => void;
   logout: () => void;
@@ -212,10 +212,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null, "unauthenticated");
   }
 
-  const ensureAuthFresh = useCallback(async () => {
+  const ensureAuthFresh = useCallback(async (force = false) => {
     const token = user?.token || "";
     const expiresAt = user?.access_expires_at || accessExpiryFromToken(token);
-    if (token && expiresAt > Date.now() + 2 * 60 * 1000) return true;
+    if (!force && token && expiresAt > Date.now() + 2 * 60 * 1000) return true;
     if (refreshInFlight.current) return refreshInFlight.current;
 
     const task = (async () => {
@@ -276,7 +276,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         if (!(await ensureAuthFresh())) throw new Error("refresh failed (401)");
-        const me: any = await api.getMe();
+        let me: any;
+        try {
+          me = await api.getMe();
+        } catch (firstError) {
+          // A cached access token can be rejected even when the refresh session
+          // is still valid (for example after a coordinated secret rotation).
+          // Recover once through the HttpOnly refresh cookie before logging out.
+          const recovered = await ensureAuthFresh(true);
+          if (!recovered) throw firstError;
+          me = await api.getMe();
+        }
         if (cancelled) return;
 
         const refreshed = buildSessionFromApi(me, {
@@ -318,12 +328,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user?.token) return;
-    const refreshIfNeeded = () => { void ensureAuthFresh(); };
+    // Returning to the tab should use the refresh session as the source of
+    // truth, rather than trusting a JWT that may have been rejected server-side.
+    const refreshIfNeeded = () => { void ensureAuthFresh(true); };
     window.addEventListener("focus", refreshIfNeeded);
     document.addEventListener("visibilitychange", refreshIfNeeded);
+    const interval = window.setInterval(() => { void ensureAuthFresh(); }, 60 * 1000);
     return () => {
       window.removeEventListener("focus", refreshIfNeeded);
       document.removeEventListener("visibilitychange", refreshIfNeeded);
+      window.clearInterval(interval);
     };
   }, [user?.token, ensureAuthFresh]);
 
