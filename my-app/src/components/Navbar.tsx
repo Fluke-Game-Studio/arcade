@@ -49,7 +49,7 @@ function initials(nameOrUser: string) {
   return (a + b) || "FG";
 }
 
-export default function Navbar() {
+export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } = {}) {
   const { user, logout, api, ensureAuthFresh } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -76,6 +76,7 @@ export default function Navbar() {
   const NAV_H = 82;
 
   useEffect(() => {
+    document.body.classList.add("has-nav-layout");
     if (typeof M !== "undefined") {
       const elems = document.querySelectorAll(".sidenav");
       M.Sidenav.init(elems, { edge: "left" });
@@ -85,7 +86,10 @@ export default function Navbar() {
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
 
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      document.body.classList.remove("has-nav-layout");
+    };
   }, []);
 
   useEffect(() => {
@@ -991,6 +995,7 @@ export default function Navbar() {
     <>
       <nav
         style={{
+          display: hideTopBar ? "none" : undefined,
           position: "sticky",
           top: 0,
           zIndex: 850,
@@ -1169,6 +1174,33 @@ export default function Navbar() {
           </div>
         </div>
       </nav>
+
+      {hideTopBar && (
+        <a
+          href="#!"
+          data-target="mobile-sidenav"
+          className="sidenav-trigger login-nav-trigger"
+          aria-label="Open navigation"
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 1100,
+            width: 42,
+            height: 42,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 12,
+            color: "#fff",
+            background: "linear-gradient(180deg, rgba(16,27,45,0.96), rgba(9,16,28,0.95))",
+            border: "1px solid rgba(56,189,248,0.20)",
+            boxShadow: "0 8px 18px rgba(15,23,42,0.24)",
+            textDecoration: "none",
+          }}
+        >
+          <i className="material-icons">menu</i>
+        </a>
+      )}
 
       {/* Landscape: persistent icon rail (Facebook-style), replaces the drawer */}
       <div
