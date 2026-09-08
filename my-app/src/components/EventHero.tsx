@@ -364,7 +364,7 @@ export default function EventHero({
         location: e.location || "Online",
         host: e.host || "Leadership Team",
         tags: e.tags || [],
-        quote: e.quote || "Progress compounds when every thoughtful step moves the work forward.",
+        quote: e.quote || "",
         joinHref: e.joinHref,
         agendaHref: e.agendaHref,
         calendarHref: e.calendarHref,
@@ -755,7 +755,7 @@ export default function EventHero({
             </div>
           )}
 
-          {activeQuote && (
+          {active.quote && activeQuote && (
             <div
               key={`hero-quote-${active.id}-${quoteTreatment.animation}-${quoteTreatment.align}`}
               style={{

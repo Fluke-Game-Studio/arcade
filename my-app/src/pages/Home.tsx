@@ -222,7 +222,6 @@ export default function Home() {
         id: "quarter-trailer-pavan",
         title: "Featured Trailer",
         subtitle: "Project Pavan gameplay showcase",
-        quote: "Clarity turns ambitious ideas into meaningful momentum.",
         at: new Date(Date.now() + 22 * 86400_000),
         poster: "https://img.youtube.com/vi/LwVUdcShfzI/maxresdefault.jpg",
         youtubeEmbedUrl:
@@ -237,7 +236,6 @@ export default function Home() {
         id: "quarter-trailer-cops",
         title: "Featured Trailer",
         subtitle: "Crazzy Cops V2 teaser",
-        quote: "Great work is built one thoughtful iteration at a time.",
         at: new Date(Date.now() + 23 * 86400_000),
         poster: "https://picsum.photos/seed/crazzy-cops-v2-trailer/1600/900",
         youtubeEmbedUrl:
