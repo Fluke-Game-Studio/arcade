@@ -38,6 +38,12 @@
   .nav-desktop-profile {
     display: flex;
   }
+  .nav-landscape-actions {
+    position: fixed;
+    top: 8px;
+    right: 18px;
+    z-index: 1000;
+  }
   /* Push page content over so it doesn't sit under the fixed rail.
      min-width is reset here so the padding doesn't force horizontal
      overflow on narrow-landscape screens. */

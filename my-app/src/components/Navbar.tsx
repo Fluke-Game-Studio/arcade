@@ -50,7 +50,7 @@ function initials(nameOrUser: string) {
 }
 
 export default function Navbar() {
-  const { user, logout, api } = useAuth();
+  const { user, logout, api, ensureAuthFresh } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -174,6 +174,13 @@ export default function Navbar() {
   };
 
   const displayName = user?.name || user?.username || "";
+
+  const handleAuthNavigation = async (event: any) => {
+    if (!isAuthenticated) return;
+    if (await ensureAuthFresh()) return;
+    event.preventDefault();
+    navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`);
+  };
 
   // Profile summary shown in the navbar chip's dropdown (moved off the Home dashboard card).
   const profileEmail = safeStr((user as any)?.employee_email) || "—";
@@ -365,7 +372,7 @@ export default function Navbar() {
           <NavLink
             key={item.to}
             to={item.to}
-            onClick={() => setOpenMenu(null)}
+            onClick={(event) => { void handleAuthNavigation(event); setOpenMenu(null); }}
             className="nav-dropdown-link"
             style={{
               position: "relative",
@@ -435,7 +442,7 @@ export default function Navbar() {
   );
 
   const RailLinkItem = ({ to, label }: { to: string; label: string }) => (
-    <NavLink to={to} title={label} aria-label={label} className="nav-rail-item" style={({ isActive }) => railBtnStyle(isActive, false)}>
+    <NavLink to={to} title={label} aria-label={label} className="nav-rail-item" onClick={(event) => void handleAuthNavigation(event)} style={({ isActive }) => railBtnStyle(isActive, false)}>
       <i className="material-icons" style={{ fontSize: 22 }}>
         {LINK_ICON[label] || "circle"}
       </i>
@@ -671,7 +678,7 @@ export default function Navbar() {
 
           <NavLink
             to="/account"
-            onClick={() => setOpenMenu(null)}
+            onClick={(event) => { void handleAuthNavigation(event); setOpenMenu(null); }}
             style={{
               marginTop: 14,
               display: "flex",
@@ -939,7 +946,8 @@ export default function Navbar() {
           transition: "all 160ms ease",
           boxShadow: isActive ? "0 0 20px rgba(59,130,246,0.10)" : "none",
         })}
-        onClick={() => {
+        onClick={(event) => {
+          void handleAuthNavigation(event);
           try {
             M.Sidenav.getInstance(sidenavRef.current)?.close();
           } catch {}
@@ -1032,6 +1040,7 @@ export default function Navbar() {
           <NavLink
             to={isAuthenticated ? "/" : `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`}
             className="nav-logo"
+            onClick={(event) => void handleAuthNavigation(event)}
             style={{
               minWidth: 0,
               alignItems: "center",
@@ -1186,6 +1195,7 @@ export default function Navbar() {
           to={isAuthenticated ? "/" : `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`}
           title="Fluke Games Arcade"
           aria-label="Fluke Games Arcade — Home"
+          onClick={(event) => void handleAuthNavigation(event)}
           style={{
             width: "72px",
             minHeight: 92,

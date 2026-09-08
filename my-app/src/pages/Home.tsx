@@ -211,6 +211,7 @@ export default function Home() {
         id: "quarter-random-snapshot",
         title: "Quarterly Company Update",
         subtitle: "Random snapshot first, then featured trailers",
+        quote: "Progress compounds when every thoughtful step moves the work forward.",
         at: new Date(Date.now() + 21 * 86400_000),
         poster: `https://picsum.photos/seed/quarter-${Date.now()}/1600/900`,
         location: "Online",
