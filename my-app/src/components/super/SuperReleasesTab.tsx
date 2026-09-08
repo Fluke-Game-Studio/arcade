@@ -192,6 +192,19 @@ export default function SuperReleasesTab({ api, isSuperUser }: Props) {
           <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
             {builds.map((build, index) => {
               const key = `${projectId}|${build.releaseKey}`;
+              const promotionTarget = String(build.promotedTo || "").toLowerCase();
+              const canPromote = (build.stage === "dev" || build.stage === "internal" || build.stage === "candidate") && !promotionTarget;
+              const promotionLabel = promotionTarget === "internal"
+                ? "Promoted to Stable"
+                : promotionTarget === "candidate"
+                  ? "Promoted to RC"
+                  : promotionTarget === "released"
+                    ? "Promoted to Production"
+                    : build.stage === "dev"
+                      ? "Promote to Stable"
+                      : build.stage === "internal"
+                        ? "Promote to RC"
+                        : "Promote to Production";
               return (
                 <div
                   key={`${build.releaseKey || build.fileName}-${index}`}
@@ -229,16 +242,12 @@ export default function SuperReleasesTab({ api, isSuperUser }: Props) {
                       <button
                         type="button"
                         className="accBtn subtle"
-                        disabled={savingKey === `${projectId}|${build.releaseKey}|promote` || deletingKey === key}
+                        disabled={!canPromote || savingKey === `${projectId}|${build.releaseKey}|promote` || deletingKey === key}
                         onClick={() => void promoteBuild(build)}
                       >
                         {savingKey === `${projectId}|${build.releaseKey}|promote`
                           ? "Promoting..."
-                          : build.stage === "dev"
-                          ? "Promote to Stable"
-                          : build.stage === "internal"
-                          ? "Promote to RC"
-                          : "Promote to Production"}
+                          : promotionLabel}
                       </button>
                     ) : null}
                     <button
