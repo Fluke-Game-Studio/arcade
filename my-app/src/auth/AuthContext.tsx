@@ -220,7 +220,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const task = (async () => {
       try {
-        const refreshed = await api.refreshAuth();
+        let refreshed;
+        try {
+          refreshed = await api.refreshAuth();
+        } catch (firstError) {
+          // A second tab may be completing the same rotation. Give the
+          // backend's rotation grace slot a moment before treating it as a
+          // real session failure.
+          await new Promise((resolve) => window.setTimeout(resolve, 250));
+          try {
+            refreshed = await api.refreshAuth();
+          } catch {
+            throw firstError;
+          }
+        }
         const session = buildSessionFromApi(refreshed, {
           ...(user || {}),
           token: refreshed.token,
