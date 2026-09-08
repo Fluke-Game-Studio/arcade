@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import Navbar from "../components/Navbar";
 import { useAuth } from "../auth/AuthContext";
 import { PROD_API_BASE, resolveDefaultApiBase, setApiBase } from "../api/config";
 import M from "materialize-css";
@@ -743,7 +742,6 @@ export default function Login() {
 
   return (
     <>
-      <Navbar />
       {styles}
 
       <div className="cpWrap">

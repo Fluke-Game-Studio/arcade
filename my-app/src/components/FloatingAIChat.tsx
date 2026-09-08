@@ -491,6 +491,7 @@ function SideCard({
       </button>
 
       <div
+        className="fluke-ai-fab-wrap"
         style={{
           display: open ? "block" : "none",
           borderTop: "1px solid rgba(255,255,255,0.07)",
@@ -1425,6 +1426,7 @@ export default function FloatingAIChat() {
         onMouseLeave={() => setHovered(false)}
       >
         <div
+          className="fluke-ai-fab-preview"
           style={{
             position: "absolute",
             right: 82,
@@ -1504,6 +1506,7 @@ export default function FloatingAIChat() {
         </div>
 
         <button
+          className="fluke-ai-fab"
           type="button"
           onClick={() => setModalOpen(true)}
           aria-label="Open Fluke AI Assistant"
@@ -1562,6 +1565,7 @@ export default function FloatingAIChat() {
 
       {modalOpen && (
         <div
+          className="fluke-ai-modal-backdrop"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) {
               setMobileSettingsOpen(false);
@@ -1582,6 +1586,7 @@ export default function FloatingAIChat() {
           }}
         >
           <div
+            className="fluke-ai-modal-shell"
             style={{
               width: "min(1320px, 96vw)",
               height: "min(92vh, 940px)",
