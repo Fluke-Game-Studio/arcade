@@ -87,9 +87,10 @@
 .notification-bell-panel__body {
   max-height: min(70vh, 520px);
   overflow-y: auto;
-  padding: 12px;
+  padding: 14px;
   display: grid;
-  gap: 10px;
+  gap: 14px;
+  background: rgba(5, 12, 24, 0.42);
 }
 
 .notification-bell-empty,
@@ -113,22 +114,24 @@
 }
 
 .notification-bell-card {
+  position: relative;
   width: 100%;
   text-align: left;
-  border: 1px solid rgba(148, 163, 184, 0.11);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.015));
-  border-radius: 18px;
-  padding: 15px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: linear-gradient(145deg, rgba(15, 118, 110, 0.18) 0%, rgba(2, 132, 199, 0.14) 48%, rgba(10, 19, 34, 0.96) 100%);
+  border-radius: 16px;
+  padding: 16px;
   cursor: pointer;
   display: grid;
-  gap: 10px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
+  gap: 12px;
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.28), inset 0 1px 0 rgba(255,255,255,.05);
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 .notification-bell-card.is-unread {
-  border-color: rgba(56, 189, 248, 0.16);
-  background: linear-gradient(180deg, rgba(14, 165, 233, 0.08), rgba(37, 99, 235, 0.05));
+  border-color: rgba(56, 189, 248, 0.42);
+  background: linear-gradient(145deg, rgba(15, 118, 110, 0.30) 0%, rgba(2, 132, 199, 0.22) 48%, rgba(10, 19, 34, 0.97) 100%);
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.3), inset 3px 0 0 #38bdf8, inset 0 1px 0 rgba(255,255,255,.06);
 }
 
 .notification-bell-card:hover {
@@ -204,7 +207,7 @@
 }
 
 .notification-bell-card__body {
-  color: rgba(226, 232, 240, 0.86);
+  color: #e2e8f0;
   font-size: 13px;
   line-height: 1.5;
   font-weight: 700;
@@ -219,8 +222,8 @@
 .notification-bell-card__chip {
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(255, 255, 255, 0.05);
-  color: #cbd5e1;
+  background: rgba(30, 41, 59, 0.88);
+  color: #dbeafe;
   padding: 5px 8px;
   font-size: 10px;
   font-weight: 800;
@@ -238,6 +241,8 @@
 }
 
 .notification-bell-card__footer {
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
   display: flex;
   align-items: center;
   justify-content: space-between;
