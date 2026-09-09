@@ -50,7 +50,7 @@ const WS_URL =
   "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
 
 const API_BASE =
-  "https://xtipeal88c.execute-api.us-east-1.amazonaws.com";
+  "https://api.flukegamestudio.com";
 
 const CONTEXT_META: Record<
   ChatContextType,

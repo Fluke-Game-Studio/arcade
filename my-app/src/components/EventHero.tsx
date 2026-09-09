@@ -802,7 +802,7 @@ export default function EventHero({
           )}
 
           <div
-            className="event-hero-bottom"
+            className="event-hero-actions"
             style={{
               position: "absolute",
               top: 14,
@@ -844,6 +844,7 @@ export default function EventHero({
           </div>
 
           <div
+            className="event-hero-content"
             style={{
               position: "absolute",
               left: 18,
@@ -882,6 +883,7 @@ export default function EventHero({
               </div>
 
               <div
+                className="event-hero-meta-chips"
                 style={{
                   marginTop: 10,
                   display: "flex",
@@ -896,7 +898,7 @@ export default function EventHero({
               </div>
 
               {!!active.tags?.length && (
-                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <div className="event-hero-tag-chips" style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {active.tags.slice(0, 6).map((t) => (
                     <TagPill key={t} text={t} />
                   ))}

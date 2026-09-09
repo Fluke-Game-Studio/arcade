@@ -939,13 +939,13 @@ export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } 
           fontSize: 13,
           letterSpacing: 0.35,
           textTransform: "uppercase",
-          color: isActive ? "#fff" : "#dbeafe",
+          color: isActive ? "#ffffff" : "#1e293b",
           background: isActive
             ? "linear-gradient(135deg, rgba(15,118,110,0.95), rgba(2,132,199,0.90))"
-            : "rgba(255,255,255,0.86)",
+            : "rgba(241,245,249,0.92)",
           border: isActive
             ? "1px solid rgba(14,165,233,0.20)"
-            : "1px solid rgba(226,232,240,0.95)",
+            : "1px solid rgba(203,213,225,0.82)",
           textDecoration: "none",
           transition: "all 160ms ease",
           boxShadow: isActive ? "0 0 20px rgba(59,130,246,0.10)" : "none",
@@ -1148,7 +1148,7 @@ export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } 
             style={{ justifyContent: "flex-end", alignItems: "center", gap: 10 }}
           >
             <div style={actionsPillStyle}>
-              {isAuthenticated ? <NotificationBell compact /> : null}
+              {isAuthenticated ? <NotificationBell compact mobileDirect /> : null}
               <ProfileChip />
             </div>
             <a
