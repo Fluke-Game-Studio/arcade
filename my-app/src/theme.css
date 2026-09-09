@@ -8,3 +8,89 @@ html[data-theme="dark"] body {
   color: rgba(255, 255, 255, 0.92);
 }
 
+#root {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+main.container,
+div.container {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: clamp(12px, 2.4vw, 32px) !important;
+  padding-right: clamp(12px, 2.4vw, 32px) !important;
+}
+
+@media (max-width: 700px) {
+  body { overflow-x: hidden; }
+  .row { margin-left: 0 !important; margin-right: 0 !important; }
+  .row .col { padding-left: 0 !important; padding-right: 0 !important; }
+  main.container, div.container { padding-left: 10px !important; padding-right: 10px !important; }
+
+  .event-hero-card { border-radius: 14px !important; }
+  .event-hero-card > div:first-of-type { height: min(520px, 128vw) !important; min-height: 390px !important; }
+  .event-hero-quote {
+    top: 78px !important;
+    left: 14px !important;
+    right: 14px !important;
+    max-width: none !important;
+    padding: 4px 8px 8px !important;
+    font-size: clamp(16px, 5vw, 22px) !important;
+    line-height: 1.18 !important;
+    text-align: center !important;
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 3 !important;
+    overflow: hidden !important;
+  }
+  .event-hero-quote > div:first-child { margin-bottom: 3px !important; font-size: 8px !important; }
+  .event-hero-quote span { font-size: 15px !important; }
+  .event-hero-actions {
+    left: 12px !important;
+    right: 12px !important;
+    top: 12px !important;
+    bottom: auto !important;
+    gap: 6px !important;
+  }
+  .event-hero-content {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+  .event-hero-content > div:last-child { min-width: 0 !important; width: 100% !important; padding: 8px !important; border-radius: 12px !important; }
+  .event-hero-content > div:first-child > div:first-child { font-size: 19px !important; }
+  .event-hero-content > div:first-child > div:nth-child(2) { font-size: 11px !important; margin-top: 2px !important; }
+  .event-hero-content > div:first-child > div:nth-child(3),
+  .event-hero-content > div:first-child > div:nth-child(4) { margin-top: 5px !important; gap: 5px !important; }
+  .event-hero-meta-chips,
+  .event-hero-tag-chips { display: none !important; }
+
+  .fluke-ai-fab-wrap { right: 12px !important; bottom: 12px !important; }
+  .fluke-ai-fab { width: 52px !important; height: 52px !important; border-radius: 16px !important; }
+  .fluke-ai-fab-preview { display: none !important; }
+  .fluke-ai-modal-backdrop { padding: 8px !important; align-items: stretch !important; }
+  .fluke-ai-modal-shell { width: 100% !important; height: 100% !important; max-height: none !important; border-radius: 18px !important; }
+}
+
+/* Home dashboard (portalGridGap row): Materialize's own grid already stacks the two
+   ".col" children to full width at its "small" breakpoint (<=600px), but DOM order still
+   puts the main feed column first, so the RightRail widgets (Quick Actions, birthdays,
+   Welcome to Team) land below it. Reordering visually here -- rather than in markup --
+   keeps the desktop two-column layout (main left, rail right) completely untouched. */
+@media (max-width: 600px) {
+  .portalGridGap { display: flex !important; flex-direction: column !important; }
+  .portalGridGap > .col.m4 { order: -1; }
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ApiUser } from "../../api";
 import { API_BASE } from "../../api/config";
 import { useAuth } from "../../auth/AuthContext";
+import { DRAFT_LENGTH_OPTIONS, draftLengthMaxTokens, draftLengthWordsHint, type DraftLength } from "../../lib/aiDraftLength";
 
 declare const M: any;
 
@@ -35,6 +36,7 @@ function initialState() {
     recommendationBody: "",
     terminationReason: "",
     terminationBody: "",
+    terminationDraftLength: "medium" as DraftLength,
   };
 }
 
@@ -205,6 +207,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
     if (!employeeUsername) return;
     try {
       setGenerating(true);
+      const lengthHint = draftLengthWordsHint(state.terminationDraftLength);
       const prompt = [
         "Write a professional employee termination letter for internal HR use.",
         `Employee username: ${employeeUsername}`,
@@ -212,6 +215,10 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
         `Role title: ${safeStr(state.roleTitle) || "N/A"}`,
         `Reason/context: ${safeStr(state.terminationReason) || "Provide a neutral, concise reason if not specified."}`,
         `Tone: respectful, concise, and formal.`,
+        `Target length: ${lengthHint}.`,
+        "Stay close to the target length, but always finish your last sentence completely —",
+        "never stop mid-sentence or mid-thought. A slightly shorter, complete letter is better",
+        "than a longer one that cuts off.",
         `Output only the body of the letter in plain text, no markdown headings.`,
       ].join("\n");
 
@@ -227,6 +234,7 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
           requestId: runId,
           context: "internal",
           question: prompt,
+          maxTokens: draftLengthMaxTokens(state.terminationDraftLength),
         }),
       });
       if (!postRes.ok) {
@@ -474,16 +482,30 @@ export default function EmployeeDocComposerModal({ api, open, onClose, employee 
               />
               <label className="active">Termination Reason</label>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginBottom: 4 }}>
-              <button
-                type="button"
-                className={`btn ${generating ? "disabled" : ""}`}
-                disabled={generating}
-                onClick={generateTerminationPreview}
-              >
-                <i className="material-icons left">{generating ? "hourglass_empty" : "auto_awesome"}</i>
-                {generating ? "Generating..." : "Generate Termination"}
-              </button>
+            <div className="row" style={{ marginBottom: 0, marginTop: 4, alignItems: "center" }}>
+              <div className="input-field col s12 m5">
+                <select
+                  className="browser-default"
+                  value={state.terminationDraftLength}
+                  onChange={(e) => updateState({ terminationDraftLength: e.target.value as DraftLength })}
+                >
+                  {DRAFT_LENGTH_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label} ({o.words})</option>
+                  ))}
+                </select>
+                <label className="active" style={{ position: "relative", top: -24 }}>Draft length</label>
+              </div>
+              <div className="col s12 m7" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+                <button
+                  type="button"
+                  className={`btn ${generating ? "disabled" : ""}`}
+                  disabled={generating}
+                  onClick={generateTerminationPreview}
+                >
+                  <i className="material-icons left">{generating ? "hourglass_empty" : "auto_awesome"}</i>
+                  {generating ? "Generating..." : "Generate Termination"}
+                </button>
+              </div>
             </div>
             <div className="input-field">
               <textarea

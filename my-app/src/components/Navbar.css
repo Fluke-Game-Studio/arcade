@@ -11,10 +11,14 @@
 .nav-landscape-actions {
   display: none;
 }
+.nav-desktop-profile {
+  display: none;
+}
 /* Brand mark: top bar in portrait (no rail to hold it), rail header in landscape */
 .nav-logo {
   display: none;
 }
+.login-nav-trigger { display: none; }
 
 @media (orientation: portrait) {
   .nav-portrait-actions {
@@ -23,6 +27,7 @@
   .nav-logo {
     display: inline-flex;
   }
+  .login-nav-trigger { display: inline-flex; }
 }
 
 @media (orientation: landscape) {
@@ -32,11 +37,89 @@
   .nav-landscape-actions {
     display: flex;
   }
+  .nav-desktop-profile {
+    display: flex;
+  }
+  .nav-landscape-actions {
+    position: fixed;
+    top: 8px;
+    right: 18px;
+    z-index: 1000;
+  }
   /* Push page content over so it doesn't sit under the fixed rail.
      min-width is reset here so the padding doesn't force horizontal
      overflow on narrow-landscape screens. */
-  body {
-    padding-left: 64px;
+  body.has-nav-layout {
+    padding-left: 92px;
     min-width: 0;
   }
+}
+
+.nav-rail-item,
+.nav-rail-trigger,
+.nav-dropdown-link {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.nav-rail-item:hover,
+.nav-rail-item:focus-visible,
+.nav-rail-trigger:hover,
+.nav-rail-trigger:focus-visible,
+.nav-dropdown-link:hover,
+.nav-dropdown-link:focus-visible {
+  transform: translateY(-1px);
+  box-shadow:
+    0 14px 24px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.nav-rail-item:hover,
+.nav-rail-trigger:hover {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98)) !important;
+  border-color: rgba(56, 189, 248, 0.26) !important;
+}
+
+.nav-dropdown-link:hover,
+.nav-dropdown-link:focus-visible {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98)) !important;
+  color: #ffffff !important;
+  border-color: rgba(56, 189, 248, 0.22) !important;
+}
+
+.nav-rail-item:active,
+.nav-rail-trigger:active,
+.nav-dropdown-link:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.nav-rail-item:focus-visible,
+.nav-rail-trigger:focus-visible,
+.nav-dropdown-link:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(56, 189, 248, 0.25),
+    0 14px 24px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+  .nav-portrait-actions {
+    gap: 6px !important;
+    padding: 6px !important;
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    box-shadow: 0 8px 20px rgba(2, 6, 23, 0.22);
+  }
+  .nav-portrait-actions > div:first-child { padding: 0 !important; background: transparent !important; border: 0 !important; box-shadow: none !important; }
+  .nav-portrait-actions .sidenav-trigger { width: 38px !important; height: 38px !important; border-radius: 11px !important; }
+  .sidenav { width: min(330px, calc(100vw - 28px)) !important; }
+  .sidenav a { color: #1e293b !important; }
+  .sidenav a span { color: inherit !important; }
+  .sidenav a:hover, .sidenav a:focus-visible { color: #0f172a !important; background: #dbeafe !important; }
 }

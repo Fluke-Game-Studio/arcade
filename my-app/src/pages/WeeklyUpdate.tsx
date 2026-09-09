@@ -296,20 +296,28 @@ export default function WeeklyUpdate() {
       { label: "Retro", amount: retroCount > 0 ? retro : 0 },
       { label: "Timesheet", amount: hasTimesheet ? timesheet : 0 },
     ];
+    // This page always submits with submissionSource: "manual" - the backend
+    // only grants the AI bonus when the submission source is "ai"
+    // (gamification.mjs), so it can never actually be earned through this
+    // form. Don't advertise a bonus this flow can't deliver.
     const extraFrozenItems: Array<{ label: string; amount: number }> = [
-      { label: "AI submit", amount: aiBonus },
       { label: "File upload", amount: hasFiles ? fileUpload : 0 },
+    ];
+    const awardsItems: Array<{ label: string; amount: number }> = [
       { label: "Awards won", amount: awardsBonus },
     ];
 
     const updateTotal = updateItems.reduce((sum, item) => sum + item.amount, 0);
     const extraFrozenTotal = extraFrozenItems.reduce((sum, item) => sum + item.amount, 0);
+    const awardsTotal = awardsItems.reduce((sum, item) => sum + item.amount, 0);
     const frozenTotal = updateTotal + extraFrozenTotal;
     return {
       updateItems,
       extraFrozenItems,
+      awardsItems,
       updateTotal,
       extraFrozenTotal,
+      awardsTotal,
       frozenTotal,
       total: updateTotal,
       spendableItems: updateItems,
@@ -725,6 +733,16 @@ export default function WeeklyUpdate() {
           ? "Update submitted. Files are being processed in background."
           : "Update submitted!",
     });
+
+    if (submitResp?.creditIssues?.length) {
+      M?.toast?.({
+        html: `Update saved, but ${submitResp.creditIssues.length} credit${
+          submitResp.creditIssues.length > 1 ? "s" : ""
+        } failed to post (${submitResp.creditIssues.map((c) => c.label).join(", ")}). Contact an admin.`,
+        classes: "red",
+        displayLength: 8000,
+      });
+    }
 
     setAccomplishments("");
     setBlockers("");
@@ -1170,12 +1188,12 @@ export default function WeeklyUpdate() {
                             Bonus reward
                           </div>
                           <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
-                            AI submit and file upload go to Frozen FGC. Awards won go to spendable FGC.
+                            File upload goes to Frozen FGC. Awards won go to spendable FGC.
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 1000, color: "#1d4ed8" }}>
                           <FrozenFgcAmount
-                            amount={weeklyRuleSummary.frozenBonusTotal}
+                            amount={displayedCreditPreview.extraFrozenTotal}
                             divisor={1}
                             fractionDigits={0}
                             style={{ fontWeight: 1000, color: "#1d4ed8" }}
@@ -1189,7 +1207,7 @@ export default function WeeklyUpdate() {
                     </button>
                     {bonusBlockOpen && (
                       <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                        {weeklyRuleSummary.frozenBonusRows.map((item) => (
+                        {displayedCreditPreview.extraFrozenItems.map((item) => (
                           <div
                             key={item.label}
                             style={{
@@ -1207,7 +1225,9 @@ export default function WeeklyUpdate() {
                               <span style={{ width: 10, height: 10, borderRadius: 999, background: "#3b82f6", flex: "0 0 auto" }} />
                               <div style={{ minWidth: 0 }}>
                                 <div style={{ minWidth: 0 }}>{item.label}</div>
-                                <div style={{ fontSize: 11, color: "#5973b9", fontWeight: 700, marginTop: 2 }}>{item.note}</div>
+                                <div style={{ fontSize: 11, color: "#5973b9", fontWeight: 700, marginTop: 2 }}>
+                                  Added when a file is attached
+                                </div>
                               </div>
                             </div>
                             <FrozenFgcAmount

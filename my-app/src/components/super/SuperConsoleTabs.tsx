@@ -1,3 +1,5 @@
+import Tabs, { type TabDef } from "../shared/Tabs";
+
 export type SuperTab =
   | "users"
   | "projects"
@@ -10,44 +12,37 @@ export type SuperTab =
   | "arcade_release"
   | "storage";
 
+export const SUPER_TAB_KEYS: SuperTab[] = [
+  "users",
+  "projects",
+  "releases",
+  "awards",
+  "wallet",
+  "requests",
+  "inventory",
+  "endpoints",
+  "arcade_release",
+  "storage",
+];
+
+const SUPER_TABS: TabDef<SuperTab>[] = [
+  { key: "users", label: "Users & Roles", icon: "group" },
+  { key: "projects", label: "Projects", icon: "dashboard_customize" },
+  { key: "releases", label: "Releases & Products", icon: "inventory_2" },
+  { key: "awards", label: "Awards", icon: "emoji_events" },
+  { key: "wallet", label: "Wallet", icon: "account_balance_wallet" },
+  { key: "requests", label: "Requests", icon: "assignment" },
+  { key: "inventory", label: "Inventory", icon: "warehouse" },
+  { key: "endpoints", label: "Endpoint Access", icon: "api" },
+  { key: "arcade_release", label: "Arcade Release", icon: "rocket_launch" },
+  { key: "storage", label: "Storage Files", icon: "folder" },
+];
+
 type Props = {
   tab: SuperTab;
   onChange: (tab: SuperTab) => void;
 };
 
 export default function SuperConsoleTabs({ tab, onChange }: Props) {
-  return (
-    <div className="suTabs" role="tablist" aria-label="Super Console tabs">
-      <button type="button" className={`suTabBtn ${tab === "users" ? "active" : ""}`} onClick={() => onChange("users")}>
-        Users & Roles
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "projects" ? "active" : ""}`} onClick={() => onChange("projects")}>
-        Projects
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "releases" ? "active" : ""}`} onClick={() => onChange("releases")}>
-        Releases & Products
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "awards" ? "active" : ""}`} onClick={() => onChange("awards")}>
-        Awards
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "wallet" ? "active" : ""}`} onClick={() => onChange("wallet")}>
-        Wallet
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "requests" ? "active" : ""}`} onClick={() => onChange("requests")}>
-        Requests
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "inventory" ? "active" : ""}`} onClick={() => onChange("inventory")}>
-        Inventory
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "endpoints" ? "active" : ""}`} onClick={() => onChange("endpoints")}>
-        Endpoint Access
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "arcade_release" ? "active" : ""}`} onClick={() => onChange("arcade_release")}>
-        Arcade Release
-      </button>
-      <button type="button" className={`suTabBtn ${tab === "storage" ? "active" : ""}`} onClick={() => onChange("storage")}>
-        Storage Files
-      </button>
-    </div>
-  );
+  return <Tabs tabs={SUPER_TABS} activeKey={tab} onChange={onChange} ariaLabel="Super Console tabs" />;
 }

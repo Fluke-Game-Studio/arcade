@@ -33,12 +33,12 @@ function MiniActionButton({ a }: { a: MiniAction }) {
         style={{
           position: "relative",
           display: "grid",
-          gap: 10,
+          gap: 6,
           alignContent: "start",
           justifyItems: "center",
-          minHeight: 108,
-          padding: 14,
-          borderRadius: 18,
+          minHeight: 72,
+          padding: 10,
+          borderRadius: 16,
           border: `1px solid ${border}`,
           background: bg,
           boxShadow: isPrimary ? "0 14px 30px rgba(37,99,235,0.14)" : "0 12px 26px rgba(15,23,42,0.06)",
@@ -56,11 +56,11 @@ function MiniActionButton({ a }: { a: MiniAction }) {
           <span
             style={{
               position: "absolute",
-              top: 10,
-              right: 10,
-              minWidth: 20,
-              height: 20,
-              padding: "0 6px",
+              top: 8,
+              right: 8,
+              minWidth: 18,
+              height: 18,
+              padding: "0 5px",
               borderRadius: 999,
               background: "linear-gradient(135deg,#ef4444,#f97316)",
               color: "#fff",
@@ -78,33 +78,33 @@ function MiniActionButton({ a }: { a: MiniAction }) {
 
         <div
           style={{
-            width: 42,
-            height: 42,
-            borderRadius: 14,
+            width: 30,
+            height: 30,
+            borderRadius: 10,
             display: "grid",
             placeItems: "center",
             background: iconBg,
             border: `1px solid ${border}`,
           }}
         >
-          <i className="material-icons" style={{ fontSize: 20, color: iconColor }}>
+          <i className="material-icons" style={{ fontSize: 15, color: iconColor }}>
             {a.icon}
           </i>
         </div>
 
-        <div style={{ fontSize: 13, fontWeight: 950, color: "#f8fbff", letterSpacing: "-0.01em" }}>{a.title}</div>
+        <div style={{ fontSize: 12, fontWeight: 950, color: "#f8fbff", letterSpacing: "-0.01em" }}>{a.title}</div>
 
         <span
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
-            padding: "4px 10px",
+            padding: "3px 8px",
             borderRadius: 999,
             border: `1px solid ${border}`,
             background: "rgba(255,255,255,0.08)",
             color: "#eff6ff",
-            fontSize: 10,
+            fontSize: 9,
             fontWeight: 900,
             letterSpacing: 0.5,
             textTransform: "uppercase",
@@ -159,8 +159,8 @@ export default function QuickActionsMini() {
         <div style={{ fontSize: 12, color: "#64748b", marginTop: 3, fontWeight: 700 }}>Common tasks for your week</div>
       </div>
 
-      <div style={{ padding: 14 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+      <div style={{ padding: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
           {actions.map((a) => (
             <MiniActionButton key={a.to} a={a} />
           ))}

@@ -3,6 +3,28 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
 import "./theme.css";
 
+// Retry transient API failures so a short network/Lambda hiccup does not leave
+// the first rendered page incomplete. Auth failures are returned immediately.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+  const isApiRequest = /\/auth\/|execute-api\.|\/api\//i.test(url);
+  const attempts = isApiRequest ? 3 : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await nativeFetch(input, init);
+      if (response.status < 500 || attempt === attempts - 1) return response;
+      await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1) throw error;
+      await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw lastError || new Error("Request failed");
+};
+
 import { AuthProvider } from "./auth/AuthContext";
 import Protected from "./auth/Protected";
 
@@ -204,6 +226,10 @@ const router = createBrowserRouter([
           </Protected>
         ),
       },
+      // Legacy notification/email links pointed at a fake sub-route before tabs
+      // were query-param-based — already-sent notifications and emails still
+      // have these baked into their href, so keep redirecting them.
+      { path: "/account/wallet", element: <Navigate to="/account?tab=wallet" replace /> },
       {
         path: "/store",
         element: (
@@ -212,6 +238,7 @@ const router = createBrowserRouter([
           </Protected>
         ),
       },
+      { path: "/store/orders", element: <Navigate to="/store?tab=orders" replace /> },
       { path: "/social/posts", element: <Navigate to="/organisation/social-media" replace /> },
 
       {
@@ -327,6 +354,7 @@ const router = createBrowserRouter([
           </Protected>
         ),
       },
+      { path: "/admin/users", element: <Navigate to="/admin?tab=employees" replace /> },
 
       {
         path: "/super",

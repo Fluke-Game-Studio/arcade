@@ -1,12 +1,17 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import AdminMailerComposerModal from "../components/AdminMailerComposerModal";
 import ActivityReport from "./ActivityReport";
 import EmployeeExplorerPanel from "../components/admin/EmployeeExplorerPanel";
 import AnalyticsInsightsPanel from "../components/AnalyticsInsightsPanel";
+import Tabs, { type TabDef } from "../components/shared/Tabs";
+import { useTabState } from "../lib/useTabState";
 
 type TabKey = "activity" | "employees" | "analytics";
 type EmployeeScope = "all" | "team";
+
+const ALL_TAB_KEYS: TabKey[] = ["activity", "employees", "analytics"];
+const TEAM_TAB_KEYS: TabKey[] = ["activity", "employees"];
 
 export default function AdminWorkspace({
   initialTab = "employees",
@@ -16,16 +21,26 @@ export default function AdminWorkspace({
   employeeScope?: EmployeeScope;
 } = {}) {
   const { user, api } = useAuth();
-  const [tab, setTab] = useState<TabKey>(initialTab);
+  const [tab, setTab] = useTabState<TabKey>(
+    employeeScope === "team" ? TEAM_TAB_KEYS : ALL_TAB_KEYS,
+    initialTab
+  );
   const [mailerOpen, setMailerOpen] = useState(false);
 
-  useEffect(() => {
-    setTab(initialTab);
-  }, [initialTab]);
+  const tabs = useMemo<TabDef<TabKey>[]>(() => {
+    const base: TabDef<TabKey>[] = [
+      { key: "activity", label: "Cumulative Activity", icon: "insights" },
+      { key: "employees", label: employeeScope === "team" ? "My Team" : "Each Employee", icon: "groups" },
+    ];
+    if (employeeScope !== "team") {
+      base.push({ key: "analytics", label: "Analytics", icon: "query_stats" });
+    }
+    return base;
+  }, [employeeScope]);
 
   return (
     <div style={{ width: "100%", maxWidth: "none", padding: "24px 32px 28px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 28, fontWeight: 1000, color: "#0f172a" }}>
             {employeeScope === "team" ? "My Team Workspace" : "Admin Workspace"}
@@ -35,68 +50,6 @@ export default function AdminWorkspace({
               ? "Your direct reports, weekly activity, and team-level inspection."
               : "One place for cumulative activity and employee-level inspection."}
           </div>
-        </div>
-
-        <div style={{ display: "inline-flex", gap: 8, padding: 6, borderRadius: 999, background: "rgba(15,23,42,.04)", border: "1px solid rgba(148,163,184,.14)", margin: "0 auto" }}>
-          <button
-            type="button"
-            onClick={() => setTab("activity")}
-            style={{
-              border: "none",
-              cursor: "pointer",
-              borderRadius: 999,
-              padding: "8px 14px",
-              fontWeight: 1000,
-              fontSize: 12,
-              background: tab === "activity" ? "rgba(59,130,246,.16)" : "transparent",
-              color: tab === "activity" ? "#1d4ed8" : "#334155",
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <i className="material-icons" style={{ fontSize: 16 }}>insights</i>
-              Cumulative Activity
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("employees")}
-            style={{
-              border: "none",
-              cursor: "pointer",
-              borderRadius: 999,
-              padding: "8px 14px",
-              fontWeight: 1000,
-              fontSize: 12,
-              background: tab === "employees" ? "rgba(34,197,94,.16)" : "transparent",
-              color: tab === "employees" ? "#166534" : "#334155",
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <i className="material-icons" style={{ fontSize: 16 }}>groups</i>
-              {employeeScope === "team" ? "My Team" : "Each Employee"}
-            </span>
-          </button>
-          {employeeScope !== "team" && (
-            <button
-              type="button"
-              onClick={() => setTab("analytics")}
-              style={{
-                border: "none",
-                cursor: "pointer",
-                borderRadius: 999,
-                padding: "8px 14px",
-                fontWeight: 1000,
-                fontSize: 12,
-                background: tab === "analytics" ? "rgba(168,85,247,.16)" : "transparent",
-                color: tab === "analytics" ? "#7e22ce" : "#334155",
-              }}
-            >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <i className="material-icons" style={{ fontSize: 16 }}>query_stats</i>
-                Analytics
-              </span>
-            </button>
-          )}
         </div>
 
         {employeeScope !== "team" ? (
@@ -110,6 +63,10 @@ export default function AdminWorkspace({
             Mail Composer
           </button>
         ) : null}
+      </div>
+
+      <div style={{ marginTop: 18, marginBottom: 18 }}>
+        <Tabs tabs={tabs} activeKey={tab} onChange={setTab} ariaLabel="Admin workspace tabs" />
       </div>
 
       <div style={{ display: tab === "activity" ? "block" : "none", width: "100%" }}>

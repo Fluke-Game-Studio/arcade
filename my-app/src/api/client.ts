@@ -133,6 +133,10 @@ export class ApiClient {
     this.token = token;
   }
 
+  getToken() {
+    return this.token;
+  }
+
   private resolveDefaultAgentEmployee(context?: string) {
     const ctx = String(context || "internal").trim().toLowerCase();
     if (ctx === "internal" || ctx === "flukegames" || ctx === "public") {
@@ -242,6 +246,7 @@ export class ApiClient {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: this.headers(true, true),
+      credentials: "include",
       body,
     });
     if (!res.ok) throw new Error(`Login failed: HTTP ${res.status}`);
@@ -249,6 +254,32 @@ export class ApiClient {
     if (!json?.token) throw new Error("Login response missing token");
     this.setToken(json.token);
     return json;
+  }
+
+  async refreshAuth(): Promise<ApiLoginResponse> {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: this.headers(true, true),
+      credentials: "include",
+      body: JSON.stringify({ platform: this.platform }),
+    });
+    if (!res.ok) {
+      const error = new Error(`Refresh failed: HTTP ${res.status}`) as Error & { status?: number };
+      error.status = res.status;
+      throw error;
+    }
+    const json = (await res.json()) as ApiLoginResponse;
+    if (!json?.token) throw new Error("Refresh response missing token");
+    this.setToken(json.token);
+    return json;
+  }
+
+  async logoutAuth(): Promise<void> {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: "POST",
+      headers: this.headers(true, true),
+      credentials: "include",
+    });
   }
 
   async getMe(): Promise<ApiUser> {
@@ -1568,6 +1599,103 @@ export class ApiClient {
     return payload as { customer: any; entitlements: any[]; items: any[] };
   }
 
+  async getEmployeeBuildProjects(): Promise<{ ok: boolean; projects: Array<{ projectId: string; name: string }> }> {
+    const r = await fetch(`${API_BASE}/customer/employee/build-projects`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getEmployeeBuildProjects failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as { ok: boolean; projects: Array<{ projectId: string; name: string }> };
+  }
+
+  async getEmployeeBuilds(
+    projectId: string,
+    stage: string
+  ): Promise<{
+    ok: boolean;
+    projectId: string;
+    stage: string;
+    builds: Array<{
+      fileName: string;
+      downloadUrl: string;
+      version: string;
+      changelist: string;
+      sha256: string;
+      uploadedBy: string;
+      uploadedByRole: string;
+      uploadedAt: string;
+      sizeBytes: number;
+    }>;
+  }> {
+    const qs = new URLSearchParams({ projectId, stage }).toString();
+    const r = await fetch(`${API_BASE}/customer/employee/builds?${qs}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(`getEmployeeBuilds failed: ${this.extractErrorMessage(payload, r.status)}`);
+    }
+    return payload as any;
+  }
+
+  async getSuperBuildProjects(): Promise<{ ok: boolean; projects: Array<{ projectId: string; name: string }> }> {
+    const r = await fetch(`${API_BASE}/super/builds/projects`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(`getSuperBuildProjects failed: ${this.extractErrorMessage(payload, r.status)}`);
+    return payload as { ok: boolean; projects: Array<{ projectId: string; name: string }> };
+  }
+
+  async getSuperBuilds(projectId: string, stage: string): Promise<{ ok: boolean; projectId: string; stage: string; builds: any[] }> {
+    const qs = new URLSearchParams({ projectId, stage }).toString();
+    const r = await fetch(`${API_BASE}/super/builds?${qs}`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(`getSuperBuilds failed: ${this.extractErrorMessage(payload, r.status)}`);
+    return payload as { ok: boolean; projectId: string; stage: string; builds: any[] };
+  }
+
+  async setSuperBuildVisibility(body: { projectId: string; releaseKey: string; visible: boolean }): Promise<any> {
+    const r = await fetch(`${API_BASE}/super/builds/visibility`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(`setSuperBuildVisibility failed: ${this.extractErrorMessage(payload, r.status)}`);
+    return payload;
+  }
+
+  async deleteSuperBuild(body: { projectId: string; releaseKey: string }): Promise<any> {
+    const r = await fetch(`${API_BASE}/super/builds/delete`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(`deleteSuperBuild failed: ${this.extractErrorMessage(payload, r.status)}`);
+    return payload;
+  }
+
+  async promoteSuperBuild(body: { projectId: string; releaseKey: string; targetStage: "candidate" | "released" }): Promise<any> {
+    const r = await fetch(`${API_BASE}/super/builds/promote`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(`promoteSuperBuild failed: ${this.extractErrorMessage(payload, r.status)}`);
+    return payload;
+  }
+
   async getWalletMe(): Promise<ApiWalletResponse> {
     const r = await fetch(`${API_BASE}/wallet/me`, {
       method: "GET",
@@ -1810,6 +1938,7 @@ export class ApiClient {
     release_status: "internal" | "candidate" | "released" | string;
     channel?: "alpha" | "beta" | "stable" | string;
     platform?: string;
+    download_url?: string;
     status?: "active" | "archived" | string;
   }): Promise<{ ok: true; product_id: string }> {
     const r = await fetch(`${API_BASE}/admin/products/sync-from-project`, {
@@ -1923,6 +2052,21 @@ export class ApiClient {
     return {
       files: Array.isArray(payload?.files) ? payload.files : [],
     };
+  }
+
+  async discardStagedUpload(s3Key: string): Promise<{ ok: boolean; s3Key: string }> {
+    const r = await fetch(`${API_BASE}/updates/discard-upload`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({ s3Key }),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `discardStagedUpload failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return { ok: !!payload?.ok, s3Key: payload?.s3Key || s3Key };
   }
 
   async createStoreImageUploadUrls(

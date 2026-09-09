@@ -21,7 +21,7 @@ type MenuGroup = {
   show: boolean;
 };
 
-const RAIL_W = 64;
+const RAIL_W = 92;
 
 const GROUP_ICON: Record<string, string> = {
   organisation: "apartment",
@@ -49,8 +49,8 @@ function initials(nameOrUser: string) {
   return (a + b) || "FG";
 }
 
-export default function Navbar() {
-  const { user, logout, api } = useAuth();
+export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } = {}) {
+  const { user, logout, api, ensureAuthFresh } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -76,6 +76,7 @@ export default function Navbar() {
   const NAV_H = 82;
 
   useEffect(() => {
+    document.body.classList.add("has-nav-layout");
     if (typeof M !== "undefined") {
       const elems = document.querySelectorAll(".sidenav");
       M.Sidenav.init(elems, { edge: "left" });
@@ -85,7 +86,10 @@ export default function Navbar() {
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
 
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      document.body.classList.remove("has-nav-layout");
+    };
   }, []);
 
   useEffect(() => {
@@ -174,7 +178,13 @@ export default function Navbar() {
   };
 
   const displayName = user?.name || user?.username || "";
-  const initial = (displayName || "U").slice(0, 1).toUpperCase();
+
+  const handleAuthNavigation = async (event: any) => {
+    if (!isAuthenticated) return;
+    if (await ensureAuthFresh()) return;
+    event.preventDefault();
+    navigate(`/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`);
+  };
 
   // Profile summary shown in the navbar chip's dropdown (moved off the Home dashboard card).
   const profileEmail = safeStr((user as any)?.employee_email) || "—";
@@ -256,30 +266,24 @@ export default function Navbar() {
   const isGroupActive = (group: MenuGroup) => group.items.some((x) => isRouteActive(x.to));
   const groupHasBadge = (group: MenuGroup) => group.items.some((x) => (x.badge || 0) > 0);
 
-  const topBarGlow = scrolled
-    ? "0 10px 30px rgba(0,0,0,0.34), 0 0 0 1px rgba(96,165,250,0.05)"
-    : "0 8px 24px rgba(0,0,0,0.20), 0 0 0 1px rgba(96,165,250,0.04)";
-
   const iconBtnStyle = (isActive: boolean, isOpen: boolean): CSSProperties => ({
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    color: isActive || isOpen ? "#f8fbff" : "rgba(219,234,254,0.88)",
-    background:
-      isActive || isOpen
-        ? "linear-gradient(180deg, rgba(34,211,238,0.22), rgba(59,130,246,0.16) 55%, rgba(168,85,247,0.14))"
-        : "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))",
-    border:
-      isActive || isOpen
-        ? "1px solid rgba(56,189,248,0.34)"
-        : "1px solid rgba(148,163,184,0.08)",
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    color: isActive || isOpen ? "#ffffff" : "#d8e0ea",
+    background: isActive || isOpen
+      ? "linear-gradient(180deg, rgba(15,118,110,0.96), rgba(2,132,199,0.92))"
+      : "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015))",
+    border: isActive || isOpen
+      ? "1px solid rgba(14,165,233,0.20)"
+      : "1px solid rgba(148,163,184,0.10)",
     boxShadow:
       isActive || isOpen
-        ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 24px rgba(59,130,246,0.14)"
+        ? "0 12px 24px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.10)"
         : "inset 0 1px 0 rgba(255,255,255,0.03)",
     transition: "all 180ms ease",
     cursor: "pointer",
@@ -288,8 +292,8 @@ export default function Navbar() {
 
   const railBtnStyle = (isActive: boolean, isOpen: boolean): CSSProperties => ({
     ...iconBtnStyle(isActive, isOpen),
-    width: 46,
-    height: 46,
+    width: 58,
+    height: 58,
   });
 
   // Glass "console" pill that groups the bell + profile chip into one designed
@@ -299,10 +303,11 @@ export default function Navbar() {
     alignItems: "center",
     gap: 8,
     padding: 6,
-    borderRadius: 999,
-    background: "linear-gradient(180deg, rgba(11,18,31,0.85), rgba(8,14,24,0.80))",
-    border: "1px solid rgba(56,189,248,0.14)",
-    boxShadow: "0 10px 28px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05)",
+    borderRadius: 18,
+    background: "rgba(255,255,255,0.92)",
+    border: "1px solid rgba(148,163,184,0.14)",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.06)",
+    backdropFilter: "blur(14px)",
   };
 
   const badgeDot: CSSProperties = {
@@ -318,8 +323,6 @@ export default function Navbar() {
 
   const DropdownPanel = ({ group, open }: { group: MenuGroup; open: boolean }) => (
     <div
-      onMouseEnter={() => setOpenMenu(group.key)}
-      onMouseLeave={() => setOpenMenu((prev) => (prev === group.key ? null : prev))}
       style={{
         position: "absolute",
         left: "calc(100% + 12px)",
@@ -328,9 +331,9 @@ export default function Navbar() {
         padding: 10,
         borderRadius: 20,
         background: "linear-gradient(180deg, rgba(8,14,24,0.98), rgba(10,18,34,0.97))",
-        border: "1px solid rgba(56,189,248,0.18)",
+        border: "1px solid rgba(148,163,184,0.16)",
         boxShadow:
-          "0 24px 70px rgba(0,0,0,0.50), 0 0 0 1px rgba(168,85,247,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+          "0 24px 70px rgba(15,23,42,0.18), 0 0 0 1px rgba(148,163,184,0.08), inset 0 1px 0 rgba(255,255,255,0.04)",
         backdropFilter: "blur(18px)",
         WebkitBackdropFilter: "blur(18px)",
         opacity: open ? 1 : 0,
@@ -341,18 +344,18 @@ export default function Navbar() {
       }}
     >
       <div
-        style={{
-          position: "absolute",
-          left: -8,
-          top: 20,
-          width: 16,
-          height: 16,
-          transform: "rotate(45deg)",
-          background: "rgba(9,15,27,0.98)",
-          borderLeft: "1px solid rgba(56,189,248,0.18)",
-          borderBottom: "1px solid rgba(56,189,248,0.18)",
-        }}
-      />
+      style={{
+        position: "absolute",
+        left: -8,
+        top: 20,
+        width: 16,
+        height: 16,
+        transform: "rotate(45deg)",
+        background: "rgba(15,23,42,0.98)",
+        borderLeft: "1px solid rgba(148,163,184,0.20)",
+        borderBottom: "1px solid rgba(148,163,184,0.20)",
+      }}
+    />
 
       <div
         style={{
@@ -361,7 +364,7 @@ export default function Navbar() {
           fontWeight: 900,
           letterSpacing: 1.3,
           textTransform: "uppercase",
-          color: "rgba(125,211,252,0.82)",
+          color: "rgba(203,213,225,0.78)",
         }}
       >
         {group.label} Systems
@@ -373,7 +376,8 @@ export default function Navbar() {
           <NavLink
             key={item.to}
             to={item.to}
-            onClick={() => setOpenMenu(null)}
+            onClick={(event) => { void handleAuthNavigation(event); setOpenMenu(null); }}
+            className="nav-dropdown-link"
             style={{
               position: "relative",
               display: "flex",
@@ -383,19 +387,19 @@ export default function Navbar() {
               padding: "13px 14px",
               borderRadius: 14,
               textDecoration: "none",
-              color: itemActive ? "#ffffff" : "rgba(226,232,240,0.90)",
+              color: itemActive ? "#ffffff" : "rgba(15,23,42,0.82)",
               fontWeight: itemActive ? 900 : 800,
               fontSize: 13,
               marginBottom: 6,
               background: itemActive
-                ? "linear-gradient(135deg, rgba(6,182,212,0.22), rgba(37,99,235,0.16), rgba(168,85,247,0.14))"
-                : "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))",
+                ? "linear-gradient(180deg, rgba(30,41,59,0.98), rgba(15,23,42,0.98))"
+                : "rgba(248,250,252,0.96)",
               border: itemActive
-                ? "1px solid rgba(56,189,248,0.25)"
-                : "1px solid rgba(148,163,184,0.07)",
+                ? "1px solid rgba(148,163,184,0.22)"
+                : "1px solid rgba(148,163,184,0.18)",
               boxShadow: itemActive
-                ? "0 0 22px rgba(59,130,246,0.12), inset 0 1px 0 rgba(255,255,255,0.06)"
-                : "inset 0 1px 0 rgba(255,255,255,0.03)",
+                ? "0 12px 22px rgba(15,23,42,0.18)"
+                : "0 8px 18px rgba(15,23,42,0.04)",
               transition: "all 160ms ease",
               overflow: "hidden",
             }}
@@ -442,7 +446,7 @@ export default function Navbar() {
   );
 
   const RailLinkItem = ({ to, label }: { to: string; label: string }) => (
-    <NavLink to={to} title={label} aria-label={label} style={({ isActive }) => railBtnStyle(isActive, false)}>
+    <NavLink to={to} title={label} aria-label={label} className="nav-rail-item" onClick={(event) => void handleAuthNavigation(event)} style={({ isActive }) => railBtnStyle(isActive, false)}>
       <i className="material-icons" style={{ fontSize: 22 }}>
         {LINK_ICON[label] || "circle"}
       </i>
@@ -462,6 +466,7 @@ export default function Navbar() {
           onClick={() => setOpenMenu((prev) => (prev === group.key ? null : group.key))}
           title={group.label}
           aria-label={group.label}
+          className="nav-rail-trigger"
           style={railBtnStyle(active, open)}
         >
           <i className="material-icons" style={{ fontSize: 22 }}>
@@ -677,6 +682,203 @@ export default function Navbar() {
 
           <NavLink
             to="/account"
+            onClick={(event) => { void handleAuthNavigation(event); setOpenMenu(null); }}
+            style={{
+              marginTop: 14,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              height: 38,
+              borderRadius: 12,
+              textDecoration: "none",
+              color: "#f8fbff",
+              fontWeight: 900,
+              fontSize: 12.5,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <i className="material-icons" style={{ fontSize: 16 }}>account_circle</i>
+            My Account
+          </NavLink>
+        </div>
+      </div>
+    );
+  };
+
+  const HeaderProfileChip = () => {
+    if (!isAuthenticated) return null;
+    const open = openMenu === "profile";
+    return (
+      <div style={{ position: "relative" }}>
+        <button
+          type="button"
+          onClick={() => setOpenMenu((prev) => (prev === "profile" ? null : "profile"))}
+          title={displayName}
+          aria-label="Profile"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "10px 14px",
+            borderRadius: 18,
+            background: "rgba(8,14,24,0.44)",
+            border: open ? "1px solid rgba(56,189,248,0.32)" : "1px solid rgba(148,163,184,0.14)",
+            boxShadow: open ? "0 0 18px rgba(56,189,248,0.12)" : "inset 0 1px 0 rgba(255,255,255,0.04)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            cursor: "pointer",
+          }}
+        >
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: "50%",
+              overflow: "hidden",
+              flexShrink: 0,
+              border: "2px solid rgba(56,189,248,0.28)",
+              boxShadow: "0 6px 14px rgba(15,23,42,0.18)",
+              background: "rgba(15,23,42,0.92)",
+            }}
+          >
+            {profileAvatarUrl ? (
+              <img src={profileAvatarUrl} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <span
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "linear-gradient(135deg, rgba(6,182,212,1), rgba(37,99,235,1))",
+                  color: "white",
+                  fontWeight: 900,
+                  fontSize: 13,
+                }}
+              >
+                {profileInitials}
+              </span>
+            )}
+          </div>
+
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4, textAlign: "left" }}>
+            <div style={{ color: "#f8fbff", fontWeight: 900, fontSize: 13, lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {displayName}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {roleLower && <span style={headerTagStyle}>{roleLower}</span>}
+              {profileDept && <span style={headerTagStyle}>{profileDept}</span>}
+            </div>
+          </div>
+        </button>
+
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 10px)",
+            right: 0,
+            width: "min(300px, calc(100vw - 24px))",
+            padding: 16,
+            borderRadius: 20,
+            background: "linear-gradient(180deg, rgba(8,14,24,0.98), rgba(10,18,34,0.97))",
+            border: "1px solid rgba(56,189,248,0.18)",
+            boxShadow:
+              "0 24px 70px rgba(0,0,0,0.50), 0 0 0 1px rgba(168,85,247,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+            opacity: open ? 1 : 0,
+            transform: open ? "translateY(0) scale(1)" : "translateY(-8px) scale(0.985)",
+            pointerEvents: open ? "auto" : "none",
+            transition: "all 180ms ease",
+            zIndex: 1300,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                overflow: "hidden",
+                flexShrink: 0,
+                border: "2px solid rgba(56,189,248,0.3)",
+              }}
+            >
+              {profileAvatarUrl ? (
+                <img src={profileAvatarUrl} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <span
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "linear-gradient(135deg, rgba(6,182,212,1), rgba(37,99,235,1), rgba(168,85,247,1))",
+                    color: "white",
+                    fontWeight: 900,
+                    fontSize: 15,
+                  }}
+                >
+                  {profileInitials}
+                </span>
+              )}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: "#f8fbff", fontWeight: 900, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {displayName}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                <span style={headerTagStyle}>{roleLower}</span>
+                {profileDept && <span style={headerTagStyle}>{profileDept}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+              <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>alternate_email</i>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileEmail}</span>
+            </div>
+            {profileTitle && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>work</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileTitle}</span>
+              </div>
+            )}
+            {profileLocation && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>location_on</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileLocation}</span>
+              </div>
+            )}
+            {profilePhone && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>call</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profilePhone}</span>
+              </div>
+            )}
+            {profileEmpType && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>business_center</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileEmpType}</span>
+              </div>
+            )}
+            {profileUsername && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(226,232,240,0.82)", fontSize: 12.5 }}>
+                <i className="material-icons" style={{ fontSize: 16, opacity: 0.85 }}>person</i>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileUsername}</span>
+              </div>
+            )}
+          </div>
+
+          <NavLink
+            to="/account"
             onClick={() => setOpenMenu(null)}
             style={{
               marginTop: 14,
@@ -704,6 +906,22 @@ export default function Navbar() {
     );
   };
 
+  const headerTagStyle: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 22,
+    padding: "0 8px",
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    color: "rgba(226,232,240,0.92)",
+    fontSize: 10,
+    fontWeight: 900,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  };
+
   const MobileLink = (props: { to: string; label: string }) => (
     <li>
       <NavLink
@@ -721,18 +939,19 @@ export default function Navbar() {
           fontSize: 13,
           letterSpacing: 0.35,
           textTransform: "uppercase",
-          color: isActive ? "#fff" : "#dbeafe",
+          color: isActive ? "#ffffff" : "#1e293b",
           background: isActive
-            ? "linear-gradient(135deg, rgba(6,182,212,0.24), rgba(37,99,235,0.18), rgba(168,85,247,0.15))"
-            : "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))",
+            ? "linear-gradient(135deg, rgba(15,118,110,0.95), rgba(2,132,199,0.90))"
+            : "rgba(241,245,249,0.92)",
           border: isActive
-            ? "1px solid rgba(56,189,248,0.28)"
-            : "1px solid rgba(255,255,255,0.06)",
+            ? "1px solid rgba(14,165,233,0.20)"
+            : "1px solid rgba(203,213,225,0.82)",
           textDecoration: "none",
           transition: "all 160ms ease",
           boxShadow: isActive ? "0 0 20px rgba(59,130,246,0.10)" : "none",
         })}
-        onClick={() => {
+        onClick={(event) => {
+          void handleAuthNavigation(event);
           try {
             M.Sidenav.getInstance(sidenavRef.current)?.close();
           } catch {}
@@ -759,7 +978,7 @@ export default function Navbar() {
               fontWeight: 900,
               letterSpacing: 1.3,
               textTransform: "uppercase",
-              color: "rgba(125,211,252,0.86)",
+              color: "#0f172a",
             }}
           >
             {title}
@@ -776,16 +995,19 @@ export default function Navbar() {
     <>
       <nav
         style={{
+          display: hideTopBar ? "none" : undefined,
           position: "sticky",
           top: 0,
-          zIndex: 1000,
+          zIndex: 850,
           height: NAV_H,
           lineHeight: "normal",
           background: scrolled
-            ? "radial-gradient(1100px 140px at 12% 0%, rgba(34,211,238,0.10), transparent 60%), radial-gradient(900px 140px at 88% 0%, rgba(168,85,247,0.08), transparent 60%), linear-gradient(180deg, rgba(4,8,15,0.97), rgba(7,12,22,0.94))"
-            : "radial-gradient(1100px 140px at 12% 0%, rgba(34,211,238,0.14), transparent 60%), radial-gradient(900px 140px at 88% 0%, rgba(168,85,247,0.11), transparent 60%), linear-gradient(180deg, rgba(5,9,18,0.90), rgba(7,12,22,0.84))",
-          borderBottom: "1px solid rgba(56,189,248,0.12)",
-          boxShadow: topBarGlow,
+            ? "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.94))"
+            : "linear-gradient(180deg, rgba(30,41,59,0.96), rgba(51,65,85,0.90))",
+          borderBottom: "1px solid rgba(56,189,248,0.10)",
+          boxShadow: scrolled
+            ? "0 8px 24px rgba(15,23,42,0.16)"
+            : "0 4px 16px rgba(15,23,42,0.10)",
           backdropFilter: "blur(18px)",
           WebkitBackdropFilter: "blur(18px)",
           transition: "all 180ms ease",
@@ -800,7 +1022,7 @@ export default function Navbar() {
             left: 0,
             right: 0,
             height: 2,
-            background: "linear-gradient(90deg, transparent, rgba(56,189,248,0.55) 20%, rgba(168,85,247,0.5) 55%, transparent 85%)",
+            background: "linear-gradient(90deg, transparent, rgba(56,189,248,0.32) 20%, rgba(15,118,110,0.28) 55%, transparent 85%)",
             opacity: 0.8,
             pointerEvents: "none",
           }}
@@ -823,12 +1045,13 @@ export default function Navbar() {
           <NavLink
             to={isAuthenticated ? "/" : `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`}
             className="nav-logo"
+            onClick={(event) => void handleAuthNavigation(event)}
             style={{
               minWidth: 0,
               alignItems: "center",
               gap: 14,
               textDecoration: "none",
-              color: "white",
+              color: "#f8fbff",
             }}
           >
             <div
@@ -838,15 +1061,15 @@ export default function Navbar() {
                 height: 52,
                 borderRadius: 16,
                 background:
-                  "linear-gradient(180deg, rgba(18,32,55,0.95), rgba(8,16,28,0.96))",
-                border: "1px solid rgba(56,189,248,0.22)",
+                  "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.96))",
+                border: "1px solid rgba(56,189,248,0.20)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 overflow: "hidden",
                 flexShrink: 0,
                 boxShadow:
-                  "0 0 30px rgba(59,130,246,0.16), inset 0 1px 0 rgba(255,255,255,0.07)",
+                  "0 12px 28px rgba(15,23,42,0.22), inset 0 1px 0 rgba(255,255,255,0.10)",
               }}
             >
               <div
@@ -854,7 +1077,7 @@ export default function Navbar() {
                   position: "absolute",
                   inset: 0,
                   background:
-                    "radial-gradient(circle at 30% 25%, rgba(34,211,238,0.20), transparent 42%), radial-gradient(circle at 75% 70%, rgba(168,85,247,0.15), transparent 35%)",
+                    "radial-gradient(circle at 30% 25%, rgba(15,118,110,0.12), transparent 42%), radial-gradient(circle at 75% 70%, rgba(2,132,199,0.10), transparent 35%)",
                   pointerEvents: "none",
                 }}
               />
@@ -896,7 +1119,7 @@ export default function Navbar() {
                 style={{
                   fontSize: 11,
                   fontWeight: 800,
-                  color: "rgba(125,211,252,0.78)",
+                  color: "rgba(191,219,254,0.86)",
                   textTransform: "uppercase",
                   letterSpacing: 1.55,
                 }}
@@ -913,7 +1136,9 @@ export default function Navbar() {
           >
             <div style={actionsPillStyle}>
               {isAuthenticated ? <NotificationBell compact /> : null}
-              <ProfileChip />
+            </div>
+            <div className="nav-desktop-profile">
+              <HeaderProfileChip />
             </div>
           </div>
 
@@ -923,7 +1148,7 @@ export default function Navbar() {
             style={{ justifyContent: "flex-end", alignItems: "center", gap: 10 }}
           >
             <div style={actionsPillStyle}>
-              {isAuthenticated ? <NotificationBell compact /> : null}
+              {isAuthenticated ? <NotificationBell compact mobileDirect /> : null}
               <ProfileChip />
             </div>
             <a
@@ -941,7 +1166,7 @@ export default function Navbar() {
                 background:
                   "linear-gradient(180deg, rgba(16,27,45,0.96), rgba(9,16,28,0.95))",
                 border: "1px solid rgba(56,189,248,0.14)",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+                boxShadow: "0 8px 16px rgba(15,23,42,0.18)",
               }}
             >
               <i className="material-icons">menu</i>
@@ -949,6 +1174,33 @@ export default function Navbar() {
           </div>
         </div>
       </nav>
+
+      {hideTopBar && (
+        <a
+          href="#!"
+          data-target="mobile-sidenav"
+          className="sidenav-trigger login-nav-trigger"
+          aria-label="Open navigation"
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 1100,
+            width: 42,
+            height: 42,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 12,
+            color: "#fff",
+            background: "linear-gradient(180deg, rgba(16,27,45,0.96), rgba(9,16,28,0.95))",
+            border: "1px solid rgba(56,189,248,0.20)",
+            boxShadow: "0 8px 18px rgba(15,23,42,0.24)",
+            textDecoration: "none",
+          }}
+        >
+          <i className="material-icons">menu</i>
+        </a>
+      )}
 
       {/* Landscape: persistent icon rail (Facebook-style), replaces the drawer */}
       <div
@@ -960,53 +1212,68 @@ export default function Navbar() {
           left: 0,
           bottom: 0,
           width: RAIL_W,
-          zIndex: 999,
+          zIndex: 900,
           flexDirection: "column",
           alignItems: "center",
-          paddingTop: NAV_H + 16,
+          paddingTop: 14,
           paddingBottom: 16,
-          gap: 10,
-          background: "linear-gradient(180deg, rgba(5,9,18,0.96), rgba(7,12,22,0.94))",
-          borderRight: "1px solid rgba(56,189,248,0.10)",
-          boxShadow: "8px 0 30px rgba(0,0,0,0.20)",
+          gap: 12,
+          background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.98))",
+          borderRight: "1px solid rgba(148,163,184,0.12)",
+          boxShadow: "10px 0 26px rgba(15,23,42,0.12)",
         }}
       >
         <NavLink
           to={isAuthenticated ? "/" : `/login?next=${encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)}`}
           title="Fluke Games Arcade"
           aria-label="Fluke Games Arcade — Home"
+          onClick={(event) => void handleAuthNavigation(event)}
           style={{
-            position: "relative",
-            width: 46,
-            height: 46,
-            marginBottom: 6,
-            borderRadius: 15,
-            background: "linear-gradient(180deg, rgba(18,32,55,0.95), rgba(8,16,28,0.96))",
-            border: "1px solid rgba(56,189,248,0.22)",
+            width: "72px",
+            minHeight: 92,
+            padding: "16px 10px 10px",
+            borderRadius: 22,
+            background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.96))",
+            border: "1px solid rgba(56,189,248,0.20)",
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            overflow: "hidden",
+            gap: 8,
             flexShrink: 0,
-            boxShadow: "0 0 24px rgba(59,130,246,0.16), inset 0 1px 0 rgba(255,255,255,0.07)",
+            boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
           }}
         >
           <div
             style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "radial-gradient(circle at 30% 25%, rgba(34,211,238,0.20), transparent 42%), radial-gradient(circle at 75% 70%, rgba(168,85,247,0.15), transparent 35%)",
-              pointerEvents: "none",
+              width: 48,
+              height: 48,
+              borderRadius: 16,
+              background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.96))",
+              border: "1px solid rgba(56,189,248,0.20)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 16px rgba(15,23,42,0.10)",
+              overflow: "hidden",
             }}
-          />
-          <img
-            src={logoSrc}
-            alt="Fluke Games Logo"
-            style={{ width: "72%", height: "72%", objectFit: "contain", display: "block", position: "relative", zIndex: 1 }}
-          />
+          >
+            <img
+              src={logoSrc}
+              alt="Fluke Games Logo"
+              style={{ width: "68%", height: "68%", objectFit: "contain", display: "block" }}
+            />
+          </div>
+          <div style={{ textAlign: "center", lineHeight: 1 }}>
+            <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1.3, textTransform: "uppercase", color: "#cbd5e1" }}>
+              Fluke
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase", color: "#94a3b8" }}>
+              Games
+            </div>
+          </div>
         </NavLink>
-        <div style={{ width: 28, height: 1, background: "rgba(56,189,248,0.16)", marginBottom: 4 }} />
+        <div style={{ width: 42, height: 1, background: "rgba(148,163,184,0.22)", marginBottom: 4 }} />
 
         {baseLinks.map((l) => (
           <RailLinkItem key={l.to} to={l.to} label={l.label} />
@@ -1023,7 +1290,7 @@ export default function Navbar() {
             aria-label="Logout"
             style={{ ...railBtnStyle(false, false), marginTop: "auto" }}
           >
-            <i className="material-icons" style={{ fontSize: 22, color: "#fda4af" }}>
+            <i className="material-icons" style={{ fontSize: 22, color: "#fb7185" }}>
               logout
             </i>
           </a>
@@ -1037,18 +1304,17 @@ export default function Navbar() {
         ref={sidenavRef}
         style={{
           width: 340,
-          background: "linear-gradient(180deg, #060b14, #0a1222 55%, #0c1426)",
-          color: "white",
-          borderRight: "1px solid rgba(56,189,248,0.12)",
+          background: "linear-gradient(180deg, #ffffff, #f8fafc 55%, #eef2f7)",
+          color: "#0f172a",
+          borderRight: "1px solid rgba(148,163,184,0.16)",
         }}
       >
         <li>
           <div
             style={{
               padding: "22px 16px 16px",
-              borderBottom: "1px solid rgba(56,189,248,0.10)",
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))",
+              borderBottom: "1px solid rgba(148,163,184,0.14)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.94))",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1057,14 +1323,14 @@ export default function Navbar() {
                   width: 52,
                   height: 52,
                   borderRadius: 16,
-                  background:
-                    "linear-gradient(180deg, rgba(18,32,55,0.95), rgba(8,16,28,0.96))",
+                    background:
+                      "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.96))",
                   border: "1px solid rgba(56,189,248,0.18)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   overflow: "hidden",
-                  boxShadow: "0 0 24px rgba(59,130,246,0.12)",
+                  boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
                 }}
               >
                 <img
@@ -1084,7 +1350,7 @@ export default function Navbar() {
                   style={{
                     fontWeight: 900,
                     fontSize: 15,
-                    color: "#f8fbff",
+                    color: "#0f172a",
                     textTransform: "uppercase",
                     letterSpacing: 0.5,
                   }}
@@ -1094,7 +1360,7 @@ export default function Navbar() {
                 <div
                   style={{
                     fontSize: 11,
-                    color: "rgba(125,211,252,0.74)",
+                    color: "rgba(71,85,105,0.82)",
                     textTransform: "uppercase",
                     letterSpacing: 1.1,
                   }}

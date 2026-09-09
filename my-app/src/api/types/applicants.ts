@@ -36,7 +36,8 @@ export type ApplicantRichEmailType =
   | "INTRO"
   | "TECH"
   | "REJECT"
-  | "CONFIRMATION";
+  | "CONFIRMATION"
+  | "GENERIC";
 
 export type SendApplicantRichEmailBody = {
   type: ApplicantRichEmailType;
@@ -49,6 +50,12 @@ export type SendApplicantRichEmailBody = {
   meetingLink?: string;
   subjectOverride?: string;
   attachments?: EmailAttachment[];
+  from?: string;
+  cc?: string[];
+  bcc?: string[];
+  customHtmlBody?: string;
+  customTextBody?: string;
+  customBody?: string;
 };
 
 export type ApplicantDocEmailType = "NDA" | "OFFER";
@@ -86,8 +93,15 @@ export type SendApplicantWelcomeEmailBody = {
 export type EmailAttachment = {
   name: string;
   mimeType: string;
-  dataUrl: string;
+  // At least one of dataUrl / contentBase64 / s3Key must be set — the backend
+  // (normalizeAttachmentsFromBody) reads them in that priority order. Attachments
+  // staged via the presigned-upload flow only need s3Key; the backend fetches the
+  // bytes from S3 itself, so there's no need to also inline the file as base64.
+  dataUrl?: string;
+  contentBase64?: string;
   size: number;
+  s3Key?: string;
+  publicUrl?: string;
 };
 
 export type EmployeeDocEmailType = "EXPERIENCE" | "RECOMMENDATION" | "TERMINATION";

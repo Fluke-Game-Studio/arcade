@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import type { ApiProject, ApiUser } from "../api";
-import { useReleaseProductsData } from "../components/admin/useReleaseProductsData";
-import SuperConsoleTabs, { type SuperTab } from "../components/super/SuperConsoleTabs";
+import SuperConsoleTabs, { type SuperTab, SUPER_TAB_KEYS } from "../components/super/SuperConsoleTabs";
+import { useTabState } from "../lib/useTabState";
 import SuperProjectsTab from "../components/super/SuperProjectsTab";
 import SuperArcadeReleaseTab from "../components/super/SuperArcadeReleaseTab";
 import SuperReleasesTab from "../components/super/SuperReleasesTab";
@@ -32,6 +32,7 @@ type ProjectForm = {
   channel: string;
   platform: string;
   promoteFromVersion: string;
+  downloadUrl: string;
   jiraEnabled: boolean;
   jiraProjectKey: string;
   jiraCloudId: string;
@@ -63,14 +64,9 @@ function parsePlatformCsv(v: string) {
   );
 }
 
-function visibleByStatus(status: string) {
-  const s = safeStr(status).toLowerCase();
-  return !(s === "inactive" || s === "archived" || s === "disabled" || s === "hidden");
-}
-
 export default function SuperUser({ initialTab = "users" }: { initialTab?: SuperTab } = {}) {
   const { api, user } = useAuth();
-  const [tab, setTab] = useState<SuperTab>(initialTab);
+  const [tab, setTab] = useTabState<SuperTab>(SUPER_TAB_KEYS, initialTab);
   const [rows, setRows] = useState<ApiUser[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -97,15 +93,9 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
   const [arcadeReleaseNotes, setArcadeReleaseNotes] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [projectSaving, setProjectSaving] = useState(false);
-  const [savingProductKey, setSavingProductKey] = useState("");
-  const [savingProjectVisibilityId, setSavingProjectVisibilityId] = useState("");
   const [customPlatform, setCustomPlatform] = useState("");
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
   const isSuperUser = normalizeRole((user as any)?.employee_role || (user as any)?.role) === "super";
-  const releaseData = useReleaseProductsData(api as any);
-
-  useEffect(() => {
-    setTab(initialTab);
-  }, [initialTab]);
 
   const [projectForm, setProjectForm] = useState<ProjectForm>({
     name: "",
@@ -119,6 +109,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
     channel: "v0.0.0",
     platform: "",
     promoteFromVersion: "",
+    downloadUrl: "",
     jiraEnabled: false,
     jiraProjectKey: "",
     jiraCloudId: "",
@@ -254,22 +245,6 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
     [rows]
   );
 
-  const releaseSourceOptions = useMemo(() => {
-    if (!editingProjectId) return [];
-    const fromState =
-      projectForm.releaseStatus === "candidate"
-        ? "internal"
-        : projectForm.releaseStatus === "released"
-        ? "candidate"
-        : "";
-    if (!fromState) return [];
-    return (releaseData.products || [])
-      .filter((x: any) => safeStr(x.project_id) === safeStr(editingProjectId) && safeStr(x.release_status).toLowerCase() === fromState)
-      .map((x: any) => safeStr(x.channel))
-      .filter(Boolean)
-      .filter((v: string, i: number, arr: string[]) => arr.indexOf(v) === i);
-  }, [releaseData.products, projectForm.releaseStatus, editingProjectId]);
-
   const platformOptions = useMemo(() => {
     const fromProjects = projects.flatMap((p: any) => parsePlatformCsv(safeStr(p.platform || "")));
     return Array.from(new Set([...DEFAULT_PLATFORMS, ...fromProjects]));
@@ -327,6 +302,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
 
   function resetProjectForm() {
     setEditingProjectId(null);
+    setProjectModalOpen(false);
     setProjectForm({
       name: "",
       description: "",
@@ -339,6 +315,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
       channel: "v0.0.0",
       platform: "",
       promoteFromVersion: "",
+      downloadUrl: "",
       jiraEnabled: false,
       jiraProjectKey: "",
       jiraCloudId: "",
@@ -371,6 +348,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
         platform: projectForm.platform,
         release_version: projectForm.channel,
         promote_from_version: projectForm.promoteFromVersion || undefined,
+        download_url: projectForm.downloadUrl.trim() || undefined,
         jira_enabled: projectForm.jiraEnabled,
         jira_project_key: projectForm.jiraProjectKey || undefined,
         jira_cloud_id: projectForm.jiraCloudId || undefined,
@@ -379,7 +357,6 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
       M.toast({ html: editingProjectId ? "Project Updated" : "Project Created", classes: "green" });
       resetProjectForm();
       loadProjects();
-      releaseData.refresh();
     } catch (err: any) {
       M.toast({ html: err?.message || "Failed saving project", classes: "red" });
     } finally {
@@ -389,7 +366,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
 
   function handleProjectEdit(p: ApiProject) {
     const parsedPlatforms = parsePlatformCsv(safeStr((p as any).platform || ""));
-    const selectedPlatform = parsedPlatforms[0] || "";
+    const selectedPlatform = parsedPlatforms.join(",");
     setEditingProjectId(p.projectId);
     setProjectForm({
       name: p.name || "",
@@ -403,6 +380,7 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
       channel: safeStr((p as any).channel || "v0.0.0"),
       platform: selectedPlatform,
       promoteFromVersion: safeStr((p as any).promote_from_version),
+      downloadUrl: safeStr((p as any).download_url),
       jiraEnabled:
         (p as any).jira_enabled === true ||
         String((p as any).jira_enabled || "").toLowerCase() === "true",
@@ -412,59 +390,12 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
     });
     setCustomPlatform("");
     setTab("projects");
-    document.getElementById("project-form-card")?.scrollIntoView({ behavior: "smooth" });
+    setProjectModalOpen(true);
   }
 
-  async function handleSyncProductFromProject(p: ApiProject) {
-    if (!isSuperUser) return;
-    try {
-      await (api as any).syncProductFromProject({
-        project_id: p.projectId,
-        product_id: p.projectId,
-        name: p.name,
-        release_status: (p.release_status as any) || "internal",
-        channel: safeStr((p as any).channel || "v0.0.0"),
-        platform: safeStr((p as any).platform || ""),
-        promote_from_version: safeStr((p as any).promote_from_version),
-        status: p.status || "active",
-      });
-      M.toast({ html: "Product sync triggered", classes: "green" });
-      releaseData.refresh();
-    } catch (err: any) {
-      M.toast({ html: err?.message || "Sync failed", classes: "red" });
-    }
-  }
-
-  async function toggleProjectVisible(p: ApiProject, shouldBeVisible: boolean) {
-    if (!isSuperUser) return;
-    setSavingProjectVisibilityId(p.projectId);
-    try {
-      await api.saveProject({
-        projectId: p.projectId,
-        name: p.name,
-        description: p.description,
-        project_owner: p.project_owner,
-        project_producer: p.project_producer,
-        project_budget_total: p.project_budget_total,
-        project_budget_consumed: p.project_budget_consumed,
-        release_status: p.release_status,
-        channel: p.channel,
-        platform: (p as any).platform,
-        status: shouldBeVisible ? "active" : "inactive",
-        jira_enabled:
-          (p as any).jira_enabled === true ||
-          String((p as any).jira_enabled || "").toLowerCase() === "true",
-        jira_project_key: safeStr((p as any).jira_project_key).toUpperCase() || undefined,
-        jira_cloud_id: safeStr((p as any).jira_cloud_id) || undefined,
-        jira_board_id: safeStr((p as any).jira_board_id) || undefined,
-      } as any);
-      M.toast({ html: shouldBeVisible ? "Project visible on website" : "Project hidden from website", classes: "green" });
-      loadProjects();
-    } catch (err: any) {
-      M.toast({ html: err?.message || "Failed to update project visibility", classes: "red" });
-    } finally {
-      setSavingProjectVisibilityId("");
-    }
+  function openNewProject() {
+    resetProjectForm();
+    setProjectModalOpen(true);
   }
 
   return (
@@ -566,22 +497,19 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
           users={rows}
           adminAndSupers={adminAndSupers}
           loading={projectsLoading}
-          isSuperUser={isSuperUser}
           editingProjectId={editingProjectId}
+          projectModalOpen={projectModalOpen}
           projectSaving={projectSaving}
-          savingProjectVisibilityId={savingProjectVisibilityId}
           projectSettingsTab={projectSettingsTab}
           projectForm={projectForm}
           customPlatform={customPlatform}
           platformOptions={platformOptions}
-          releaseSourceOptions={releaseSourceOptions}
           jiraConnectStatus={jiraConnectStatus}
+          onOpenNewProject={openNewProject}
           onProjectEdit={handleProjectEdit}
           onProjectSubmit={handleProjectSubmit}
           onProjectChange={handleProjectChange}
           onResetProjectForm={resetProjectForm}
-          onSyncProductFromProject={handleSyncProductFromProject}
-          onToggleProjectVisible={toggleProjectVisible}
           onProjectSettingsTabChange={setProjectSettingsTab}
           onLoadJiraConnectStatus={loadJiraConnectStatus}
           onUseConnectedCloudId={() => handleProjectChange("jiraCloudId", safeStr(jiraConnectStatus?.cloudId))}
@@ -589,25 +517,18 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
           onUseCustomPlatform={() => {
             const v = safeStr(customPlatform).toLowerCase();
             if (!v) return;
-            handleProjectChange("platform", v);
+            const current = parsePlatformCsv(projectForm.platform);
+            if (!current.includes(v)) handleProjectChange("platform", [...current, v].join(","));
             setCustomPlatform("");
           }}
           safeStr={safeStr}
-          visibleByStatus={visibleByStatus}
         />
       )}
 
       {tab === "releases" && (
         <SuperReleasesTab
-          releaseRows={releaseData.releaseRows}
+          api={api as any}
           isSuperUser={isSuperUser}
-          savingProductKey={savingProductKey}
-          onToggleReleaseVisibility={async (row, shouldBeVisible) => {
-            await releaseData.toggleReleaseVisibility(row, shouldBeVisible);
-            M.toast({ html: shouldBeVisible ? "Release visible on website" : "Release hidden from website", classes: "green" });
-          }}
-          onSavingKeyChange={setSavingProductKey}
-          safeStr={safeStr}
         />
       )}
 
