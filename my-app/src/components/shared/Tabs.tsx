@@ -24,6 +24,7 @@ type Props<T extends string> = {
 export default function Tabs<T extends string>({ tabs, activeKey, onChange, ariaLabel, variant = "light" }: Props<T>) {
   const [compactOpen, setCompactOpen] = useState(false);
   const activeTab = tabs.find((tab) => tab.key === activeKey) || tabs[0];
+  const wideColumnCount = Math.min(Math.max(tabs.length, 1), 12);
 
   function selectTab(key: T) {
     onChange(key);
@@ -32,11 +33,16 @@ export default function Tabs<T extends string>({ tabs, activeKey, onChange, aria
 
   return (
     <>
-      <div className={`fgTabBar fgTabBar--${variant}`} role="tablist" aria-label={ariaLabel || "Tabs"}>
+      <div
+        className={`fgTabBar fgTabBar--${variant}`}
+        role="tablist"
+        aria-label={ariaLabel || "Tabs"}
+        style={{ gridTemplateColumns: `repeat(${wideColumnCount}, minmax(0, 1fr))` }}
+      >
       <style>{`
         .fgTabBar {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(12, minmax(0, 1fr));
           gap: 8px;
           margin: 0 0 14px 0;
           padding: 6px;
