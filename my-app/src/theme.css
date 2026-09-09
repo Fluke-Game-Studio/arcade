@@ -54,7 +54,14 @@ div.container {
   }
   .event-hero-quote > div:first-child { margin-bottom: 3px !important; font-size: 8px !important; }
   .event-hero-quote span { font-size: 15px !important; }
-  .event-hero-bottom {
+  .event-hero-actions {
+    left: 12px !important;
+    right: 12px !important;
+    top: 12px !important;
+    bottom: auto !important;
+    gap: 6px !important;
+  }
+  .event-hero-content {
     left: 12px !important;
     right: 12px !important;
     bottom: 12px !important;
@@ -63,15 +70,27 @@ div.container {
     gap: 8px !important;
     align-items: stretch !important;
   }
-  .event-hero-bottom > div:last-child { min-width: 0 !important; width: 100% !important; padding: 8px !important; border-radius: 12px !important; }
-  .event-hero-bottom > div:first-child > div:first-child { font-size: 19px !important; }
-  .event-hero-bottom > div:first-child > div:nth-child(2) { font-size: 11px !important; margin-top: 2px !important; }
-  .event-hero-bottom > div:first-child > div:nth-child(3),
-  .event-hero-bottom > div:first-child > div:nth-child(4) { margin-top: 5px !important; gap: 5px !important; }
+  .event-hero-content > div:last-child { min-width: 0 !important; width: 100% !important; padding: 8px !important; border-radius: 12px !important; }
+  .event-hero-content > div:first-child > div:first-child { font-size: 19px !important; }
+  .event-hero-content > div:first-child > div:nth-child(2) { font-size: 11px !important; margin-top: 2px !important; }
+  .event-hero-content > div:first-child > div:nth-child(3),
+  .event-hero-content > div:first-child > div:nth-child(4) { margin-top: 5px !important; gap: 5px !important; }
+  .event-hero-meta-chips,
+  .event-hero-tag-chips { display: none !important; }
 
   .fluke-ai-fab-wrap { right: 12px !important; bottom: 12px !important; }
   .fluke-ai-fab { width: 52px !important; height: 52px !important; border-radius: 16px !important; }
   .fluke-ai-fab-preview { display: none !important; }
   .fluke-ai-modal-backdrop { padding: 8px !important; align-items: stretch !important; }
   .fluke-ai-modal-shell { width: 100% !important; height: 100% !important; max-height: none !important; border-radius: 18px !important; }
+}
+
+/* Home dashboard (portalGridGap row): Materialize's own grid already stacks the two
+   ".col" children to full width at its "small" breakpoint (<=600px), but DOM order still
+   puts the main feed column first, so the RightRail widgets (Quick Actions, birthdays,
+   Welcome to Team) land below it. Reordering visually here -- rather than in markup --
+   keeps the desktop two-column layout (main left, rail right) completely untouched. */
+@media (max-width: 600px) {
+  .portalGridGap { display: flex !important; flex-direction: column !important; }
+  .portalGridGap > .col.m4 { order: -1; }
 }

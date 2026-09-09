@@ -11,7 +11,13 @@ function safeStr(v: any) {
   return String(v ?? "").trim();
 }
 
-export default function NotificationBell({ compact = false }: { compact?: boolean }) {
+export default function NotificationBell({
+  compact = false,
+  mobileDirect = false,
+}: {
+  compact?: boolean;
+  mobileDirect?: boolean;
+}) {
   const { api, user } = useAuth();
   const navigate = useNavigate();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +88,20 @@ export default function NotificationBell({ compact = false }: { compact?: boolea
     return String(unreadCount);
   }, [unreadCount]);
 
+  function handleBellClick() {
+    // On narrow portrait devices, use the full notifications page instead of
+    // opening a dropdown that competes with the small-screen content area.
+    const isNarrowPortrait =
+      typeof window !== "undefined" &&
+      window.matchMedia("(orientation: portrait) and (max-width: 700px)").matches;
+    if (mobileDirect && isNarrowPortrait) {
+      setOpen(false);
+      navigate("/account/notifications");
+      return;
+    }
+    setOpen((prev) => !prev);
+  }
+
   async function openItem(item: ApiNotificationItem) {
     if (safeStr(item.notificationId) && !item.read) {
       try {
@@ -123,7 +143,7 @@ export default function NotificationBell({ compact = false }: { compact?: boolea
     <div ref={rootRef} style={{ position: "relative" }}>
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={handleBellClick}
         title="Notifications"
         aria-label="Notifications"
         style={{
