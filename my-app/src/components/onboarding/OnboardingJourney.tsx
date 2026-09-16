@@ -3,6 +3,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { DEFAULT_RELEASE_NOTES, DEFAULT_RELEASE_VERSION } from "../ReleaseHighlightsPanel";
 import { useIntegrations } from "../account/useIntegrations";
 import AgreementStep from "./AgreementStep";
+import { CONDUCT_SECTIONS, isConductComplete, isConductSectionComplete } from "./codeOfConduct";
 import CommitmentStep from "./CommitmentStep";
 import ConnectStep from "./ConnectStep";
 import OnboardingFooterButton from "./OnboardingFooterButton";
@@ -18,10 +19,17 @@ function safeStr(v: any) {
   return String(v ?? "").trim();
 }
 
-export default function OnboardingJourney() {
-  const { api, user, refreshSession, transientPassword, applySessionPatch, clearTransientPassword } = useAuth();
+export type OnboardingPreview = Pick<ReturnType<typeof useAuth>, "api" | "user" | "refreshSession" | "transientPassword" | "applySessionPatch" | "clearTransientPassword"> & {
+  onClose: () => void;
+};
+
+export default function OnboardingJourney({ preview }: { preview?: OnboardingPreview } = {}) {
+  const auth = useAuth();
+  const operatorRole = safeStr(auth.user?.employee_role || auth.user?.role).toLowerCase();
+  const canSkipPreview = !!preview && (operatorRole === "super" || operatorRole === "admin");
+  const { api, user, refreshSession, transientPassword, applySessionPatch, clearTransientPassword } = preview || auth;
   const isLocalDevHost =
-    typeof window !== "undefined" &&
+    !preview && typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
   const integrations = useIntegrations(api, user, {
     onConnected: async (payload?: any) => {
@@ -42,7 +50,7 @@ export default function OnboardingJourney() {
   });
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (preview || typeof window === "undefined") return;
 
     const params = new URLSearchParams(window.location.search);
     const oauth = safeStr(params.get("oauth") || params.get("provider"));
@@ -76,7 +84,7 @@ export default function OnboardingJourney() {
     const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", nextUrl);
     void refreshSession();
-  }, [applySessionPatch, refreshSession]);
+  }, [applySessionPatch, refreshSession, preview]);
 
   const roleLower = safeStr((user as any)?.employee_role || (user as any)?.role).toLowerCase().replace(/_/g, "-");
   const isTestUser = roleLower === "test";
@@ -91,8 +99,8 @@ export default function OnboardingJourney() {
   const [journeyComplete, setJourneyComplete] = useState(false);
   const [commitmentAccepted, setCommitmentAccepted] = useState(false);
   const [commitmentPaymentRecorded, setCommitmentPaymentRecorded] = useState(false);
-  const [timesheetAccepted, setTimesheetAccepted] = useState(false);
-  const [discordAccepted, setDiscordAccepted] = useState(false);
+  const [conductAccepted, setConductAccepted] = useState<Record<string, boolean>>({});
+  const [conductActiveId, setConductActiveId] = useState<string | null>(null);
   const [savingWelcome, setSavingWelcome] = useState(false);
   const [savingCommitment, setSavingCommitment] = useState(false);
   const [savingAgreement, setSavingAgreement] = useState(false);
@@ -101,8 +109,8 @@ export default function OnboardingJourney() {
 
   const onboardingStepStorageKey = useMemo(() => {
     const username = safeStr((user as any)?.username || (user as any)?.sub);
-    return username ? `fluke:onboarding-step:${username}` : "";
-  }, [user]);
+    return !preview && username ? `fluke:onboarding-step:${username}` : "";
+  }, [user, preview]);
 
   const localDevSkipStorageKey = useMemo(() => {
     const username = safeStr((user as any)?.username || (user as any)?.sub);
@@ -215,6 +223,13 @@ export default function OnboardingJourney() {
 
   const currentStep: OnboardingStepId | null = journeyComplete ? null : activeStep || nextStep;
 
+  function skipPreviewStep() {
+    if (!canSkipPreview || !currentStep) return;
+    const next = stepOrder[stepOrder.indexOf(currentStep) + 1];
+    if (next) setActiveStep(next);
+    else setJourneyComplete(true);
+  }
+
   const requirements: ConnectRequirement[] = useMemo(
     () => [
       {
@@ -302,7 +317,7 @@ export default function OnboardingJourney() {
   }
 
   async function markAgreementComplete() {
-    if (savingAgreement) return;
+    if (savingAgreement || !isConductComplete(conductAccepted)) return;
     setSavingAgreement(true);
     try {
       const resp = await (api as any).updateOnboardingJourneyProgress({
@@ -311,6 +326,7 @@ export default function OnboardingJourney() {
       });
       setBackendProgress(resp?.onboardingJourneyState || { releaseVersion, agreementReleaseVersion: releaseVersion });
       await refreshSession();
+      setConductActiveId(null);
       advanceTo("commitment");
     } finally {
       setSavingAgreement(false);
@@ -397,11 +413,19 @@ export default function OnboardingJourney() {
     }
   }
 
+  if (preview && (releaseLoading || journeyComplete)) return (
+    <OnboardingShell title="Organisation onboarding" subtitle="Welcome to Fluke Games" chapters={[]} onClose={preview.onClose}>
+      <p role="status">{releaseLoading ? "Loading onboarding..." : "Organisation onboarding complete."}</p>
+      {journeyComplete && <OnboardingFooterButton icon="check" onClick={preview.onClose} primary>Done</OnboardingFooterButton>}
+    </OnboardingShell>
+  );
   if (!user || releaseLoading || journeyComplete || !currentStep || isTestUser) return null;
 
   const canCommitmentContinue = commitmentAccepted && (!commitmentRequired || commitmentPaymentRecorded) && !savingCommitment;
-  const canAgreementContinue = timesheetAccepted && discordAccepted && !savingAgreement;
-  const localSkipButton = isLocalDevHost ? (
+  const canAgreementContinue = isConductComplete(conductAccepted) && !savingAgreement;
+  const localSkipButton = canSkipPreview ? (
+    <OnboardingFooterButton icon="skip_next" onClick={skipPreviewStep}>Skip step</OnboardingFooterButton>
+  ) : isLocalDevHost ? (
     <OnboardingFooterButton
       icon="skip_next"
       onClick={() => void skipOnboardingForLocalDev()}
@@ -445,25 +469,35 @@ export default function OnboardingJourney() {
             </div>
           </div>
         );
-      case "agreement":
+      case "agreement": {
+        const activeSection = CONDUCT_SECTIONS.find(section => section.id === conductActiveId);
+        const showNextSection = !!activeSection && !canAgreementContinue;
         return (
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <OnboardingFooterButton icon="arrow_back" onClick={goBack}>
-              Back
+            <OnboardingFooterButton icon="arrow_back" onClick={() => (activeSection ? setConductActiveId(null) : goBack())}>
+              {activeSection ? "Back to Code of Conduct" : "Back"}
             </OnboardingFooterButton>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               {localSkipButton}
               <OnboardingFooterButton
-                icon="task_alt"
-                onClick={() => void markAgreementComplete()}
-                disabled={!canAgreementContinue}
+                icon={showNextSection ? "arrow_forward" : "task_alt"}
+                onClick={() => {
+                  if (showNextSection && activeSection) {
+                    const next = CONDUCT_SECTIONS[CONDUCT_SECTIONS.indexOf(activeSection) + 1];
+                    setConductActiveId(next ? next.id : null);
+                    return;
+                  }
+                  void markAgreementComplete();
+                }}
+                disabled={showNextSection ? !isConductSectionComplete(activeSection!, conductAccepted) : !canAgreementContinue}
                 primary
               >
-                Agree and continue
+                {showNextSection ? "Next" : "Agree and continue"}
               </OnboardingFooterButton>
             </div>
           </div>
         );
+      }
       case "commitment":
         return (
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -509,7 +543,8 @@ export default function OnboardingJourney() {
 
   return (
     <OnboardingShell
-      title="Onboarding journey"
+      onClose={preview?.onClose}
+      title="Organisation onboarding"
       subtitle="Your setup adapts to what you have already completed. Finished steps stay hidden on later visits."
       chapters={getChapterStatuses({
         currentStep,
@@ -548,15 +583,16 @@ export default function OnboardingJourney() {
 
       {currentStep === "agreement" && (
         <AgreementStep
-          timesheetAccepted={timesheetAccepted}
-          discordAccepted={discordAccepted}
-          onTimesheetChange={setTimesheetAccepted}
-          onDiscordChange={setDiscordAccepted}
+          accepted={conductAccepted}
+          onAcceptanceChange={(id, checked) => setConductAccepted(current => ({ ...current, [id]: checked }))}
+          activeId={conductActiveId}
+          onActiveChange={setConductActiveId}
         />
       )}
 
       {currentStep === "commitment" && (
         <CommitmentStep
+          preview={!!preview}
           api={api}
           accepted={commitmentAccepted}
           commitmentRequired={commitmentRequired}
@@ -571,7 +607,11 @@ export default function OnboardingJourney() {
           requirements={requirements}
           onConnect={(key) => {
             setActiveStep("connect");
-            integrations.startConnect(key);
+            if (preview) {
+              applySessionPatch({ [`${key}_connected`]: true });
+            } else {
+              integrations.startConnect(key);
+            }
           }}
           canContinue={connectedReady}
         />

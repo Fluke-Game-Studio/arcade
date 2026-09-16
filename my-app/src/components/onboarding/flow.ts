@@ -60,7 +60,7 @@ export function getChapterStatuses(params: {
       ? { id: "password", label: "Password Reset", active: currentStep === "password", complete: passwordResetDone }
       : null,
     { id: "profile", label: "Profile", active: currentStep === "profile", complete: profileDone },
-    { id: "agreement", label: "Agreement", active: currentStep === "agreement", complete: agreementDone },
+    { id: "agreement", label: "Code of Conduct", active: currentStep === "agreement", complete: agreementDone },
     { id: "commitment", label: "Commitment", active: currentStep === "commitment", complete: commitmentDone },
     { id: "connect", label: "Connect", active: currentStep === "connect", complete: connectedReady },
   ];
