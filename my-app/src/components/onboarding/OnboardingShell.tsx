@@ -1,5 +1,4 @@
-import type { ReactNode } from "react";
-import type { OnboardingChapterStatus } from "./types";
+import { useEffect, useRef, type ReactNode } from "react";
 
 function stepPill(active: boolean, complete: boolean, label: string) {
   return (
@@ -53,13 +52,46 @@ export default function OnboardingShell({
   chapters,
   children,
   footer,
+  onClose,
+  onChapterSelect,
 }: {
   title: string;
   subtitle: string;
-  chapters: OnboardingChapterStatus[];
+  chapters: Array<{ id: string; label: string; active: boolean; complete: boolean }>;
   children: ReactNode;
   footer?: ReactNode;
+  onClose?: () => void;
+  onChapterSelect?: (id: string) => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!onClose) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { event.preventDefault(); onClose?.(); }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]'
+      ) || []).filter((el) => el.getClientRects().length);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (!first) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) {
+        event.preventDefault(); first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
   return (
     <div
       style={{
@@ -74,6 +106,11 @@ export default function OnboardingShell({
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         style={{
           width: "min(940px, 100%)",
           maxHeight: "calc(100vh - 32px)",
@@ -95,8 +132,14 @@ export default function OnboardingShell({
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {chapters.map((chapter) => stepPill(chapter.active, chapter.complete, chapter.label))}
+            {onClose && <button type="button" className="btn-flat" onClick={onClose} aria-label="Close onboarding"><i className="material-icons" aria-hidden="true">close</i></button>}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
+              {chapters.map((chapter) => onChapterSelect ? (
+                <button type="button" key={chapter.id} aria-current={chapter.active ? "step" : undefined}
+                  onClick={() => onChapterSelect(chapter.id)} style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", borderRadius: 999 }}>
+                  {stepPill(chapter.active, chapter.complete, chapter.label)}
+                </button>
+              ) : stepPill(chapter.active, chapter.complete, chapter.label))}
             </div>
           </div>
         </div>

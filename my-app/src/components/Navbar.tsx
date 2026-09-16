@@ -209,6 +209,7 @@ export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } 
     const items: LinkItem[] = [
       { to: "/organisation/org-chart", label: "Org Chart" },
       { to: "/organisation/employees", label: "Employees" },
+      { to: "/organisation/project-onboarding", label: "Project onboarding" },
       { to: "/organisation/social-media", label: "Social Media" },
       { to: "/store", label: "Fluke Store" },
     ];
@@ -1002,9 +1003,9 @@ export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } 
           height: NAV_H,
           lineHeight: "normal",
           background: scrolled
-            ? "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.94))"
-            : "linear-gradient(180deg, rgba(30,41,59,0.96), rgba(51,65,85,0.90))",
-          borderBottom: "1px solid rgba(56,189,248,0.10)",
+            ? "linear-gradient(180deg, rgba(15,118,110,0.16), rgba(2,132,199,0.08)), linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.94))"
+            : "linear-gradient(180deg, rgba(15,118,110,0.20), rgba(2,132,199,0.10)), linear-gradient(180deg, rgba(30,41,59,0.96), rgba(51,65,85,0.90))",
+          borderBottom: "1px solid rgba(45,167,180,0.16)",
           boxShadow: scrolled
             ? "0 8px 24px rgba(15,23,42,0.16)"
             : "0 4px 16px rgba(15,23,42,0.10)",
@@ -1022,8 +1023,8 @@ export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } 
             left: 0,
             right: 0,
             height: 2,
-            background: "linear-gradient(90deg, transparent, rgba(56,189,248,0.32) 20%, rgba(15,118,110,0.28) 55%, transparent 85%)",
-            opacity: 0.8,
+            background: "linear-gradient(90deg, transparent, rgba(2,132,199,0.38) 20%, rgba(15,118,110,0.34) 55%, transparent 85%)",
+            opacity: 0.9,
             pointerEvents: "none",
           }}
         />
@@ -1233,15 +1234,15 @@ export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } 
             minHeight: 92,
             padding: "16px 10px 10px",
             borderRadius: 22,
-            background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.96))",
-            border: "1px solid rgba(56,189,248,0.20)",
+            background: "linear-gradient(180deg, rgba(15,118,110,0.14), rgba(2,132,199,0.08)), linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015))",
+            border: "1px solid rgba(45,167,180,0.22)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             gap: 8,
             flexShrink: 0,
-            boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+            boxShadow: "0 10px 24px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.05)",
           }}
         >
           <div
@@ -1265,10 +1266,10 @@ export default function Navbar({ hideTopBar = false }: { hideTopBar?: boolean } 
             />
           </div>
           <div style={{ textAlign: "center", lineHeight: 1 }}>
-            <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1.3, textTransform: "uppercase", color: "#cbd5e1" }}>
+            <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1.3, textTransform: "uppercase", color: "#5eead4" }}>
               Fluke
             </div>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase", color: "#94a3b8" }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase", color: "#7dd3fc" }}>
               Games
             </div>
           </div>

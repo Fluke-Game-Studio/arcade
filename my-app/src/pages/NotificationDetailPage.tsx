@@ -93,12 +93,22 @@ export default function NotificationDetailPage() {
 
   return (
     <main className="container" style={{ paddingTop: 24, maxWidth: 1120 }}>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-        <Link to="/account/notifications" style={{ color: "#1d4ed8", fontWeight: 900, textDecoration: "none" }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
+        <Link
+          to="/account/notifications"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#1d4ed8", fontWeight: 900, textDecoration: "none" }}
+        >
+          <i className="material-icons" style={{ fontSize: 18 }}>arrow_back</i>
           Back to notifications
         </Link>
         {item?.href ? (
-          <button type="button" className="btn-flat" onClick={() => navigate(targetHref)}>
+          <button
+            type="button"
+            className="btn-flat"
+            onClick={() => navigate(targetHref)}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <i className="material-icons" style={{ fontSize: 16 }}>open_in_new</i>
             Open related item
           </button>
         ) : null}
@@ -116,7 +126,10 @@ export default function NotificationDetailPage() {
         }}
       >
         {loading ? (
-          <div style={{ color: "#64748b", fontWeight: 700, padding: 12 }}>Loading notification...</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#64748b", fontWeight: 700, padding: 12 }}>
+            <i className="material-icons" style={{ fontSize: 20 }}>hourglass_top</i>
+            Loading notification...
+          </div>
         ) : item ? (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -136,16 +149,32 @@ export default function NotificationDetailPage() {
                 </span>
                 <div>
                   <div style={{ fontSize: 28, fontWeight: 1000, color: "#0f172a" }}>{item.title || "Notification"}</div>
-                  <div style={{ color: "#64748b", fontWeight: 700, marginTop: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b", fontWeight: 700, marginTop: 4 }}>
+                    <i className="material-icons" style={{ fontSize: 15 }}>schedule</i>
                     {notificationLabel(item)} · {fmtDate(item.createdAt)}
                   </div>
                 </div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Status</div>
-                <div style={{ fontSize: 16, fontWeight: 1000, color: item.read ? "#166534" : "#b45309" }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  background: item.read ? "rgba(22,101,52,.08)" : "rgba(180,83,9,.10)",
+                  border: `1px solid ${item.read ? "rgba(22,101,52,.18)" : "rgba(180,83,9,.20)"}`,
+                }}
+              >
+                <i
+                  className="material-icons"
+                  style={{ fontSize: 18, color: item.read ? "#166534" : "#b45309" }}
+                >
+                  {item.read ? "mark_email_read" : "mark_email_unread"}
+                </i>
+                <span style={{ fontSize: 13, fontWeight: 1000, color: item.read ? "#166534" : "#b45309" }}>
                   {item.read ? "Read" : "Unread"}
-                </div>
+                </span>
               </div>
             </div>
 
@@ -159,6 +188,9 @@ export default function NotificationDetailPage() {
                   <span
                     key={chip.key}
                     style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
                       borderRadius: 999,
                       border: "1px solid rgba(148,163,184,.18)",
                       background: "rgba(248,250,252,.95)",
@@ -168,6 +200,7 @@ export default function NotificationDetailPage() {
                       fontWeight: 800,
                     }}
                   >
+                    <i className="material-icons" style={{ fontSize: 13 }}>sell</i>
                     {chip.label}
                   </span>
                 ))}
@@ -175,36 +208,55 @@ export default function NotificationDetailPage() {
             ) : null}
 
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-              <div style={{ border: "1px solid #e6edf2", borderRadius: 16, padding: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Notification ID</div>
-                <div style={{ fontWeight: 800, color: "#0f172a", marginTop: 6, wordBreak: "break-word" }}>{item.notificationId || "-"}</div>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", border: "1px solid #e6edf2", borderRadius: 16, padding: 14 }}>
+                <i className="material-icons" style={{ fontSize: 20, color: "#94a3b8", marginTop: 2 }}>fingerprint</i>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Notification ID</div>
+                  <div style={{ fontWeight: 800, color: "#0f172a", marginTop: 6, wordBreak: "break-word" }}>{item.notificationId || "-"}</div>
+                </div>
               </div>
-              <div style={{ border: "1px solid #e6edf2", borderRadius: 16, padding: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Recipient</div>
-                <div style={{ fontWeight: 800, color: "#0f172a", marginTop: 6, wordBreak: "break-word" }}>{item.recipientUsername || "-"}</div>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", border: "1px solid #e6edf2", borderRadius: 16, padding: 14 }}>
+                <i className="material-icons" style={{ fontSize: 20, color: "#94a3b8", marginTop: 2 }}>person</i>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Recipient</div>
+                  <div style={{ fontWeight: 800, color: "#0f172a", marginTop: 6, wordBreak: "break-word" }}>{item.recipientUsername || "-"}</div>
+                </div>
               </div>
-              <div style={{ border: "1px solid #e6edf2", borderRadius: 16, padding: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Entity</div>
-                <div style={{ fontWeight: 800, color: "#0f172a", marginTop: 6, wordBreak: "break-word" }}>
-                  {item.entityType || "-"} {item.entityId ? `· ${item.entityId}` : ""}
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", border: "1px solid #e6edf2", borderRadius: 16, padding: 14 }}>
+                <i className="material-icons" style={{ fontSize: 20, color: "#94a3b8", marginTop: 2 }}>category</i>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>Entity</div>
+                  <div style={{ fontWeight: 800, color: "#0f172a", marginTop: 6, wordBreak: "break-word" }}>
+                    {item.entityType || "-"} {item.entityId ? `· ${item.entityId}` : ""}
+                  </div>
                 </div>
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {item.href ? (
-                <button type="button" className="btn" onClick={() => navigate(targetHref)}>
+                <button type="button" className="btn" onClick={() => navigate(targetHref)} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <i className="material-icons" style={{ fontSize: 18 }}>open_in_new</i>
                   Open Related Page
                 </button>
               ) : null}
-              <button type="button" className="btn-flat" onClick={() => navigate("/account/notifications")}>
+              <button
+                type="button"
+                className="btn-flat"
+                onClick={() => navigate("/account/notifications")}
+                style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+              >
+                <i className="material-icons" style={{ fontSize: 18 }}>list</i>
                 Back to List
               </button>
             </div>
 
             {metaEntries.length ? (
               <div style={{ border: "1px solid #e6edf2", borderRadius: 16, padding: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", marginBottom: 10 }}>Details</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", marginBottom: 10 }}>
+                  <i className="material-icons" style={{ fontSize: 16 }}>info</i>
+                  Details
+                </div>
                 <div style={{ display: "grid", gap: 10 }}>
                   {metaEntries.map((row) => (
                     <div key={row.key} style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -217,7 +269,10 @@ export default function NotificationDetailPage() {
             ) : null}
           </>
         ) : (
-          <div className="emptyState">Notification not found.</div>
+          <div className="emptyState" style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
+            <i className="material-icons" style={{ fontSize: 20 }}>notifications_off</i>
+            Notification not found.
+          </div>
         )}
       </section>
     </main>

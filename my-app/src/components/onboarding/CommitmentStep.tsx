@@ -2,6 +2,7 @@ import { useState } from "react";
 import SelfInitiateWallet from "../wallet/SelfInitiateWallet";
 
 type Props = {
+  preview?: boolean;
   api: any;
   accepted: boolean;
   commitmentRequired: boolean;
@@ -20,6 +21,7 @@ type ProcessCard = {
 };
 
 export default function CommitmentStep({
+  preview = false,
   api,
   accepted,
   commitmentRequired,
@@ -28,24 +30,9 @@ export default function CommitmentStep({
   onPaymentRecordedChange,
 }: Props) {
   const [openStep, setOpenStep] = useState<string>("1");
-  const stepOrder = ["1", "2", "3", "4"];
-  const currentIndex = Math.max(0, stepOrder.indexOf(openStep));
-  const isFinalStep = openStep === "4";
 
   async function handleWalletCompleted() {
     onPaymentRecordedChange(true);
-  }
-
-  function goBack() {
-    setOpenStep((current) => {
-      const idx = stepOrder.indexOf(current);
-      return idx <= 0 ? "1" : stepOrder[idx - 1];
-    });
-  }
-
-  function goNext() {
-    if (isFinalStep) return;
-    setOpenStep(stepOrder[Math.min(currentIndex + 1, stepOrder.length - 1)]);
   }
 
   const process: ProcessCard[] = [
@@ -256,6 +243,7 @@ export default function CommitmentStep({
                   ) : commitmentRequired ? (
                     <div style={{ display: "grid", gap: 14 }}>
                       <SelfInitiateWallet
+                        preview={preview}
                         api={api}
                         title="Self Initiate Wallet"
                         description="Record the commitment amount here. Once the payment is captured, the onboarding commitment can be marked complete."
@@ -332,54 +320,6 @@ export default function CommitmentStep({
             : "This onboarding requires a commitment payment before you can continue."}
         </div>
       ) : null}
-
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={goBack}
-          disabled={currentIndex === 0}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-            minHeight: 48,
-            borderRadius: 16,
-            border: "1px solid rgba(148,163,184,.22)",
-            background: currentIndex === 0 ? "rgba(148,163,184,.12)" : "#fff",
-            color: currentIndex === 0 ? "#94a3b8" : "#0f172a",
-            padding: "12px 18px",
-            fontWeight: 900,
-            cursor: currentIndex === 0 ? "not-allowed" : "pointer",
-            boxShadow: "none",
-          }}
-        >
-          <i className="material-icons" style={{ fontSize: 18 }}>arrow_back</i>
-          Back
-        </button>
-
-        <button
-          type="button"
-          onClick={goNext}
-          disabled={isFinalStep}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-            minHeight: 48,
-            borderRadius: 16,
-            border: "1px solid rgba(37,99,235,.18)",
-            background: isFinalStep ? "rgba(148,163,184,.16)" : "linear-gradient(135deg, #2563eb 0%, #0f766e 100%)",
-            color: isFinalStep ? "#94a3b8" : "#fff",
-            padding: "12px 18px",
-            fontWeight: 900,
-            cursor: isFinalStep ? "not-allowed" : "pointer",
-            boxShadow: isFinalStep ? "none" : "0 16px 34px rgba(37,99,235,.18)",
-          }}
-        >
-          Next
-          <i className="material-icons" style={{ fontSize: 18 }}>arrow_forward</i>
-        </button>
-      </div>
     </section>
   );
 }

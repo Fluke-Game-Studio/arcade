@@ -7,7 +7,10 @@ import SuperProjectsTab from "../components/super/SuperProjectsTab";
 import SuperArcadeReleaseTab from "../components/super/SuperArcadeReleaseTab";
 import SuperReleasesTab from "../components/super/SuperReleasesTab";
 import SuperStorageTab from "../components/super/SuperStorageTab";
+import EmployeeEditModal from "../components/admin/EmployeeEditModal";
+import EmployeeDocComposerModal from "../components/admin/EmployeeDocComposerModal";
 import SuperUsersTab from "../components/super/SuperUsersTab";
+import SuperOnboardingTab from "../components/super/SuperOnboardingTab";
 import SuperAwards from "./SuperAwards";
 import SuperWalletTab from "../components/super/SuperWalletTab";
 import SuperRequestsTab from "../components/super/SuperRequestsTab";
@@ -68,6 +71,8 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
   const { api, user } = useAuth();
   const [tab, setTab] = useTabState<SuperTab>(SUPER_TAB_KEYS, initialTab);
   const [rows, setRows] = useState<ApiUser[]>([]);
+  const [editingEmployee, setEditingEmployee] = useState<ApiUser | null>(null);
+  const [composerEmployee, setComposerEmployee] = useState<ApiUser | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<ApiProject[]>([]);
@@ -270,21 +275,6 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
     }
   }
 
-  async function setUserAccessFlag(
-    username: string,
-    field: "portal_access" | "project_access" | "version_control_access",
-    value: boolean
-  ) {
-    if (!isSuperUser) return;
-    try {
-      await api.updateUser({ username, [field]: value } as any);
-      setRows((prev) => prev.map((u) => (u.username === username ? ({ ...u, [field]: value } as any) : u)));
-      M.toast({ html: "Access updated", classes: "green" });
-    } catch (e: any) {
-      M.toast({ html: e?.message || "Failed", classes: "red" });
-    }
-  }
-
   async function deleteUser(username: string) {
     if (!isSuperUser) return;
     try {
@@ -436,10 +426,10 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
         .suStack { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         .suStackLabel { font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: #64748b; }
         .suSelectPanel { display: flex; flex-direction: column; gap: 8px; }
-        .suAccessPanel { display: flex; flex-direction: column; gap: 8px; }
-        .suAccessChecks { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; min-height: 36px; }
-        .suCheckItem { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid #dbe5ef; background: #fff; font-size: 12px; font-weight: 800; color: #334155; }
-        .suCheckItem input { margin: 0; }
+        .suEmployeeActions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-right: 24px; }
+        .suEmployeeActions .btn-small { border-radius: 10px; text-transform: none; font-weight: 900; box-shadow: none; height: auto; min-height: 32px; }
+        .suComposerButton { background: #0ea5a4; color: #fff; }
+        .suEditButton { background: rgba(15,23,42,.06); color: #0f172a; }
         @media (max-width: 980px) { .suUserRow { grid-template-columns: 1fr; } .suUserRight { grid-template-columns: 1fr; } }
         @media (max-width: 640px) { .suSearch { min-width: 0; } }
       `}</style>
@@ -472,7 +462,8 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
           onQueryChange={setQuery}
           onSetRole={setRole}
           onSetReadScope={setReadScope}
-          onSetAccessFlag={setUserAccessFlag}
+          onComposeEmployee={setComposerEmployee}
+          onEditEmployee={setEditingEmployee}
           onDeleteUser={deleteUser}
           roleFor={normalizeRole}
           readScopeFor={(u) =>
@@ -489,6 +480,28 @@ export default function SuperUser({ initialTab = "users" }: { initialTab?: Super
           }
           safeStr={safeStr}
         />
+      )}
+
+      <EmployeeDocComposerModal
+        api={api}
+        open={!!composerEmployee && isSuperUser}
+        employee={composerEmployee}
+        onClose={() => setComposerEmployee(null)}
+      />
+      {editingEmployee && isSuperUser && (
+        <EmployeeEditModal
+          employee={editingEmployee}
+          currentUser={user}
+          users={rows}
+          projects={projects}
+          onClose={() => setEditingEmployee(null)}
+          onSaved={loadUsers}
+        />
+      )}
+
+      {tab === "onboarding" && (
+        <SuperOnboardingTab projects={projects} loading={projectsLoading} isSuperUser={isSuperUser}
+          onRefresh={() => void loadProjects()} />
       )}
 
       {tab === "projects" && (
