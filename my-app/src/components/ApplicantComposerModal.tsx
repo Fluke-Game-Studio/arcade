@@ -1,5 +1,5 @@
 // src/components/ApplicantComposerModal.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import type {
   ApplicantRichEmailType,
@@ -13,7 +13,7 @@ import { API_BASE, PUBLIC_WEBSITE_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
 import { uploadFileToWeeklyBucket } from "../lib/socialUploads";
 import { DRAFT_LENGTH_OPTIONS, draftLengthMaxTokens, draftLengthWordsHint, type DraftLength } from "../lib/aiDraftLength";
-import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
+import Modal from "./Modal";
 
 declare const M: any;
 
@@ -187,6 +187,10 @@ type ComposerState = {
   vars_stipend: string;
   vars_workMode: string;
   vars_weeklyHours: string;
+  offer_conditional: boolean;
+  offer_conditionText: string;
+  offer_commitment: boolean;
+  offer_durationWeeks: string;
 
   // WELCOME
   welcome_department: string;
@@ -195,6 +199,8 @@ type ComposerState = {
   welcome_subjectOverride: string;
   welcome_createEmployeeUser: boolean;
   welcome_requireCommitment: boolean;
+  welcome_commitmentAmountFgc: string;
+  welcome_commitmentDurationWeeks: string;
 };
 
 function defaultComposer(stage: Stage): ComposerState {
@@ -232,6 +238,10 @@ function defaultComposer(stage: Stage): ComposerState {
     vars_stipend: "₹5000/month",
     vars_workMode: "Remote",
     vars_weeklyHours: "10-15",
+    offer_conditional: false,
+    offer_conditionText: "",
+    offer_commitment: false,
+    offer_durationWeeks: "8",
 
     welcome_department: "Engineering",
     welcome_city: "",
@@ -239,11 +249,32 @@ function defaultComposer(stage: Stage): ComposerState {
     welcome_subjectOverride: "Welcome to Fluke Games!",
     welcome_createEmployeeUser: true,
     welcome_requireCommitment: false,
+    welcome_commitmentAmountFgc: "",
+    welcome_commitmentDurationWeeks: "",
   };
 }
 
 function stageIsWired(stage: Stage) {
   return stage === "Welcome" || !!STAGE_TO_RICH_TYPE[stage] || !!STAGE_TO_DOC_TYPE[stage];
+}
+
+// The stipend box is dual-purpose: a free-text stipend description normally,
+// or (when Commitment is checked) the numeric commitment amount that gets
+// credited to the new employee's wallet as a dormant frozen balance once the
+// Welcome email creates their account. Shared by buildPreview and sendNow so
+// the two can't drift apart on which interpretation wins.
+function applyOfferConditionalCommitmentVars(vars: Record<string, any>, c: ComposerState) {
+  if (c.offer_commitment) {
+    vars.commitment = true;
+    vars.commitmentAmountFgc = Number(c.vars_stipend) || 0;
+    vars.durationWeeks = Number(c.offer_durationWeeks) || 0;
+  } else if (c.vars_stipend?.trim()) {
+    vars.stipend = c.vars_stipend.trim();
+  }
+  if (c.offer_conditional) {
+    vars.conditional = true;
+    vars.conditionText = c.offer_conditionText?.trim() || "";
+  }
 }
 
 function pickApplicantAddressCity(details: any): { address: string; city: string } {
@@ -329,12 +360,10 @@ export default function ApplicantComposerModal({
 }) {
   const { user } = useAuth() as any;
   const authToken = String(user?.token || "");
-  const modalRef = useRef<HTMLDivElement | null>(null);
-  const instRef = useRef<any>(null);
-  const onCloseRef = useRef(onClose);
 
   const [sending, setSending] = useState(false);
   const [draftingGeneric, setDraftingGeneric] = useState(false);
+  const [draftingCondition, setDraftingCondition] = useState(false);
   const [toEmail, setToEmail] = useState("");
   const [composerApplicantId, setComposerApplicantId] = useState<string>("");
   const [composer, setComposer] = useState<ComposerState>(() => defaultComposer("Introduction"));
@@ -361,10 +390,6 @@ export default function ApplicantComposerModal({
     }
   }
 
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
   // Fetch all jobs when modal opens so roleTitle dropdown is populated
   useEffect(() => {
     if (!applicant?.id) return;
@@ -382,55 +407,15 @@ export default function ApplicantComposerModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicant?.id]);
 
-  // init Materialize modal once
   useEffect(() => {
-    if (!modalRef.current || typeof M === "undefined") return;
-
-    instRef.current = M.Modal.init(modalRef.current, {
-      dismissible: true,
-      opacity: 0.45,
-      inDuration: 140,
-      outDuration: 120,
-      onCloseEnd: () => {
-        try {
-          onCloseRef.current?.();
-        } catch {}
-        syncMaterializeModalState();
-      },
-      onOpenStart: () => {
-        try {
-          modalRef.current!.style.left = "0px";
-          modalRef.current!.style.right = "0px";
-          modalRef.current!.style.margin = "auto";
-        } catch {}
-      },
-      onOpenEnd: () =>
-        setTimeout(() => {
-          try {
-            M.updateTextFields();
-          } catch {}
-        }, 0),
-    });
-
-    return () => {
+    if (!open) return;
+    // Materialize's select/textarea label-float styling needs a nudge once
+    // the modal's content is actually in the DOM.
+    setTimeout(() => {
       try {
-        instRef.current?.destroy?.();
+        M?.updateTextFields?.();
       } catch {}
-      instRef.current = null;
-      syncMaterializeModalState();
-    };
-  }, []);
-
-  // open/close imperatively
-  useEffect(() => {
-    const inst = instRef.current;
-    if (!inst) return;
-    if (open) {
-      inst.open();
-    return;
-  }
-    const isOpen = !!(inst && (inst.isOpen === true || inst._isOpen === true));
-    if (isOpen) inst.close();
+    }, 0);
   }, [open]);
 
   // when applicant changes, lock target
@@ -469,6 +454,16 @@ export default function ApplicantComposerModal({
             next.address = fullAddress || resolved.address || resolved.city || "";
           }
           if (!String(prev.welcome_city || "").trim() && resolved.city) next.welcome_city = resolved.city;
+          // Carries an Offer's promised commitment through to Welcome - default
+          // only (the admin can still uncheck/edit it before sending), and only
+          // if they haven't already touched these fields this session.
+          if ((d as any)?.offerCommitmentRequested && !prev.welcome_requireCommitment && !prev.welcome_commitmentAmountFgc) {
+            next.welcome_requireCommitment = true;
+            const amt = Number((d as any)?.offerCommitmentAmountFgc) || 0;
+            if (amt > 0) next.welcome_commitmentAmountFgc = String(amt);
+            const dur = Number((d as any)?.offerCommitmentDurationWeeks) || 0;
+            if (dur > 0) next.welcome_commitmentDurationWeeks = String(dur);
+          }
           buildPreview(next, applicant.email || toEmail || "", applicant.id);
           return next;
         });
@@ -545,6 +540,14 @@ export default function ApplicantComposerModal({
         extraInfo: note,
         createEmployeeUser: c.welcome_createEmployeeUser,
         requireCommitment: c.welcome_createEmployeeUser ? c.welcome_requireCommitment : false,
+        commitmentAmountFgc:
+          c.welcome_createEmployeeUser && c.welcome_requireCommitment
+            ? Number(c.welcome_commitmentAmountFgc) || 0
+            : undefined,
+        commitmentDurationWeeks:
+          c.welcome_createEmployeeUser && c.welcome_requireCommitment
+            ? Number(c.welcome_commitmentDurationWeeks) || 0
+            : undefined,
         vars,
         setStatus: c.setStatus?.trim() ? c.setStatus.trim() : undefined,
       };
@@ -643,7 +646,7 @@ export default function ApplicantComposerModal({
 
       if (docType === "OFFER") {
         if (c.address?.trim()) vars.address = c.address.trim();
-        if (c.vars_stipend?.trim()) vars.stipend = c.vars_stipend.trim();
+        applyOfferConditionalCommitmentVars(vars, c);
         if (c.vars_workMode?.trim()) vars.workMode = c.vars_workMode.trim();
         if (c.vars_weeklyHours?.trim()) vars.weeklyHours = c.vars_weeklyHours.trim();
       }
@@ -723,7 +726,7 @@ export default function ApplicantComposerModal({
   }
 
   function requestClose() {
-    closeMaterializeModal(instRef.current, onCloseRef.current);
+    onClose();
   }
 
   async function sendNow() {
@@ -769,10 +772,29 @@ export default function ApplicantComposerModal({
           extraInfo: note,
           createEmployeeUser: composer.welcome_createEmployeeUser,
           requireCommitment: composer.welcome_createEmployeeUser ? composer.welcome_requireCommitment : false,
+          commitmentAmountFgc:
+            composer.welcome_createEmployeeUser && composer.welcome_requireCommitment
+              ? Number(composer.welcome_commitmentAmountFgc) || 0
+              : undefined,
+          commitmentDurationWeeks:
+            composer.welcome_createEmployeeUser && composer.welcome_requireCommitment
+              ? Number(composer.welcome_commitmentDurationWeeks) || 0
+              : undefined,
           vars,
           attachments: attachments.length ? attachments : undefined,
           setStatus: composer.setStatus.trim() ? composer.setStatus.trim() : undefined,
         };
+
+        if (composer.welcome_createEmployeeUser && composer.welcome_requireCommitment) {
+          if (!(Number(composer.welcome_commitmentAmountFgc) > 0)) {
+            M?.toast?.({ html: "Commitment amount (FGC) must be a positive number", classes: "red" });
+            return;
+          }
+          if (!(Number(composer.welcome_commitmentDurationWeeks) > 0)) {
+            M?.toast?.({ html: "Duration (weeks) must be a positive number", classes: "red" });
+            return;
+          }
+        }
 
         const resp = await (api as any).sendApplicantWelcomeEmail(applicantId, body);
         M?.toast?.({ html: String(resp?.message || resp?.status || "Sent"), classes: "green" });
@@ -922,6 +944,18 @@ export default function ApplicantComposerModal({
           M?.toast?.({ html: "Offer: dateStarted is required", classes: "red" });
           return;
         }
+        if (docType === "OFFER" && composer.offer_commitment && !(Number(composer.vars_stipend) > 0)) {
+          M?.toast?.({ html: "Commitment amount (FGC) must be a positive number", classes: "red" });
+          return;
+        }
+        if (docType === "OFFER" && composer.offer_commitment && !(Number(composer.offer_durationWeeks) > 0)) {
+          M?.toast?.({ html: "Duration (weeks) must be a positive number", classes: "red" });
+          return;
+        }
+        if (docType === "OFFER" && composer.offer_conditional && !composer.offer_conditionText.trim()) {
+          M?.toast?.({ html: "Conditional offer: condition text is required", classes: "red" });
+          return;
+        }
 
         const vars: Record<string, any> = {};
         if (composer.vars_extraInfo.trim()) vars.extraInfo = composer.vars_extraInfo.trim();
@@ -933,7 +967,7 @@ export default function ApplicantComposerModal({
 
         if (docType === "OFFER") {
           if (composer.address.trim()) vars.address = composer.address.trim();
-          if (composer.vars_stipend.trim()) vars.stipend = composer.vars_stipend.trim();
+          applyOfferConditionalCommitmentVars(vars, composer);
           if (composer.vars_workMode.trim()) vars.workMode = composer.vars_workMode.trim();
           if (composer.vars_weeklyHours.trim()) vars.weeklyHours = composer.vars_weeklyHours.trim();
         }
@@ -1411,10 +1445,151 @@ export default function ApplicantComposerModal({
               </label>
             </p>
 
+            <p style={{ marginTop: 10, marginBottom: 4 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={composer.offer_commitment}
+                  onChange={(e) => updateComposer({ offer_commitment: e.target.checked })}
+                />
+                <span>Commitment</span>
+              </label>
+            </p>
+            {composer.offer_commitment && (
+              <>
+                <div className="card-panel blue lighten-5" style={{ marginTop: 0, marginBottom: 10, borderRadius: 16, fontSize: 13 }}>
+                  A Commitment Program Overview PDF will be attached alongside the offer letter. The box below now sets the
+                  commitment amount that gets loaded into this employee's wallet as a dormant Frozen FGC balance once the
+                  Welcome email creates their account. Whatever's still frozen going into the final week is released in full,
+                  so the whole commitment always fully vests by then.
+                </div>
+                <div className="input-field" style={{ marginTop: 0, maxWidth: 220 }}>
+                  <input
+                    type="number"
+                    min={1}
+                    value={composer.offer_durationWeeks}
+                    onChange={(e) => updateComposer({ offer_durationWeeks: e.target.value })}
+                  />
+                  <label className="active">Duration (weeks)</label>
+                  <span className="helper-text">Calendar weeks until full vesting, counted from when Welcome funds the wallet.</span>
+                </div>
+              </>
+            )}
+
+            <p style={{ marginTop: 4, marginBottom: 4 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={composer.offer_conditional}
+                  onChange={(e) => updateComposer({ offer_conditional: e.target.checked })}
+                />
+                <span>Conditional Offer</span>
+              </label>
+            </p>
+            {composer.offer_conditional && (
+              <div className="row" style={{ marginBottom: 0 }}>
+                <div className="col s12">
+                  <div className="input-field">
+                    <textarea
+                      className="materialize-textarea"
+                      value={composer.offer_conditionText}
+                      onChange={(e) => updateComposer({ offer_conditionText: e.target.value })}
+                      style={{ minHeight: 80 }}
+                    />
+                    <label className="active">Condition text (included in the offer letter PDF)</label>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                    <button
+                      type="button"
+                      className={`btn waves-effect waves-light ${draftingCondition ? "disabled" : ""}`}
+                      disabled={draftingCondition}
+                      onClick={async () => {
+                        const hint = composer.offer_conditionText.trim();
+                        const prompt = [
+                          "Write a short, professional condition clause for a job offer letter.",
+                          "Do not mention Fluke AI, do not ask follow-up questions, and do not explain your reasoning.",
+                          "Write ONLY the clause text in plain text, 2-4 sentences.",
+                          `Role: ${composer.roleTitle || "N/A"}`,
+                          hint
+                            ? `Hint from the recruiter about the condition: ${hint}`
+                            : "No specific hint given - write a generic condition about satisfying a background check and reference verification.",
+                        ].join("\n");
+                        setDraftingCondition(true);
+                        try {
+                          const runId = `applicant_offer_condition_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                          const postRes = await fetch(`${API_BASE}/ai/chat/internal`, {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${authToken}`,
+                            },
+                            body: JSON.stringify({
+                              clientId: runId,
+                              requestId: runId,
+                              context: "internal",
+                              question: prompt,
+                            }),
+                          });
+                          if (!postRes.ok) {
+                            const err = await postRes.json().catch(() => ({}));
+                            throw new Error(String(err?.error || err?.message || `HTTP ${postRes.status}`));
+                          }
+
+                          let attempts = 0;
+                          const text = await new Promise<string>((resolve, reject) => {
+                            const tick = async () => {
+                              attempts += 1;
+                              if (attempts > 60) {
+                                reject(new Error("Timed out waiting for AI response."));
+                                return;
+                              }
+                              try {
+                                const r = await fetch(`${API_BASE}/admin/ai/runs?runId=${encodeURIComponent(runId)}`, {
+                                  headers: { Authorization: `Bearer ${authToken}` },
+                                });
+                                if (r.status === 404) {
+                                  window.setTimeout(tick, 2000);
+                                  return;
+                                }
+                                const data = await r.json().catch(() => ({}));
+                                const run = data?.run || {};
+                                const status = String(run?.status || "").toLowerCase();
+                                if (status === "done") {
+                                  resolve(String(run?.resultPayload?.reply || run?.reply || run?.replySummary || "").trim());
+                                } else if (status === "error") {
+                                  reject(new Error(String(run?.errorPayload?.error || run?.deniedReason || "AI run failed.")));
+                                } else {
+                                  window.setTimeout(tick, 2000);
+                                }
+                              } catch (e: any) {
+                                if (attempts > 60) reject(e);
+                                else window.setTimeout(tick, 2000);
+                              }
+                            };
+                            tick();
+                          });
+
+                          if (text) updateComposer({ offer_conditionText: text });
+                          else M?.toast?.({ html: "AI did not return a draft.", classes: "orange darken-2" });
+                        } catch (e: any) {
+                          M?.toast?.({ html: e?.message || "Failed to draft with AI", classes: "red" });
+                        } finally {
+                          setDraftingCondition(false);
+                        }
+                      }}
+                    >
+                      <i className="material-icons left">{draftingCondition ? "hourglass_empty" : "auto_awesome"}</i>
+                      {draftingCondition ? "Drafting..." : "AI Draft"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="row" style={{ marginBottom: 0 }}>
               <div className="input-field col s12 m4">
                 <input value={composer.vars_stipend} onChange={(e) => updateComposer({ vars_stipend: e.target.value })} />
-                <label className="active">vars.stipend</label>
+                <label className="active">{composer.offer_commitment ? "Commitment amount (FGC)" : "vars.stipend"}</label>
               </div>
               <div className="input-field col s12 m4">
                 <input value={composer.vars_workMode} onChange={(e) => updateComposer({ vars_workMode: e.target.value })} />
@@ -1494,7 +1669,7 @@ export default function ApplicantComposerModal({
               </label>
             </p>
 
-            <p style={{ marginTop: 10 }}>
+            <p style={{ marginTop: 10, marginBottom: composer.welcome_requireCommitment ? 4 : 0 }}>
               <label>
                 <input
                   type="checkbox"
@@ -1505,6 +1680,34 @@ export default function ApplicantComposerModal({
                 <span>requireCommitment</span>
               </label>
             </p>
+            {composer.welcome_createEmployeeUser && composer.welcome_requireCommitment && (
+              <div className="row" style={{ marginBottom: 0 }}>
+                <div className="input-field col s12 m6">
+                  <input
+                    type="number"
+                    min={0}
+                    value={composer.welcome_commitmentAmountFgc}
+                    onChange={(e) => updateComposer({ welcome_commitmentAmountFgc: e.target.value })}
+                  />
+                  <label className="active">Commitment amount (FGC)</label>
+                  <span className="helper-text">
+                    Credited to the new wallet as a dormant Frozen FGC balance once the account is created.
+                  </span>
+                </div>
+                <div className="input-field col s12 m6">
+                  <input
+                    type="number"
+                    min={1}
+                    value={composer.welcome_commitmentDurationWeeks}
+                    onChange={(e) => updateComposer({ welcome_commitmentDurationWeeks: e.target.value })}
+                  />
+                  <label className="active">Duration (weeks)</label>
+                  <span className="helper-text">
+                    Calendar weeks from this week until the remaining frozen balance releases in full.
+                  </span>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -1518,8 +1721,26 @@ export default function ApplicantComposerModal({
   }
 
   return (
-    <div ref={modalRef} className="modal modal-fixed-footer">
-      <div className="modal-content">
+    <Modal
+      open={open}
+      onClose={onClose}
+      maxWidth={900}
+      footer={
+        <>
+          <a className="btn-flat" href="#!" onClick={requestClose}>
+            Cancel
+          </a>
+          <button
+            className={`btn ${sending ? "disabled" : ""}`}
+            onClick={sendNow}
+            disabled={sending || !toEmail || !stageIsWired(composer.stage) || !composerApplicantId}
+          >
+            <i className="material-icons left">{sending ? "hourglass_empty" : "send"}</i>
+            {sending ? "Sending…" : "Send"}
+          </button>
+        </>
+      }
+    >
         <h5 style={{ marginBottom: 6, fontWeight: 1100 }}>Composer</h5>
         <p className="grey-text" style={{ marginTop: 0, fontWeight: 800 }}>
           Edit fields → Send. Templates are rendered server-side.
@@ -1589,24 +1810,8 @@ export default function ApplicantComposerModal({
 
         <details style={{ marginTop: 14 }}>
           <summary style={{ cursor: "pointer", fontWeight: 1000 }}>Preview POST JSON</summary>
-          <pre style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{previewJson}</pre>
+          <pre style={{ marginTop: 10, whiteSpace: "pre-wrap", overflowX: "auto" }}>{previewJson}</pre>
         </details>
-      </div>
-
-      <div className="modal-footer">
-        <a className="btn-flat" href="#!" onClick={requestClose}>
-          Cancel
-        </a>
-
-        <button
-          className={`btn ${sending ? "disabled" : ""}`}
-          onClick={sendNow}
-          disabled={sending || !toEmail || !stageIsWired(composer.stage) || !composerApplicantId}
-        >
-          <i className="material-icons left">{sending ? "hourglass_empty" : "send"}</i>
-          {sending ? "Sending…" : "Send"}
-        </button>
-      </div>
-    </div>
+    </Modal>
   );
 }

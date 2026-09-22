@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import TimeSheet from "../components/Timesheet";
 import FgcAmount from "../components/credits/FgcAmount";
 import FrozenFgcAmount from "../components/credits/FrozenFgcAmount";
@@ -115,6 +115,54 @@ function MetaChip({
   );
 }
 
+const fieldLabelStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#475569",
+  marginBottom: 6,
+  display: "block",
+};
+
+const fieldHelperStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "#94a3b8",
+  marginTop: 6,
+  lineHeight: 1.5,
+};
+
+const fieldControlStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid rgba(148,163,184,.28)",
+  borderRadius: 12,
+  padding: "10px 12px",
+  fontSize: 14,
+  fontFamily: "inherit",
+  color: "#0f172a",
+  background: "#fff",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+function Field({
+  label,
+  helper,
+  children,
+  style,
+}: {
+  label: string;
+  helper?: React.ReactNode;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div style={{ minWidth: 0, ...style }}>
+      <label style={fieldLabelStyle}>{label}</label>
+      {children}
+      {helper ? <div style={fieldHelperStyle}>{helper}</div> : null}
+    </div>
+  );
+}
+
 function SectionHeader({
   icon,
   title,
@@ -210,10 +258,20 @@ export default function WeeklyUpdate() {
   const { save } = useUpdates();
   const { user, api } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const mondayISO = useMemo(() => toISODate(startOfWeekMonday(new Date())), []);
-  const [weekStart, setWeekStart] = useState(mondayISO);
+  // The "missed week" notification deep-links here as
+  // /updates/new?weekStart=YYYY-MM-DD (matches notificationsTemplates.mjs's
+  // weekly_update_missing_reminder href) - honor it once on mount so the
+  // employee lands directly on the week they were notified about.
+  const [weekStart, setWeekStart] = useState(() => {
+    const fromQuery = searchParams.get("weekStart");
+    return fromQuery && /^\d{4}-\d{2}-\d{2}$/.test(fromQuery) ? fromQuery : mondayISO;
+  });
   const isBackdatedWeek = Boolean(weekStart && mondayISO && weekStart !== mondayISO);
+  const [missingWeeks, setMissingWeeks] = useState<string[]>([]);
+  const [missingWeeksLoading, setMissingWeeksLoading] = useState(false);
 
   const [accomplishments, setAccomplishments] = useState("");
   const [blockers, setBlockers] = useState("");
@@ -404,14 +462,34 @@ export default function WeeklyUpdate() {
         setProjects(Array.isArray(list) ? list : []);
         const fromUserSingle = String((user as any)?.project_id || "").trim();
         const fromUserMulti = parseProjectIds((user as any)?.project_ids);
-        if (fromUserMulti.length > 1) setProjectId(ALL_ASSIGNED_PROJECTS);
-        else if (fromUserMulti.length === 1) setProjectId(fromUserMulti[0]);
-        else if (fromUserSingle) setProjectId(fromUserSingle);
+        // Default to "All Assigned Projects" whenever the employee has any
+        // project assigned, so Jira ticket lookup pulls from everything
+        // they're on by default instead of just whichever project happened
+        // to load first.
+        if (fromUserMulti.length >= 1 || fromUserSingle) setProjectId(ALL_ASSIGNED_PROJECTS);
       } catch {
         setProjects([]);
       }
     })();
   }, [api, user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setMissingWeeksLoading(true);
+      try {
+        const weeks = await api.getMyMissingWeeks?.();
+        if (!cancelled) setMissingWeeks(Array.isArray(weeks) ? weeks : []);
+      } catch {
+        if (!cancelled) setMissingWeeks([]);
+      } finally {
+        if (!cancelled) setMissingWeeksLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   useEffect(() => {
     let cancelled = false;
@@ -734,6 +812,8 @@ export default function WeeklyUpdate() {
           : "Update submitted!",
     });
 
+    setMissingWeeks((prev) => prev.filter((w) => w !== weekStart));
+
     if (submitResp?.creditIssues?.length) {
       M?.toast?.({
         html: `Update saved, but ${submitResp.creditIssues.length} credit${
@@ -879,38 +959,32 @@ export default function WeeklyUpdate() {
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   type="button"
-                  className="btn"
                   onClick={() => navigate("/updates/ai-intake?ctx=weekly_update")}
-                  style={{ borderRadius: 999, fontWeight: 800 }}
                   title="Use AI WebRTC intake flow for guided submission"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    border: "none",
+                    borderRadius: 999,
+                    padding: "10px 18px",
+                    background: "linear-gradient(135deg, #4338ca 0%, #6d28d9 100%)",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    boxShadow: "0 6px 16px rgba(79,70,229,.28)",
+                  }}
                 >
-                  <i className="material-icons left">headset_mic</i>
-                  Try The AI Way To Submit
+                  <i className="material-icons" style={{ fontSize: 18 }}>headset_mic</i>
+                  AI Update Assistant
                 </button>
-                <MetaChip
-                  icon="event"
-                  label="Week"
-                  value={weekStart || "—"}
-                  tint="rgba(59,130,246,.10)"
-                  color="#1d4ed8"
-                />
-                <MetaChip
-                  icon="person"
-                  label="Employee"
-                  value={user?.name || user?.username || "—"}
-                  tint="rgba(99,102,241,.10)"
-                  color="#4338ca"
-                />
-                <MetaChip
-                  icon="schedule"
-                  label="Hours"
-                  value={String(totalHours)}
-                  tint="rgba(34,197,94,.12)"
-                  color="#166534"
-                />
+                <MetaChip icon="event" label="Week" value={weekStart || "—"} tint="rgba(100,116,139,.08)" color="#334155" />
+                <MetaChip icon="person" label="Employee" value={user?.name || user?.username || "—"} tint="rgba(100,116,139,.08)" color="#334155" />
+                <MetaChip icon="schedule" label="Hours" value={String(totalHours)} tint="rgba(100,116,139,.08)" color="#334155" />
                 <MetaChip
                   icon="stars"
                   label="Frozen award"
@@ -919,12 +993,12 @@ export default function WeeklyUpdate() {
                       amount={displayedCreditPreview.updateTotal}
                       divisor={1}
                       fractionDigits={0}
-                      style={{ fontSize: 12, fontWeight: 900, color: "#b45309" }}
-                      iconSize={30}
+                      style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}
+                      iconSize={18}
                     />
                   }
-                  tint="rgba(245,158,11,.14)"
-                  color="#b45309"
+                  tint="rgba(100,116,139,.08)"
+                  color="#334155"
                 />
               </div>
             </div>
@@ -1059,66 +1133,214 @@ export default function WeeklyUpdate() {
               </div>
               <button
                 type="button"
-                className="btn"
                 onClick={() => navigate("/updates/ai-intake?ctx=weekly_update")}
-                style={{ borderRadius: 999, fontWeight: 800 }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  border: "none",
+                  borderRadius: 999,
+                  padding: "10px 18px",
+                  background: "linear-gradient(135deg, #4338ca 0%, #6d28d9 100%)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  boxShadow: "0 6px 16px rgba(79,70,229,.28)",
+                }}
               >
-                <i className="material-icons left">headset_mic</i>
-                Try The AI Way To Submit
+                <i className="material-icons" style={{ fontSize: 18 }}>headset_mic</i>
+                AI Update Assistant
               </button>
             </div>
 
             {wizardStep === 0 && (
               <>
-                <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+                {!missingWeeksLoading && missingWeeks.length > 0 && (
                   <div
                     style={{
+                      marginTop: 14,
                       borderRadius: 18,
-                      border: "1px solid rgba(245,158,11,.18)",
-                      background: "linear-gradient(180deg, rgba(255,251,235,.98) 0%, rgba(255,255,255,.98) 100%)",
+                      border: "1px solid rgba(220,38,38,.18)",
+                      background: "linear-gradient(180deg, rgba(254,242,242,.98) 0%, rgba(255,255,255,.98) 100%)",
                       padding: 14,
                     }}
                   >
+                    <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: ".08em", textTransform: "uppercase", color: "#b91c1c" }}>
+                      Missing weeks
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color: "#991b1b" }}>
+                      You still owe {missingWeeks.length} weekly update{missingWeeks.length > 1 ? "s" : ""}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: "#7f1d1d" }}>
+                      Tap a week to select it, then fill in your update below - late submissions still earn 40% credit.
+                    </div>
+                    <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {missingWeeks.map((w) => {
+                        const selected = weekStart === w;
+                        const label = new Date(`${w}T12:00:00`).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        });
+                        return (
+                          <button
+                            key={w}
+                            type="button"
+                            onClick={() => setWeekStart(w)}
+                            title={`Week of ${w}`}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              border: selected ? "1px solid #b91c1c" : "1px solid #fecaca",
+                              background: selected ? "#b91c1c" : "#fff",
+                              color: selected ? "#fff" : "#7f1d1d",
+                              borderRadius: 999,
+                              padding: "6px 14px",
+                              fontSize: 12.5,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              lineHeight: 1.2,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {selected && <i className="material-icons" style={{ fontSize: 14 }}>check</i>}
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {!missingWeeksLoading && missingWeeks.length === 0 && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      borderRadius: 18,
+                      border: "1px solid rgba(22,163,74,.18)",
+                      background: "rgba(240,253,244,.7)",
+                      padding: 12,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <i className="material-icons" style={{ color: "#16a34a" }}>check_circle</i>
+                    <span style={{ fontWeight: 800, color: "#166534" }}>You're all caught up on weekly updates.</span>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     <button
                       type="button"
                       onClick={() => setWeeklyBlockOpen((v) => !v)}
+                      title="Weekly update rewards move into Frozen FGC first."
                       style={{
-                        width: "100%",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        border: weeklyBlockOpen ? "1px solid #b45309" : "1px solid rgba(245,158,11,.3)",
+                        background: weeklyBlockOpen ? "rgba(245,158,11,.14)" : "#fff",
+                        borderRadius: 999,
+                        padding: "6px 12px 6px 14px",
                         cursor: "pointer",
-                        textAlign: "left",
+                        fontWeight: 800,
+                        color: "#92400e",
+                        fontSize: 13,
                       }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: ".08em", textTransform: "uppercase", color: "#b45309" }}>
-                            Block 1
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color: "#92400e" }}>
-                            Current weekly reward split
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
-                            Weekly update rewards move into Frozen FGC first.
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 1000, color: "#b45309" }}>
-                          <FrozenFgcAmount
-                            amount={displayedCreditPreview.updateTotal}
-                            divisor={1}
-                            fractionDigits={0}
-                            style={{ fontWeight: 1000, color: "#b45309" }}
-                            iconSize={26}
-                          />
-                          <i className="material-icons" style={{ color: "#b45309" }}>
-                            {weeklyBlockOpen ? "expand_less" : "expand_more"}
-                          </i>
-                        </div>
-                      </div>
+                      Weekly split
+                      <FrozenFgcAmount
+                        amount={displayedCreditPreview.updateTotal}
+                        divisor={1}
+                        fractionDigits={0}
+                        style={{ fontWeight: 1000, color: "#b45309" }}
+                        iconSize={18}
+                      />
+                      <i className="material-icons" style={{ color: "#b45309", fontSize: 18 }}>
+                        {weeklyBlockOpen ? "expand_less" : "expand_more"}
+                      </i>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setBonusBlockOpen((v) => !v)}
+                      title="File upload goes to Frozen FGC. Awards won go to spendable FGC."
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        border: bonusBlockOpen ? "1px solid #1d4ed8" : "1px solid rgba(59,130,246,.3)",
+                        background: bonusBlockOpen ? "rgba(59,130,246,.14)" : "#fff",
+                        borderRadius: 999,
+                        padding: "6px 12px 6px 14px",
+                        cursor: "pointer",
+                        fontWeight: 800,
+                        color: "#1e40af",
+                        fontSize: 13,
+                      }}
+                    >
+                      Bonus
+                      <FrozenFgcAmount
+                        amount={displayedCreditPreview.extraFrozenTotal}
+                        divisor={1}
+                        fractionDigits={0}
+                        style={{ fontWeight: 1000, color: "#1d4ed8" }}
+                        iconSize={18}
+                      />
+                      <i className="material-icons" style={{ color: "#1d4ed8", fontSize: 18 }}>
+                        {bonusBlockOpen ? "expand_less" : "expand_more"}
+                      </i>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPenaltyBlockOpen((v) => !v)}
+                      title="Late submissions only receive 40% of the weekly reward split. Missed weeks are deducted from live FGC first, then Frozen FGC if needed."
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        border: penaltyBlockOpen ? "1px solid #b91c1c" : "1px solid rgba(248,113,113,.35)",
+                        background: penaltyBlockOpen ? "rgba(248,113,113,.14)" : "#fff",
+                        borderRadius: 999,
+                        padding: "6px 12px 6px 14px",
+                        cursor: "pointer",
+                        fontWeight: 800,
+                        color: "#991b1b",
+                        fontSize: 13,
+                      }}
+                    >
+                      Penalty
+                      <FgcAmount
+                        amount={-weeklyRuleSummary.missingUpdatePenalty}
+                        divisor={1}
+                        fractionDigits={0}
+                        style={{ fontWeight: 1000, color: "#b91c1c" }}
+                        iconSize={18}
+                      />
+                      <i className="material-icons" style={{ color: "#b91c1c", fontSize: 18 }}>
+                        {penaltyBlockOpen ? "expand_less" : "expand_more"}
+                      </i>
+                    </button>
+                  </div>
+
+                  <div style={{ marginTop: 8, display: "grid", gap: 10 }}>
                     {weeklyBlockOpen && (
-                      <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                      <div
+                        style={{
+                          borderRadius: 16,
+                          border: "1px solid rgba(245,158,11,.18)",
+                          background: "linear-gradient(180deg, rgba(255,251,235,.98) 0%, rgba(255,255,255,.98) 100%)",
+                          padding: 14,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e" }}>Current weekly reward split</div>
+                        <div style={{ marginTop: 2, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                          Weekly update rewards move into Frozen FGC first.
+                        </div>
+                        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
                         {displayedCreditPreview.updateItems.map((item) => (
                           <div
                             key={item.label}
@@ -1155,58 +1377,24 @@ export default function WeeklyUpdate() {
                             />
                           </div>
                         ))}
+                        </div>
                       </div>
                     )}
-                  </div>
 
-                  <div
-                    style={{
-                      borderRadius: 18,
-                      border: "1px solid rgba(59,130,246,.18)",
-                      background: "linear-gradient(180deg, rgba(239,246,255,.98) 0%, rgba(255,255,255,.98) 100%)",
-                      padding: 14,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setBonusBlockOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: ".08em", textTransform: "uppercase", color: "#1d4ed8" }}>
-                            Block 2
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color: "#1e40af" }}>
-                            Bonus reward
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
-                            File upload goes to Frozen FGC. Awards won go to spendable FGC.
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 1000, color: "#1d4ed8" }}>
-                          <FrozenFgcAmount
-                            amount={displayedCreditPreview.extraFrozenTotal}
-                            divisor={1}
-                            fractionDigits={0}
-                            style={{ fontWeight: 1000, color: "#1d4ed8" }}
-                            iconSize={26}
-                          />
-                          <i className="material-icons" style={{ color: "#1d4ed8" }}>
-                            {bonusBlockOpen ? "expand_less" : "expand_more"}
-                          </i>
-                        </div>
-                      </div>
-                    </button>
                     {bonusBlockOpen && (
-                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div
+                        style={{
+                          borderRadius: 16,
+                          border: "1px solid rgba(59,130,246,.18)",
+                          background: "linear-gradient(180deg, rgba(239,246,255,.98) 0%, rgba(255,255,255,.98) 100%)",
+                          padding: 14,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 900, color: "#1e40af" }}>Bonus reward</div>
+                        <div style={{ marginTop: 2, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                          File upload goes to Frozen FGC. Awards won go to spendable FGC.
+                        </div>
+                        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                         {displayedCreditPreview.extraFrozenItems.map((item) => (
                           <div
                             key={item.label}
@@ -1269,122 +1457,71 @@ export default function WeeklyUpdate() {
                             />
                           </div>
                         ))}
+                        </div>
                       </div>
                     )}
-                  </div>
 
-                  <div
-                    style={{
-                      borderRadius: 18,
-                      border: "1px solid rgba(248,113,113,.20)",
-                      background: "linear-gradient(180deg, rgba(254,242,242,.98) 0%, rgba(255,255,255,.98) 100%)",
-                      padding: 14,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setPenaltyBlockOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: ".08em", textTransform: "uppercase", color: "#b91c1c" }}>
-                            Block 3
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color: "#991b1b" }}>
-                            Penalty
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 700, lineHeight: 1.55 }}>
-                            Late submissions only receive 40% of the weekly reward split. Missed weeks are deducted from live FGC first, then Frozen FGC if needed.
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 1000, color: "#b91c1c" }}>
-                          <FgcAmount
-                            amount={-weeklyRuleSummary.missingUpdatePenalty}
-                            divisor={1}
-                            fractionDigits={0}
-                            style={{ fontWeight: 1000, color: "#b91c1c" }}
-                            iconSize={26}
-                          />
-                          <i className="material-icons" style={{ color: "#b91c1c" }}>
-                            {penaltyBlockOpen ? "expand_less" : "expand_more"}
-                          </i>
-                        </div>
-                      </div>
-                    </button>
                     {penaltyBlockOpen && (
-                      <div style={{ marginTop: 12, borderRadius: 14, padding: 12, background: "rgba(255,255,255,.92)", border: "1px solid rgba(248,113,113,.12)", display: "grid", gap: 10 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontWeight: 900, color: "#7f1d1d", fontSize: 13, flexWrap: "wrap" }}>
-                          <span>Late submission rule</span>
-                          <span>40% of weekly rewards</span>
+                      <div
+                        style={{
+                          borderRadius: 16,
+                          border: "1px solid rgba(248,113,113,.20)",
+                          background: "linear-gradient(180deg, rgba(254,242,242,.98) 0%, rgba(255,255,255,.98) 100%)",
+                          padding: 14,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 900, color: "#991b1b" }}>Penalty</div>
+                        <div style={{ marginTop: 2, fontSize: 12, color: "#64748b", fontWeight: 700, lineHeight: 1.55 }}>
+                          Late submissions only receive 40% of the weekly reward split. Missed weeks are deducted from live FGC first, then Frozen FGC if needed.
                         </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontWeight: 900, color: "#7f1d1d", fontSize: 13, flexWrap: "wrap" }}>
-                          <span>Missing weekly update penalty</span>
-                          <FgcAmount amount={weeklyRuleSummary.missingUpdatePenalty} divisor={1} fractionDigits={0} style={{ fontWeight: 1000, color: "#b91c1c" }} iconSize={22} />
+                        <div
+                          style={{
+                            marginTop: 12,
+                            borderRadius: 14,
+                            padding: 12,
+                            background: "rgba(255,255,255,.92)",
+                            border: "1px solid rgba(248,113,113,.12)",
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontWeight: 900, color: "#7f1d1d", fontSize: 13, flexWrap: "wrap" }}>
+                            <span>Late submission rule</span>
+                            <span>40% of weekly rewards</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", fontWeight: 900, color: "#7f1d1d", fontSize: 13, flexWrap: "wrap" }}>
+                            <span>Missing weekly update penalty</span>
+                            <FgcAmount amount={weeklyRuleSummary.missingUpdatePenalty} divisor={1} fractionDigits={0} style={{ fontWeight: 1000, color: "#b91c1c" }} iconSize={22} />
+                          </div>
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="row" style={{ marginBottom: 0, marginTop: 14 }}>
-                  <div className="col s12 m6">
-                    <div className="input-field" style={{ marginTop: 0 }}>
-                      <input
-                        id="weekStart"
-                        type="date"
-                        value={weekStart}
-                        onChange={(e) => setWeekStart(e.target.value)}
-                        style={{ borderRadius: 12 }}
-                      />
-                      <label className="active" htmlFor="weekStart">
-                        Week Start (Monday)
-                      </label>
-                      <span className="helper-text">
-                        Choose the Monday of the week you are reporting. Same-week submissions earn full rewards; late submissions earn 40% and do not advance the streak.
-                      </span>
-                    </div>
-                  </div>
+                <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 16 }}>
+                  <Field
+                    label="Week Start (Monday)"
+                    helper="Choose the Monday of the week you are reporting. Same-week submissions earn full rewards; late submissions earn 40% and do not advance the streak."
+                    style={{ flex: "1 1 220px" }}
+                  >
+                    <input
+                      id="weekStart"
+                      type="date"
+                      value={weekStart}
+                      onChange={(e) => setWeekStart(e.target.value)}
+                      style={fieldControlStyle}
+                    />
+                  </Field>
 
-                  <div className="col s12 m6">
-                    <div className="input-field" style={{ marginTop: 0 }}>
-                      <input
-                        id="employeeName"
-                        value={user?.name || user?.username || ""}
-                        readOnly
-                      />
-                      <label className="active" htmlFor="employeeName">
-                        Employee
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="col s12 m6">
-                    <div className="input-field" style={{ marginTop: 0 }}>
-                      <select
-                        className="browser-default"
-                        value={projectId}
-                        onChange={(e) => setProjectId(String(e.target.value || ""))}
-                        style={{ borderRadius: 12 }}
-                      >
-                        <option value="">Select project</option>
-                        <option value={ALL_ASSIGNED_PROJECTS}>All Assigned Projects</option>
-                        {projects.map((p) => (
-                          <option key={String(p.projectId)} value={String(p.projectId)}>
-                            {String(p.name || p.projectId)} ({String(p.projectId)})
-                          </option>
-                        ))}
-                      </select>
-                      <span className="helper-text">Project used for update and Jira ticket lookup.</span>
-                    </div>
-                  </div>
+                  <Field label="Employee" style={{ flex: "1 1 220px" }}>
+                    <input
+                      id="employeeName"
+                      value={user?.name || user?.username || ""}
+                      readOnly
+                      style={{ ...fieldControlStyle, background: "#f8fafc", color: "#475569" }}
+                    />
+                  </Field>
                 </div>
               </>
             )}
@@ -1466,63 +1603,41 @@ export default function WeeklyUpdate() {
                   </div>
                 </div>
 
-                <div className="row" style={{ marginBottom: 0 }}>
-                  <div className="col s12">
-                    <div className="input-field">
-                      <textarea
-                        id="accomplishments"
-                        className="materialize-textarea"
-                        data-length={600}
-                        value={accomplishments}
-                        onChange={(e) => setAccomplishments(e.target.value)}
-                        placeholder="- Merged PR #142: combat tweaks&#10;- Completed EQS heatmap prototype"
-                        style={{
-                          minHeight: 120,
-                          borderRadius: 14,
-                        }}
-                      />
-                      <label className="active" htmlFor="accomplishments">
-                        Accomplishments
-                      </label>
-                      <span className="helper-text">
-                        What did you complete?
-                      </span>
-                    </div>
-                  </div>
+                <div style={{ marginTop: 16 }}>
+                  <Field label="Accomplishments">
+                    <textarea
+                      id="accomplishments"
+                      value={accomplishments}
+                      onChange={(e) => setAccomplishments(e.target.value)}
+                      placeholder={"What did you complete? (max 600 characters)\n- Merged PR #142: combat tweaks\n- Completed EQS heatmap prototype"}
+                      maxLength={600}
+                      style={{ ...fieldControlStyle, minHeight: 120, resize: "vertical", lineHeight: 1.5 }}
+                    />
+                  </Field>
+                </div>
 
-                  <div className="col s12 m6">
-                    <div className="input-field">
-                      <textarea
-                        id="blockers"
-                        className="materialize-textarea"
-                        data-length={400}
-                        value={blockers}
-                        onChange={(e) => setBlockers(e.target.value)}
-                        placeholder="- Waiting on art export&#10;- Build pipeline flaky on Mac"
-                        style={{ minHeight: 110 }}
-                      />
-                      <label className="active" htmlFor="blockers">
-                        Blockers
-                      </label>
-                    </div>
-                  </div>
+                <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 16 }}>
+                  <Field label="Blockers" style={{ flex: "1 1 260px" }}>
+                    <textarea
+                      id="blockers"
+                      value={blockers}
+                      onChange={(e) => setBlockers(e.target.value)}
+                      placeholder={"- Waiting on art export\n- Build pipeline flaky on Mac"}
+                      maxLength={400}
+                      style={{ ...fieldControlStyle, minHeight: 110, resize: "vertical", lineHeight: 1.5 }}
+                    />
+                  </Field>
 
-                  <div className="col s12 m6">
-                    <div className="input-field">
-                      <textarea
-                        id="next"
-                        className="materialize-textarea"
-                        data-length={400}
-                        value={next}
-                        onChange={(e) => setNext(e.target.value)}
-                        placeholder="- Refactor AI budget director&#10;- Write regression tests"
-                        style={{ minHeight: 110 }}
-                      />
-                      <label className="active" htmlFor="next">
-                        Next Week
-                      </label>
-                    </div>
-                  </div>
+                  <Field label="Next Week" style={{ flex: "1 1 260px" }}>
+                    <textarea
+                      id="next"
+                      value={next}
+                      onChange={(e) => setNext(e.target.value)}
+                      placeholder={"- Refactor AI budget director\n- Write regression tests"}
+                      maxLength={400}
+                      style={{ ...fieldControlStyle, minHeight: 110, resize: "vertical", lineHeight: 1.5 }}
+                    />
+                  </Field>
                 </div>
 
                 <div style={{ marginTop: 6 }}>
