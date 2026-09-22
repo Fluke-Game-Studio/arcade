@@ -2066,6 +2066,20 @@ export class ApiClient {
     };
   }
 
+  async getMyMissingWeeks(): Promise<string[]> {
+    const r = await fetch(`${API_BASE}/updates/missing-weeks`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getMyMissingWeeks failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return Array.isArray(payload?.weeks) ? payload.weeks : [];
+  }
+
   async createWeeklyUpdateUploadUrls(
     body: CreateWeeklyUpdateUploadUrlsBody
   ): Promise<CreateWeeklyUpdateUploadUrlsResponse> {

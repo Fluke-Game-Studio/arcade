@@ -87,6 +87,8 @@ export type SendApplicantWelcomeEmailBody = {
   setStatus?: string;
   createEmployeeUser?: boolean;
   requireCommitment?: boolean;
+  commitmentAmountFgc?: number;
+  commitmentDurationWeeks?: number;
   attachments?: EmailAttachment[];
 };
 

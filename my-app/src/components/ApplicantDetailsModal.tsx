@@ -1,10 +1,10 @@
 // src/components/ApplicantDetailsModal.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import type { ApiApplicantDetails } from "../api";
 import { API_BASE } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
-import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
+import Modal from "./Modal";
 import type { ApplicantRowLite, Stage } from "./ApplicantComposerModal";
 
 declare const M: any;
@@ -493,31 +493,27 @@ export default function ApplicantDetailsModal({
   loading,
   detailsRaw,
   onClose,
-  onClosed,
   onOpenComposer,
 }: {
   open: boolean;
   loading: boolean;
   detailsRaw: ApiApplicantDetails | null;
   onClose: () => void;
-  onClosed?: () => void;
   onOpenComposer: (lite: ApplicantRowLite, prefill?: { address?: string; city?: string }) => void;
 }) {
   const { user, api } = useAuth() as any;
   const token = String(user?.token || "");
-  const modalRef = useRef<HTMLDivElement | null>(null);
-  const instRef = useRef<any>(null);
-  const onClosedRef = useRef(onClosed);
-
-  // keep latest onClose without re-init loops
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
 
   useEffect(() => {
-    onClosedRef.current = onClosed;
-  }, [onClosed]);
+    if (!open) return;
+    // Materialize's select/textarea label-float styling needs a nudge once
+    // the modal's content is actually in the DOM.
+    setTimeout(() => {
+      try {
+        M?.updateTextFields?.();
+      } catch {}
+    }, 0);
+  }, [open]);
 
   const details = useMemo(() => (open && detailsRaw ? normalizeDetails(detailsRaw) : null), [open, detailsRaw]);
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -664,79 +660,8 @@ export default function ApplicantDetailsModal({
   }
 
 
-  // init ONCE
-  useEffect(() => {
-    if (!modalRef.current || typeof M === "undefined") return;
-
-    instRef.current = M.Modal.init(modalRef.current, {
-      dismissible: true,
-      opacity: 0.45,
-      inDuration: 140,
-      outDuration: 120,
-      // IMPORTANT: don't call prop onClose directly (avoids re-init loops)
-      onCloseEnd: () => {
-        // Run the overlay/body-lock cleanup BEFORE onClosed, which (via
-        // Applicants.tsx's queued-composer-reopen flow) may synchronously
-        // schedule another modal to open next. Since that's a React state
-        // update, it hasn't painted yet when this callback runs - if the
-        // cleanup ran after, it would see "no modal open" and rip out the
-        // overlay/body-lock right as the next modal is about to take over,
-        // leaving the page stuck with a half-cleared lock state.
-        syncMaterializeModalState();
-        try {
-          onCloseRef.current?.();
-        } catch {}
-        try {
-          onClosedRef.current?.();
-        } catch {}
-      },
-      onOpenStart: () => {
-        try {
-          modalRef.current!.style.left = "0px";
-          modalRef.current!.style.right = "0px";
-          modalRef.current!.style.margin = "auto";
-        } catch {}
-      },
-      onOpenEnd: () =>
-        setTimeout(() => {
-          try {
-            M.updateTextFields();
-          } catch {}
-        }, 0),
-    });
-
-    return () => {
-      try {
-        instRef.current?.destroy?.();
-      } catch {}
-      instRef.current = null;
-      syncMaterializeModalState();
-    };
-  }, []);
-
-  // drive open/close safely (no extra close at mount)
-  useEffect(() => {
-    const inst = instRef.current;
-    if (!inst) return;
-
-    if (open) {
-      try {
-        inst.open();
-      } catch {}
-      return;
-    }
-
-    // only close if it *is* open (prevents close->callback loops on init)
-    try {
-      const isOpen = !!(inst && (inst.isOpen === true || inst._isOpen === true));
-      if (isOpen) inst.close();
-    } catch {
-      // fallback: don't force close
-    }
-  }, [open]);
-
   function requestClose() {
-    closeMaterializeModal(instRef.current, onCloseRef.current);
+    onClose();
   }
 
   const Css = (
@@ -770,14 +695,6 @@ export default function ApplicantDetailsModal({
       }
       .fg-kpi .k { font-size: 12px; font-weight: 1000; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.6px; }
       .fg-kpi .v { font-size: 16px; font-weight: 1100; margin-top: 6px; }
-      .modal {
-        left: 0 !important;
-        right: 0 !important;
-        margin: auto !important;
-        border-radius: 18px !important;
-        max-width: 980px !important;
-      }
-      .modal.modal-fixed-footer { height: 85% !important; }
       .fg-tab-row { display: flex; gap: 0; border-bottom: 1px solid rgba(0,0,0,0.10); margin-bottom: 14px; }
       .fg-tab { padding: 9px 18px; font-weight: 900; font-size: 13px; cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; color: rgba(0,0,0,0.55); transition: color 0.15s, border-color 0.15s; }
       .fg-tab.active { color: #1565c0; border-bottom-color: #1565c0; }
@@ -813,9 +730,17 @@ export default function ApplicantDetailsModal({
   );
 
   return (
-    <div ref={modalRef} className="modal modal-fixed-footer">
+    <Modal
+      open={open}
+      onClose={onClose}
+      maxWidth={900}
+      footer={
+        <a href="#!" className="btn-flat" onClick={requestClose}>
+          Close
+        </a>
+      }
+    >
       {Css}
-      <div className="modal-content">
         <h5 style={{ marginBottom: 6, fontWeight: 1100 }}>Applicant Details</h5>
 
         {loading ? (
@@ -1029,13 +954,6 @@ export default function ApplicantDetailsModal({
             )}
           </>
         )}
-      </div>
-
-      <div className="modal-footer">
-        <a href="#!" className="btn-flat" onClick={requestClose}>
-          Close
-        </a>
-      </div>
-    </div>
+    </Modal>
   );
 }

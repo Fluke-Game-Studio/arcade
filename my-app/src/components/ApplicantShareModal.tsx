@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ApiApplicantDetails, ApiUser } from "../api";
-import { closeMaterializeModal, syncMaterializeModalState } from "./modalLifecycle";
+import Modal from "./Modal";
 
 declare const M: any;
 
@@ -110,8 +110,6 @@ export default function ApplicantShareModal({
   applicantEmail,
   employeeOptions,
 }: Props) {
-  const modalRef = useRef<HTMLDivElement | null>(null);
-  const onCloseRef = useRef(onClose);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [details, setDetails] = useState<ApiApplicantDetails | null>(null);
@@ -120,43 +118,14 @@ export default function ApplicantShareModal({
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  useEffect(() => {
-    if (!modalRef.current || typeof M === "undefined") return;
-    const instance = M.Modal.init(modalRef.current, {
-      dismissible: true,
-      opacity: 0.45,
-      inDuration: 140,
-      outDuration: 120,
-      onCloseEnd: () => {
-        try {
-          onCloseRef.current?.();
-        } catch {}
-        syncMaterializeModalState();
-      },
-      onOpenEnd: () =>
-        setTimeout(() => {
-          try {
-            M.updateTextFields();
-          } catch {}
-        }, 0),
-    });
-
-    return () => {
+    if (!open) return;
+    // Materialize's select/textarea label-float styling needs a nudge once
+    // the modal's content is actually in the DOM.
+    setTimeout(() => {
       try {
-        instance?.destroy?.();
+        M?.updateTextFields?.();
       } catch {}
-      syncMaterializeModalState();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!modalRef.current || typeof M === "undefined") return;
-    const instance = M.Modal.getInstance(modalRef.current) || M.Modal.init(modalRef.current);
-    if (open) instance.open();
-    else instance.close();
+    }, 0);
   }, [open]);
 
   useEffect(() => {
@@ -224,7 +193,7 @@ export default function ApplicantShareModal({
       });
 
       M?.toast?.({ html: "Applicant shared.", classes: "green" });
-      closeMaterializeModal(M?.Modal?.getInstance?.(modalRef.current), onCloseRef.current);
+      onClose();
     } catch (error: any) {
       M?.toast?.({ html: error?.message || "Failed to share applicant", classes: "red" });
     } finally {
@@ -233,8 +202,22 @@ export default function ApplicantShareModal({
   }
 
   return (
-    <div ref={modalRef} className="modal modal-fixed-footer" style={{ maxHeight: "90%" }}>
-      <div className="modal-content">
+    <Modal
+      open={open}
+      onClose={onClose}
+      maxWidth={720}
+      footer={
+        <>
+          <a className="btn-flat" href="#!" onClick={(e) => { e.preventDefault(); onClose(); }}>
+            Cancel
+          </a>
+          <button className={`btn ${sending ? "disabled" : ""}`} disabled={sending || loading} onClick={sendNow}>
+            <i className="material-icons left">{sending ? "hourglass_empty" : "send"}</i>
+            {sending ? "Sending..." : "Share"}
+          </button>
+        </>
+      }
+    >
         <h5 style={{ fontWeight: 1000, marginBottom: 6 }}>Share Applicant</h5>
         <p className="grey-text" style={{ marginTop: 0, fontWeight: 700 }}>
           Email this applicant package to a current employee.
@@ -298,17 +281,6 @@ export default function ApplicantShareModal({
             )}
           </div>
         </div>
-      </div>
-
-      <div className="modal-footer">
-        <a className="btn-flat" href="#!" onClick={() => closeMaterializeModal(M?.Modal?.getInstance?.(modalRef.current), onCloseRef.current)}>
-          Cancel
-        </a>
-        <button className={`btn ${sending ? "disabled" : ""}`} disabled={sending || loading} onClick={sendNow}>
-          <i className="material-icons left">{sending ? "hourglass_empty" : "send"}</i>
-          {sending ? "Sending..." : "Share"}
-        </button>
-      </div>
-    </div>
+    </Modal>
   );
 }
