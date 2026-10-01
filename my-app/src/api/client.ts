@@ -1685,6 +1685,37 @@ export class ApiClient {
     return payload;
   }
 
+  async getProjectOnboardingScreenshots(projectId: string): Promise<{ screenshots: Record<string, { s3Key: string; name: string; url: string }>; installers?: Record<string, { s3Key: string; name: string; url: string }> }> {
+    const r = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/onboarding-screenshots`, { headers: this.headers(false) });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(this.extractErrorMessage(payload, r.status));
+    return payload;
+  }
+
+  async getMyProjectOnboarding(): Promise<{ items: ApiProject[]; progress: Record<string, { checked?: Record<string, boolean>; platform?: "windows" | "macos" | "linux" }> }> {
+    const r = await fetch(`${API_BASE}/me/project-onboarding`, { headers: this.headers(false) });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(this.extractErrorMessage(payload, r.status));
+    return payload;
+  }
+
+  async saveMyProjectOnboarding(projectId: string, checked: Record<string, boolean>, platform: "windows" | "macos" | "linux"): Promise<void> {
+    const r = await fetch(`${API_BASE}/me/project-onboarding`, {
+      method: "POST", headers: this.headers(true), body: JSON.stringify({ projectId, checked, platform }),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(this.extractErrorMessage(payload, r.status));
+  }
+
+  async updateProjectOnboardingScreenshot(projectId: string, body: Record<string, unknown>): Promise<any> {
+    const r = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/onboarding-screenshots`, {
+      method: "POST", headers: this.headers(true), body: JSON.stringify(body),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) throw new Error(this.extractErrorMessage(payload, r.status));
+    return payload;
+  }
+
   async promoteSuperBuild(body: { projectId: string; releaseKey: string; targetStage: "candidate" | "released" }): Promise<any> {
     const r = await fetch(`${API_BASE}/super/builds/promote`, {
       method: "POST",
@@ -2033,6 +2064,20 @@ export class ApiClient {
       cursor: typeof payload?.cursor === "string" ? payload.cursor : undefined,
       nextCursor: typeof payload?.nextCursor === "string" ? payload.nextCursor : null,
     };
+  }
+
+  async getMyMissingWeeks(): Promise<string[]> {
+    const r = await fetch(`${API_BASE}/updates/missing-weeks`, {
+      method: "GET",
+      headers: this.headers(false),
+    });
+    const payload = await this.readJson(r);
+    if (!r.ok) {
+      throw new Error(
+        `getMyMissingWeeks failed: ${this.extractErrorMessage(payload, r.status)}`
+      );
+    }
+    return Array.isArray(payload?.weeks) ? payload.weeks : [];
   }
 
   async createWeeklyUpdateUploadUrls(

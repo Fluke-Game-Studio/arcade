@@ -152,7 +152,7 @@ export default function NotificationsCenter() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           {[
             { key: "all", label: "All" },
             { key: "social_media", label: "Social" },
@@ -168,7 +168,8 @@ export default function NotificationsCenter() {
               style={{
                 border: "1px solid rgba(148,163,184,.18)",
                 borderRadius: 999,
-                padding: "10px 16px",
+                padding: "5px 12px",
+                fontSize: 12,
                 background: category === tab.key ? "linear-gradient(135deg,#2563eb,#0f766e)" : "#fff",
                 color: category === tab.key ? "#fff" : "#1e293b",
                 fontWeight: 900,

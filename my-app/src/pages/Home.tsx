@@ -10,22 +10,6 @@ import { useAuth } from "../auth/AuthContext";
 
 declare const M: any;
 
-type DocLink = {
-  title: string;
-  sub: string;
-  icon: string;
-  href: string;
-  badge?: string;
-};
-
-type DocCategory = {
-  id: string;
-  title: string;
-  sub: string;
-  icon: string;
-  items: DocLink[];
-};
-
 function parseYmdParts(raw: any): { y: number; m: number; d: number } | null {
   const s = String(raw || "").trim();
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -40,10 +24,6 @@ function parseYmdParts(raw: any): { y: number; m: number; d: number } | null {
 
 export default function Home() {
   const { user, api } = useAuth();
-  const [docQuery, setDocQuery] = useState("");
-  const [activeDocCategory, setActiveDocCategory] = useState<string | null>(null);
-  const role = String(user?.role || "").toUpperCase();
-  const isAdminOrSuper = role === "ADMIN" || role === "SUPER";
   const [showBirthdayModal, setShowBirthdayModal] = useState(false);
   const birthdayGifs = useMemo(
     () => [
@@ -75,107 +55,6 @@ export default function Home() {
     const idx = Math.floor(Math.random() * birthdayGifs.length);
     setBirthdayGif(birthdayGifs[idx] || birthdayGifs[0]);
   }, [showBirthdayModal, birthdayGifs]);
-
-  const docCategories: DocCategory[] = useMemo(() => {
-    const categories: DocCategory[] = [
-      {
-        id: "onboarding",
-        title: "Onboarding",
-        sub: "Start here for first-week setup and weekly cadence",
-        icon: "rocket_launch",
-        items: [
-          { title: "Onboarding Guide", sub: "Accounts, tools, and first-week checklist", icon: "menu_book", href: "#", badge: "Start" },
-          { title: "Weekly Updates", sub: "Submit progress and view team cadence", icon: "event_note", href: "/updates/new", badge: "Core" },
-          { title: "Retro & Timesheet", sub: "Weekly retro + timesheet submissions", icon: "assignment", href: "#", badge: "Core" },
-        ],
-      },
-      {
-        id: "engineering",
-        title: "Engineering",
-        sub: "Technical standards and project docs",
-        icon: "terminal",
-        items: [
-          { title: "Engineering Playbook", sub: "Branch rules, PR standards, CI/CD", icon: "build", href: "#" },
-          { title: "Design System", sub: "Tokens, components, UI guidelines", icon: "palette", href: "#" },
-          { title: "Projects", sub: "View assigned work and project status", icon: "dashboard_customize", href: "#" },
-          {
-            title: "API Endpoints Docs",
-            sub: "Read-only endpoint registry and request schemas",
-            icon: "api",
-            href: "/docs/endpoints",
-            badge: "Docs",
-          },
-        ],
-      },
-      {
-        id: "operations",
-        title: "Operations",
-        sub: "Security, policy, and lifecycle documents",
-        icon: "policy",
-        items: [
-          { title: "Security Policies", sub: "MFA, credentials, data handling rules", icon: "lock", href: "#", badge: "Required" },
-          { title: "Incident Runbook", sub: "SEV process, comms, templates", icon: "warning_amber", href: "#" },
-          { title: "Access & Roles", sub: "Auth, roles, and account lifecycle", icon: "verified_user", href: "#" },
-          { title: "Data Retention", sub: "Backups, privacy, retention policy", icon: "inventory_2", href: "#" },
-        ],
-      },
-    ];
-
-    if (isAdminOrSuper) {
-      categories.push({
-        id: "admin",
-        title: "Admin",
-        sub: "Admin-focused docs and controls",
-        icon: "admin_panel_settings",
-        items: [
-          { title: "Applicants Admin", sub: "Hiring pipeline and email actions", icon: "group_add", href: "#", badge: "Admin" },
-          { title: "Email Templates", sub: "Standard comms formats used by the team", icon: "mail", href: "#" },
-        ],
-      });
-    }
-
-    return categories;
-  }, [isAdminOrSuper]);
-
-  useEffect(() => {
-    if (!activeDocCategory) return;
-    if (!docCategories.some((c) => c.id === activeDocCategory)) {
-      setActiveDocCategory(null);
-    }
-  }, [activeDocCategory, docCategories]);
-
-  const filteredCategories = useMemo(() => {
-    const q = docQuery.trim().toLowerCase();
-    if (!q) return docCategories;
-    return docCategories.filter(
-      (c) =>
-        c.title.toLowerCase().includes(q) ||
-        c.sub.toLowerCase().includes(q) ||
-        c.items.some(
-          (d) =>
-            d.title.toLowerCase().includes(q) ||
-            d.sub.toLowerCase().includes(q) ||
-            (d.badge || "").toLowerCase().includes(q)
-        )
-    );
-  }, [docQuery, docCategories]);
-
-  const activeCategory = useMemo(
-    () => docCategories.find((c) => c.id === activeDocCategory) || null,
-    [activeDocCategory, docCategories]
-  );
-
-  const filteredActiveDocs = useMemo(() => {
-    if (!activeCategory) return [];
-    const q = docQuery.trim().toLowerCase();
-    if (!q) return activeCategory.items;
-    return activeCategory.items.filter(
-      (d) =>
-        d.title.toLowerCase().includes(q) ||
-        d.sub.toLowerCase().includes(q) ||
-        (d.badge || "").toLowerCase().includes(q)
-    );
-  }, [activeCategory, docQuery]);
 
   // Same source the onboarding Welcome step reads (getArcadeReleaseConfig) so the
   // homepage "New Updates" card always matches the current release version instead
@@ -259,10 +138,6 @@ export default function Home() {
 
     return () => window.clearTimeout(t);
   }, []);
-
-  function toastRouteNotWired() {
-    if (typeof M !== "undefined") M.toast({ html: "Route not wired yet.", classes: "blue-grey darken-1" });
-  }
 
   return (
     <>
@@ -694,118 +569,6 @@ export default function Home() {
           <div className="col s12 m8">
             <div className="stackTight">
               <EventHero events={quarterEvents} autoRotateMs={8000} />
-
-              {/* Docs Resources */}
-              <div className="card pCard">
-                <div className="pHeader">
-                  <div className="pTitleRow" style={{ alignItems: "center" }}>
-                    <div>
-                      <div className="pTitle">Docs</div>
-                      <div className="pSub">
-                        {activeCategory ? `${activeCategory.title} docs` : "Browse docs by category"}
-                      </div>
-                    </div>
-                    <span className="pTiny">Browse</span>
-                  </div>
-                </div>
-
-                <div className="card-content" style={{ paddingTop: 8 }}>
-                  <div className="input-field" style={{ marginTop: 0 }}>
-                    <input
-                      id="doc-search"
-                      value={docQuery}
-                      onChange={(e) => setDocQuery(e.target.value)}
-                      placeholder="Search docs by title or topic..."
-                    />
-                    <label htmlFor="doc-search" className="active">Search</label>
-                  </div>
-
-                  <div style={{ borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden", background: "var(--cardSolid)" }}>
-                    <div style={{ padding: 12 }}>
-                      {activeCategory ? (
-                        <>
-                          <div style={{ marginBottom: 10 }}>
-                            <button
-                              type="button"
-                              className="docBackBtn"
-                              onClick={() => setActiveDocCategory(null)}
-                            >
-                              <i className="material-icons" style={{ fontSize: 16 }}>arrow_back</i>
-                              Back to categories
-                            </button>
-                          </div>
-
-                          <ul className="docList">
-                            {filteredActiveDocs.map((d) => (
-                              <li key={`${activeCategory.id}-${d.title}`} className="docRow">
-                                <div className="docIco">
-                                  <i className="material-icons">{d.icon}</i>
-                                </div>
-                                <div className="docMain">
-                                  <div className="docTitle">
-                                    <span>{d.title}</span>
-                                    {d.badge ? <span className="chip tiny" style={{ margin: 0 }}>{d.badge}</span> : null}
-                                  </div>
-                                  <div className="docSub" title={d.sub}>{d.sub}</div>
-                                </div>
-                                <a
-                                  href={d.href}
-                                  className="tooltipped docOpen"
-                                  data-tooltip="Open"
-                                  onClick={(e) => {
-                                    if (d.href === "#") {
-                                      e.preventDefault();
-                                      toastRouteNotWired();
-                                    }
-                                  }}
-                                  style={{ textDecoration: "none" }}
-                                >
-                                  <i className="material-icons">open_in_new</i>
-                                </a>
-                              </li>
-                            ))}
-
-                            {!filteredActiveDocs.length && (
-                              <li style={{ textAlign: "center", color: "var(--muted)", padding: "14px 0", fontWeight: 900 }}>
-                                No docs in this category match your search
-                              </li>
-                            )}
-                          </ul>
-                        </>
-                      ) : (
-                        <div className="docCategoryGrid">
-                          {filteredCategories.map((c) => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              className="docCategoryTile"
-                              onClick={() => setActiveDocCategory(c.id)}
-                              style={{ textAlign: "left" }}
-                            >
-                              <div className="docIco">
-                                <i className="material-icons">{c.icon}</i>
-                              </div>
-                              <div className="docCategoryMeta">
-                                <div className="docCategoryTitle">
-                                  <span>{c.title}</span>
-                                </div>
-                                <div className="docCategorySub">{c.sub}</div>
-                                <div className="docCount">{c.items.length} docs</div>
-                              </div>
-                            </button>
-                          ))}
-
-                          {!filteredCategories.length && (
-                            <div style={{ textAlign: "center", color: "var(--muted)", padding: "14px 0", fontWeight: 900 }}>
-                              No categories match your search
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               {/* Updates — mirrors the onboarding Welcome step's release info */}
               <div className="card pCard">

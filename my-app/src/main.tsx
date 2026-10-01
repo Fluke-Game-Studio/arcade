@@ -30,6 +30,7 @@ import Protected from "./auth/Protected";
 
 import App from "./pages/App";
 import Home from "./pages/Home";
+import ProjectOnboardingPage from "./pages/ProjectOnboardingPage";
 import Employees from "./pages/Employees";
 import MyTeam from "./pages/MyTeam";
 import AdminWorkspace from "./pages/AdminWorkspace";
@@ -167,6 +168,10 @@ const router = createBrowserRouter([
         ),
       },
       { path: "/organisation", element: <Navigate to="/organisation/employees" replace /> },
+      {
+        path: "/organisation/project-onboarding",
+        element: <Protected roles={["employee", "admin", "super"]}><ProjectOnboardingPage /></Protected>,
+      },
       {
         path: "/organisation/employees",
         element: (

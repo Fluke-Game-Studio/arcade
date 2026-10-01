@@ -3,6 +3,7 @@ import Tabs, { type TabDef } from "../shared/Tabs";
 export type SuperTab =
   | "users"
   | "projects"
+  | "onboarding"
   | "releases"
   | "awards"
   | "wallet"
@@ -15,6 +16,7 @@ export type SuperTab =
 export const SUPER_TAB_KEYS: SuperTab[] = [
   "users",
   "projects",
+  "onboarding",
   "releases",
   "awards",
   "wallet",
@@ -28,6 +30,7 @@ export const SUPER_TAB_KEYS: SuperTab[] = [
 const SUPER_TABS: TabDef<SuperTab>[] = [
   { key: "users", label: "Users & Roles", icon: "group" },
   { key: "projects", label: "Projects", icon: "dashboard_customize" },
+  { key: "onboarding", label: "Onboarding Console", icon: "person_add" },
   { key: "releases", label: "Releases & Products", icon: "inventory_2" },
   { key: "awards", label: "Awards", icon: "emoji_events" },
   { key: "wallet", label: "Wallet", icon: "account_balance_wallet" },

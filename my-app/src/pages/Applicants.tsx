@@ -247,7 +247,6 @@ export default function Applicants() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerApplicant, setComposerApplicant] = useState<ApplicantRowLite | null>(null);
   const [composerPrefill, setComposerPrefill] = useState<{ address?: string; city?: string }>({});
-  const [composerQueued, setComposerQueued] = useState(false);
 
   const Css = (
     <style>{`
@@ -386,6 +385,7 @@ export default function Applicants() {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
         gap: 14px;
         padding: 14px 16px;
         cursor: pointer;
@@ -398,6 +398,7 @@ export default function Applicants() {
         display: flex;
         flex-direction: column;
         gap: 4px;
+        min-width: 0;
       }
       .fg-month-title .label {
         font-size: 16px;
@@ -455,8 +456,13 @@ export default function Applicants() {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
+        flex-wrap: wrap;
         gap: 10px;
         margin-bottom: 10px;
+      }
+      .fg-app-card-head b {
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
       .fg-app-row {
         display: grid;
@@ -1055,16 +1061,11 @@ export default function Applicants() {
         loading={detailsLoading}
         detailsRaw={detailsRaw}
         onClose={closeDetails}
-        onClosed={() => {
-          if (!composerQueued) return;
-          setComposerQueued(false);
-          setComposerOpen(true);
-        }}
         onOpenComposer={(lite, prefill) => {
           setComposerApplicant(lite);
           setComposerPrefill(prefill || {});
-          setComposerQueued(true);
           setDetailsOpen(false);
+          setComposerOpen(true);
         }}
       />
 

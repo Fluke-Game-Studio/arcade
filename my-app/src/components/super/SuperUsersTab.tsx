@@ -14,7 +14,8 @@ type Props = {
   onQueryChange: (value: string) => void;
   onSetRole: (username: string, role: AssignableRole) => void;
   onSetReadScope: (username: string, readScope: ReadScope) => void;
-  onSetAccessFlag: (username: string, field: "portal_access" | "project_access" | "version_control_access", value: boolean) => void;
+  onComposeEmployee: (user: ApiUser) => void;
+  onEditEmployee: (user: ApiUser) => void;
   onDeleteUser: (username: string) => void;
   roleFor: (value: any) => string;
   readScopeFor: (u: ApiUser) => ReadScope;
@@ -33,7 +34,8 @@ export default function SuperUsersTab({
   onQueryChange,
   onSetRole,
   onSetReadScope,
-  onSetAccessFlag,
+  onComposeEmployee,
+  onEditEmployee,
   onDeleteUser,
   roleFor,
   readScopeFor,
@@ -58,9 +60,6 @@ export default function SuperUsersTab({
           <div className="suUserList">
             {filteredUsers.map((u) => {
               const isSelf = u.username === currentUsername;
-              const portal = (u as any).portal_access !== false;
-              const project = (u as any).project_access !== false;
-              const vcs = (u as any).version_control_access === true;
               const readScope = readScopeFor(u);
               const roleKey = roleFor(u.employee_role);
               return (
@@ -122,22 +121,16 @@ export default function SuperUsersTab({
                       </select>
                     </div>
 
-                    <div className="suAccessPanel">
-                      <div className="suStackLabel">Access</div>
-                      <div className="suAccessChecks">
-                        <label className="suCheckItem">
-                          <input type="checkbox" checked={portal} disabled={!isSuperUser} onChange={(e) => onSetAccessFlag(u.username, "portal_access", e.target.checked)} />
-                          <span>Portal</span>
-                        </label>
-                        <label className="suCheckItem">
-                          <input type="checkbox" checked={project} disabled={!isSuperUser} onChange={(e) => onSetAccessFlag(u.username, "project_access", e.target.checked)} />
-                          <span>Project</span>
-                        </label>
-                        <label className="suCheckItem">
-                          <input type="checkbox" checked={vcs} disabled={!isSuperUser} onChange={(e) => onSetAccessFlag(u.username, "version_control_access", e.target.checked)} />
-                          <span>VCS</span>
-                        </label>
-                      </div>
+                    <div className="suEmployeeActions">
+                      <div className="suStackLabel">Employee actions</div>
+                      <button type="button" className="btn-small suComposerButton" disabled={!isSuperUser} onClick={() => onComposeEmployee(u)}>
+                        <i className="material-icons left">mail</i>
+                        Employee composer
+                      </button>
+                      <button type="button" className="btn-small suEditButton" disabled={!isSuperUser} onClick={() => onEditEmployee(u)}>
+                        <i className="material-icons left">edit</i>
+                        Edit employee
+                      </button>
                     </div>
                   </div>
 

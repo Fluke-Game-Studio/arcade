@@ -1,72 +1,82 @@
+import { useEffect, useRef } from "react";
+import { CONDUCT_ACKNOWLEDGMENT, CONDUCT_REQUIRED_IDS, CONDUCT_SECTIONS, isConductSectionComplete } from "./codeOfConduct";
+
 type Props = {
-  timesheetAccepted: boolean;
-  discordAccepted: boolean;
-  onTimesheetChange: (value: boolean) => void;
-  onDiscordChange: (value: boolean) => void;
+  accepted: Record<string, boolean>;
+  onAcceptanceChange: (id: string, checked: boolean) => void;
+  activeId: string | null;
+  onActiveChange: (id: string | null) => void;
 };
 
-export default function AgreementStep({
-  timesheetAccepted,
-  discordAccepted,
-  onTimesheetChange,
-  onDiscordChange,
-}: Props) {
+export default function AgreementStep({ accepted, onAcceptanceChange, activeId, onActiveChange }: Props) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  const panelButtons = useRef<Record<string, HTMLButtonElement | null>>({});
+  const previousId = useRef<string | null>(null);
+  const active = CONDUCT_SECTIONS.find(section => section.id === activeId);
+  useEffect(() => {
+    if (activeId) {
+      heading.current?.focus();
+      heading.current?.scrollIntoView({ block: "nearest" });
+    } else if (previousId.current) {
+      panelButtons.current[previousId.current]?.focus();
+    }
+    previousId.current = activeId;
+  }, [activeId]);
+  const checkedCount = CONDUCT_REQUIRED_IDS.filter(id => accepted[id]).length;
+  function checkbox(id: string, text: string, nested = false) {
+    return (
+      <label key={id} className={`conductCheck${nested ? " conductNested" : ""}`}>
+        <input type="checkbox" checked={accepted[id] === true} onChange={event => onAcceptanceChange(id, event.target.checked)} />
+        <span>{text}</span>
+      </label>
+    );
+  }
   return (
-    <section style={{ display: "grid", gap: 18 }}>
-      <div style={{ fontSize: 26, fontWeight: 1000, color: "#0f172a", letterSpacing: "-.02em" }}>
-        Agreement
-      </div>
-      <div style={{ color: "#475569", lineHeight: 1.7 }}>
-        Confirm the weekly operating rules before we unlock the rest of the journey.
-      </div>
-
-      <div style={{ display: "grid", gap: 14 }}>
-        {[
-          {
-            checked: timesheetAccepted,
-            setChecked: onTimesheetChange,
-            title: "Update time sheet weekly.",
-            detail: "This keeps delivery and accountability visible across the team every week.",
-          },
-          {
-            checked: discordAccepted,
-            setChecked: onDiscordChange,
-            title: "Enable Discord notifications.",
-            detail: "Discord is used for notification delivery, workflow coordination, and timely review responsiveness.",
-          },
-        ].map((item) => (
-          <label
-            key={item.title}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 14,
-              width: "100%",
-              borderRadius: 20,
-              border: item.checked ? "1px solid rgba(37,99,235,.26)" : "1px solid rgba(148,163,184,.18)",
-              background: item.checked ? "rgba(37,99,235,.07)" : "#fff",
-              padding: 18,
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={item.checked}
-              onChange={(e) => item.setChecked(e.target.checked)}
-              style={{ width: 20, height: 20, marginTop: 2, flex: "0 0 20px", accentColor: "#2563eb" }}
-            />
-            <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-              <div style={{ fontSize: 18, fontWeight: 1000, color: "#0f172a", lineHeight: 1.3 }}>{item.title}</div>
-              <div style={{ marginTop: 6, color: "#64748b", lineHeight: 1.6 }}>{item.detail}</div>
-            </div>
-          </label>
-        ))}
-      </div>
-
-      <div style={{ borderRadius: 18, border: "1px solid rgba(16,185,129,.18)", background: "rgba(16,185,129,.06)", padding: 16, color: "#14532d", fontWeight: 800, lineHeight: 1.6 }}>
-        LinkedIn may be used for employee performance metrics and identity alignment. Discord is used for notifications and timely review
-        responsiveness.
-      </div>
+    <section className="conductStep" style={{ display: "grid", gap: 18 }}>
+      <style>{`
+        .conductPanel { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; border-radius: 20px; border: 1px solid rgba(148,163,184,.25); background: #fff; padding: 18px; cursor: pointer; text-align: left; color: #0f172a; font: inherit; }
+        .conductPanel[data-complete="true"] { border-color: rgba(16,185,129,.4); background: #ecfdf5; }
+        .conductPanel:hover { border-color: #2563eb; }
+        .conductPanel:focus-visible, .conductCheck input:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+        .conductStep .conductCheck { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid #dbe3ef; border-radius: 12px; background: #fff; color: #334155; font-size: 15px; line-height: 1.7; cursor: pointer; }
+        .conductStep .conductCheck input[type="checkbox"] { position: static; opacity: 1; pointer-events: auto; appearance: auto; width: 20px; height: 20px; margin: 3px 0 0; flex: 0 0 20px; accent-color: #2563eb; }
+        .conductStep .conductCheck input[type="checkbox"] + span { padding-left: 0; height: auto; line-height: inherit; color: inherit; }
+        .conductStep .conductCheck input[type="checkbox"] + span::before, .conductStep .conductCheck input[type="checkbox"] + span::after { display: none; }
+        .conductNested { margin-left: 24px; }
+        .conductHeading { margin: 0; font-size: 26px; font-weight: 1000; color: #0f172a; letter-spacing: -.02em; }
+        @media (max-width: 600px) { .conductNested { margin-left: 12px; } }
+      `}</style>
+      {active ? (
+        <>
+          <h2 ref={heading} tabIndex={-1} className="conductHeading">{CONDUCT_SECTIONS.indexOf(active) + 1}. {active.title}</h2>
+          <p style={{ margin: 0, color: "#64748b" }}>Read the terms and check each acknowledgment below.</p>
+          {active.blocks.map((block, index) => block.type === "check"
+            ? checkbox(block.id, block.text, block.nested)
+            : <p key={index} style={{ margin: 0, color: "#475569", lineHeight: 1.8 }}>{block.text}</p>)}
+        </>
+      ) : (
+        <>
+          <h2 className="conductHeading">Code of Conduct</h2>
+          <p style={{ margin: 0, color: "#475569", lineHeight: 1.7 }}>Review each section and acknowledge every requirement before continuing.</p>
+          <div role="status" style={{ color: "#475569", fontWeight: 700 }}>{checkedCount} of {CONDUCT_REQUIRED_IDS.length} acknowledgments complete</div>
+          {CONDUCT_SECTIONS.map((section, index) => {
+            const required = section.blocks.filter(block => block.type === "check");
+            const count = required.filter(block => block.type === "check" && accepted[block.id]).length;
+            const complete = isConductSectionComplete(section, accepted);
+            return (
+              <button type="button" key={section.id} className="conductPanel" data-complete={complete}
+                ref={node => { panelButtons.current[section.id] = node; }} onClick={() => onActiveChange(section.id)}>
+                <span>
+                  <span style={{ display: "block", fontSize: 18, fontWeight: 900 }}>{index + 1}. {section.title}</span>
+                  <span style={{ display: "block", marginTop: 6, color: "#64748b" }}>{complete ? "Complete" : `${count} of ${required.length} acknowledged`}</span>
+                </span>
+                <i className="material-icons" aria-hidden="true">{complete ? "check_circle" : "chevron_right"}</i>
+              </button>
+            );
+          })}
+          {checkbox("conduct-acknowledgment", CONDUCT_ACKNOWLEDGMENT)}
+        </>
+      )}
     </section>
   );
 }
