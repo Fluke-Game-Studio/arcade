@@ -4,10 +4,22 @@ import { useAuth } from "../auth/AuthContext";
 import BotAvatar, { type BotStatus } from "../components/BotAvatar2DBit";
 import { useAgentAdminData } from "../hooks/useAgentAdminData";
 import AgentTransactionLogsPage from "./AgentTransactionLogsPage";
+import Tabs, { type TabDef } from "../components/shared/Tabs";
+import { useTabState } from "../lib/useTabState";
 
 type Provider = "auto" | "openai" | "ollama";
 type Mode = "plan" | "execute";
 type BuilderTab = "execute" | "agents" | "assignments" | "requests" | "policies" | "history" | "intake";
+const BUILDER_TAB_KEYS: BuilderTab[] = ["execute", "agents", "assignments", "requests", "policies", "history", "intake"];
+const BUILDER_TABS: TabDef<BuilderTab>[] = [
+  { key: "execute", label: "Execute", icon: "play_arrow" },
+  { key: "agents", label: "Agents", icon: "smart_toy" },
+  { key: "assignments", label: "Assignments", icon: "assignment_ind" },
+  { key: "requests", label: "Requests", icon: "inbox" },
+  { key: "policies", label: "MCP Policies", icon: "policy" },
+  { key: "history", label: "Transaction History", icon: "history" },
+  { key: "intake", label: "Intake Contexts", icon: "input" },
+];
 type WsState = "disconnected" | "connecting" | "connected";
 type TurnStatus = "queued" | "running" | "done" | "error" | "submitted";
 type ApprovalDecision = "allow" | "cancel";
@@ -392,7 +404,7 @@ export default function ManagerAgentBuilderPage() {
   const [botStatus, setBotStatus] = useState<BotStatus>("neutral");
   const [wsState, setWsState] = useState<WsState>("disconnected");
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [tab, setTab] = useState<BuilderTab>("execute");
+  const [tab, setTab] = useTabState<BuilderTab>(BUILDER_TAB_KEYS, "execute");
   const [agentCatalog, setAgentCatalog] = useState<AgentConfig[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [agentForm, setAgentForm] = useState<AgentConfig>({
@@ -444,6 +456,17 @@ export default function ManagerAgentBuilderPage() {
   const [intakeJobs, setIntakeJobs] = useState<{ jobId: string; title: string }[]>([]);
   const [intakeJobsLoaded, setIntakeJobsLoaded] = useState(false);
   const [intakeLinkBusyKey, setIntakeLinkBusyKey] = useState("");
+
+  // Lazy-load intake jobs whenever the intake tab becomes active — not just on
+  // click, so arriving here via a deep link (?tab=intake) also loads them.
+  useEffect(() => {
+    if (tab !== "intake" || intakeJobsLoaded) return;
+    api.listJobsAdmin().then((jobs: any[]) => {
+      setIntakeJobs(jobs.map((j: any) => ({ jobId: j.jobId, title: j.title || j.jobId })));
+      setIntakeJobsLoaded(true);
+    }).catch(() => setIntakeJobsLoaded(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, intakeJobsLoaded]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const activeRequestClientIdRef = useRef<string | null>(null);
@@ -1301,22 +1324,8 @@ function parseMcpInput(text: string) {
       <div className="mgr-wrap">
         <div className="mgr-hero">
           <h1 className="mgr-title">Agent Builder</h1>
-          <div className="mgr-actions" style={{ marginTop: 8 }}>
-            <button className={`mgr-btn ${tab === "execute" ? "secondary" : ""}`} onClick={() => setTab("execute")}>Execute</button>
-            <button className={`mgr-btn ${tab === "agents" ? "secondary" : ""}`} onClick={() => setTab("agents")}>Agents</button>
-            <button className={`mgr-btn ${tab === "assignments" ? "secondary" : ""}`} onClick={() => setTab("assignments")}>Assignments</button>
-            <button className={`mgr-btn ${tab === "requests" ? "secondary" : ""}`} onClick={() => setTab("requests")}>Requests</button>
-            <button className={`mgr-btn ${tab === "policies" ? "secondary" : ""}`} onClick={() => setTab("policies")}>MCP Policies</button>
-            <button className={`mgr-btn ${tab === "history" ? "secondary" : ""}`} onClick={() => setTab("history")}>Transaction History</button>
-            <button className={`mgr-btn ${tab === "intake" ? "secondary" : ""}`} onClick={() => {
-              setTab("intake");
-              if (!intakeJobsLoaded) {
-                api.listJobsAdmin().then((jobs: any[]) => {
-                  setIntakeJobs(jobs.map((j: any) => ({ jobId: j.jobId, title: j.title || j.jobId })));
-                  setIntakeJobsLoaded(true);
-                }).catch(() => setIntakeJobsLoaded(true));
-              }
-            }}>Intake Contexts</button>
+          <div style={{ marginTop: 8 }}>
+            <Tabs tabs={BUILDER_TABS} activeKey={tab} onChange={setTab} ariaLabel="Agent Builder tabs" variant="dark" />
           </div>
           {toast ? (
             <div

@@ -178,4 +178,8 @@ export type SubmitUpdateResponse = {
   driveFolderLink?: string;
   attachments?: UploadedFileRef[];
   message?: string;
+  /** Credit/release grants that failed to post for this submission (e.g. a
+   *  wallet issue on ue-payment-service's side) - the update itself still
+   *  saved successfully, but these amounts did not land in the wallet. */
+  creditIssues?: Array<{ label: string; message: string }>;
 };

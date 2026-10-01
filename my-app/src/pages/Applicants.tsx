@@ -62,6 +62,7 @@ const STAGE_BADGE: Record<Stage, BadgeStyle> = {
   Reject: { bg: "#FDE8E8", border: "#F9B4B4", fg: "#8B1E1E" },
   Introduction: { bg: "#FCE7F3", border: "#F9A8D4", fg: "#9D174D" },
   "Technical Interview": { bg: "#E3EEFF", border: "#94BFFF", fg: "#163A8A" },
+  "Generic Mailer": { bg: "#EAF2FF", border: "#B7D1FF", fg: "#234A8A" },
   Confirmation: { bg: "#F2E8FF", border: "#CFA7FF", fg: "#4B1E8B" },
   NDA: { bg: "#FEF3C7", border: "#FCD34D", fg: "#92400E" },
   Offer: { bg: "#CFFAFE", border: "#67E8F9", fg: "#155E75" },
@@ -246,7 +247,6 @@ export default function Applicants() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerApplicant, setComposerApplicant] = useState<ApplicantRowLite | null>(null);
   const [composerPrefill, setComposerPrefill] = useState<{ address?: string; city?: string }>({});
-  const [composerQueued, setComposerQueued] = useState(false);
 
   const Css = (
     <style>{`
@@ -385,6 +385,7 @@ export default function Applicants() {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
         gap: 14px;
         padding: 14px 16px;
         cursor: pointer;
@@ -397,6 +398,7 @@ export default function Applicants() {
         display: flex;
         flex-direction: column;
         gap: 4px;
+        min-width: 0;
       }
       .fg-month-title .label {
         font-size: 16px;
@@ -454,8 +456,13 @@ export default function Applicants() {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
+        flex-wrap: wrap;
         gap: 10px;
         margin-bottom: 10px;
+      }
+      .fg-app-card-head b {
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
       .fg-app-row {
         display: grid;
@@ -1054,16 +1061,11 @@ export default function Applicants() {
         loading={detailsLoading}
         detailsRaw={detailsRaw}
         onClose={closeDetails}
-        onClosed={() => {
-          if (!composerQueued) return;
-          setComposerQueued(false);
-          setComposerOpen(true);
-        }}
         onOpenComposer={(lite, prefill) => {
           setComposerApplicant(lite);
           setComposerPrefill(prefill || {});
-          setComposerQueued(true);
           setDetailsOpen(false);
+          setComposerOpen(true);
         }}
       />
 

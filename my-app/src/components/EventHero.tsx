@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AwardsStoryPanel from "./awards/AwardsStoryPanel";
 
 type EventStatus = "AUTO" | "SCHEDULED" | "LIVE" | "ENDED";
@@ -14,6 +14,7 @@ type EventHeroEvent = {
   location?: string;
   host?: string;
   tags?: string[];
+  quote?: string;
   joinHref?: string;
   agendaHref?: string;
   calendarHref?: string;
@@ -71,6 +72,69 @@ function makeRandomPoster() {
 
 const FALLBACK_POSTER = (sig: number) =>
   `https://picsum.photos/seed/event-${sig}/1600/900`;
+
+const MOTIVATIONAL_QUOTES = [
+  "Progress compounds when every thoughtful step moves the work forward.",
+  "Clarity turns ambitious ideas into meaningful momentum.",
+  "Great work is built one thoughtful iteration at a time.",
+  "Consistency is the quiet force behind every breakthrough.",
+  "Small improvements today create remarkable results over time.",
+  "The strongest teams turn challenges into shared momentum.",
+  "Focus on the next meaningful step, and let progress follow.",
+  "Excellence grows where curiosity meets disciplined action.",
+  "A clear direction makes every contribution more powerful.",
+  "Ideas become impact when we give them care, focus, and follow-through.",
+  "The quality of the journey is shaped by the choices we repeat.",
+  "Momentum begins with one decision to move forward.",
+  "Thoughtful work today becomes tomorrow's advantage.",
+  "Strong results are rarely accidental; they are built with intention.",
+  "When people bring their best thinking together, possibilities expand.",
+  "Progress is not always loud; sometimes it is simply consistent.",
+  "The best work balances bold thinking with careful execution.",
+  "Every finished detail strengthens the bigger picture.",
+  "Purpose gives effort direction, and teamwork gives it reach.",
+  "Keep improving the process, and the outcome will follow.",
+  "Make the work simpler, then make it stronger.",
+  "Progress becomes powerful when it is shared.",
+  "Good ideas grow faster in an environment built on trust.",
+  "The next breakthrough often begins with a better question.",
+  "Build with patience, execute with purpose, and learn quickly.",
+  "Every challenge is an invitation to improve the way we work.",
+  "Ambition sets the direction; discipline creates the distance.",
+  "The details may be small, but their impact is not.",
+  "A team moves further when everyone has room to contribute.",
+  "Progress rewards the people who keep showing up thoughtfully.",
+  "Strong foundations give bold ideas somewhere to stand.",
+  "The work gets better when the conversation gets clearer.",
+  "Turn intention into action, and action into momentum.",
+  "The best outcomes are shaped by many meaningful decisions.",
+  "Curiosity keeps the work fresh; consistency keeps it moving.",
+  "There is always a smarter next step waiting to be discovered.",
+  "Create value first, and recognition will follow naturally.",
+  "The standard we set together becomes the strength we share.",
+  "Better results begin with better attention.",
+  "Forward motion starts when uncertainty meets thoughtful action.",
+  "The strongest progress is measured in what becomes possible next.",
+  "Listen deeply, decide clearly, and move with confidence.",
+  "Every iteration is an opportunity to make the vision more real.",
+  "Focused effort turns complexity into something people can use.",
+  "A meaningful goal gives ordinary moments extraordinary direction.",
+  "The work matters more when it makes the next person stronger.",
+  "Bring energy to the problem, and clarity to the solution.",
+  "Great teams do not wait for momentum; they create it together.",
+  "The future is shaped by the quality of the work we choose today.",
+  "Progress is the result of doing the important things with care.",
+];
+
+const QUOTE_TREATMENTS = [
+  { align: "center", animation: "eh_quoteIn", annotation: "FIELD NOTE", marker: false },
+  { align: "left", animation: "eh_quoteSlideLeft", annotation: "KEEP MOVING", marker: true },
+  { align: "right", animation: "eh_quoteSlideRight", annotation: "STUDIO THOUGHT", marker: false },
+  { align: "justify", animation: "eh_quoteStream", annotation: "WORK IN PROGRESS", marker: true },
+  { align: "center", animation: "eh_quoteRise", annotation: "TODAY'S REMINDER", marker: false },
+  { align: "left", animation: "eh_quoteStream", annotation: "MOMENTUM", marker: true },
+  { align: "right", animation: "eh_quoteIn", annotation: "SHARED STANDARD", marker: false },
+];
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -130,61 +194,6 @@ function safeOpen(href?: string) {
 
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
-}
-
-function buildIcsBlobUrl(args: {
-  title: string;
-  description?: string;
-  location?: string;
-  start: Date;
-  end?: Date;
-  url?: string;
-}) {
-  const dt = (d: Date) => {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const yy = d.getUTCFullYear();
-    const mm = pad(d.getUTCMonth() + 1);
-    const dd = pad(d.getUTCDate());
-    const hh = pad(d.getUTCHours());
-    const mi = pad(d.getUTCMinutes());
-    const ss = pad(d.getUTCSeconds());
-    return `${yy}${mm}${dd}T${hh}${mi}${ss}Z`;
-  };
-
-  const uid = `event-${Math.random().toString(16).slice(2)}@flukegames`;
-  const end = args.end || new Date(args.start.getTime() + 60 * 60_000);
-
-  const escape = (s?: string) =>
-    (s || "")
-      .replace(/\\/g, "\\\\")
-      .replace(/\n/g, "\\n")
-      .replace(/,/g, "\\,")
-      .replace(/;/g, "\\;");
-
-  const ics =
-    [
-      "BEGIN:VCALENDAR",
-      "VERSION:2.0",
-      "PRODID:-//Fluke Games//EventHero//EN",
-      "CALSCALE:GREGORIAN",
-      "METHOD:PUBLISH",
-      "BEGIN:VEVENT",
-      `UID:${uid}`,
-      `DTSTAMP:${dt(new Date())}`,
-      `DTSTART:${dt(args.start)}`,
-      `DTEND:${dt(end)}`,
-      `SUMMARY:${escape(args.title)}`,
-      args.location ? `LOCATION:${escape(args.location)}` : "",
-      args.description ? `DESCRIPTION:${escape(args.description)}` : "",
-      args.url ? `URL:${escape(args.url)}` : "",
-      "END:VEVENT",
-      "END:VCALENDAR",
-    ]
-      .filter(Boolean)
-      .join("\r\n") + "\r\n";
-
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  return URL.createObjectURL(blob);
 }
 
 function getAccentGradient(accent: EventHeroProps["accent"]) {
@@ -303,9 +312,6 @@ export default function EventHero({
   shareHref,
   videoUrl,
   youtubeEmbedUrl,
-  onJoin,
-  onAgenda,
-  onAddToCalendar,
   onShare,
   status = "AUTO",
   timezoneLabel,
@@ -358,6 +364,7 @@ export default function EventHero({
         location: e.location || "Online",
         host: e.host || "Leadership Team",
         tags: e.tags || [],
+        quote: e.quote || "",
         joinHref: e.joinHref,
         agendaHref: e.agendaHref,
         calendarHref: e.calendarHref,
@@ -380,6 +387,7 @@ export default function EventHero({
         location,
         host,
         tags,
+        quote: "Progress compounds when every thoughtful step moves the work forward.",
         joinHref,
         agendaHref,
         calendarHref,
@@ -428,6 +436,24 @@ export default function EventHero({
 
   const activeIndex = isControlled ? (controlledIndex ?? 0) : internalIndex;
   const active = normalizedEvents[activeIndex];
+  const [activeQuote, setActiveQuote] = useState(() => MOTIVATIONAL_QUOTES[0]);
+  const [quoteTreatment, setQuoteTreatment] = useState(() => QUOTE_TREATMENTS[0]);
+  const [quoteVisible, setQuoteVisible] = useState(false);
+
+  useEffect(() => {
+    setQuoteVisible(false);
+    setActiveQuote((previous) => {
+      const available = MOTIVATIONAL_QUOTES.filter((quote) => quote !== previous);
+      return available[Math.floor(Math.random() * available.length)] || MOTIVATIONAL_QUOTES[0];
+    });
+    setQuoteTreatment((previous) => {
+      const available = QUOTE_TREATMENTS.filter((treatment) => treatment.animation !== previous.animation || treatment.align !== previous.align);
+      return available[Math.floor(Math.random() * available.length)] || QUOTE_TREATMENTS[0];
+    });
+
+    const timer = window.setTimeout(() => setQuoteVisible(true), 2000);
+    return () => window.clearTimeout(timer);
+  }, [active.id]);
 
   const activeEndAt = useMemo(
     () => resolveEventEndAt(active),
@@ -527,48 +553,6 @@ export default function EventHero({
     return "ON" as const;
   }, [remindOn, resolvedStatus, diffMs]);
 
-  const [icsUrl, setIcsUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (active.calendarHref) {
-      setIcsUrl(null);
-      return;
-    }
-
-    const url = buildIcsBlobUrl({
-      title: active.title,
-      description: active.subtitle,
-      location: active.location,
-      start: active.at,
-      end: activeEndAt,
-      url: active.shareHref || active.joinHref,
-    });
-
-    setIcsUrl(url);
-
-    return () => {
-      try {
-        URL.revokeObjectURL(url);
-      } catch {}
-    };
-  }, [
-    active.calendarHref,
-    active.title,
-    active.subtitle,
-    active.location,
-    active.at.getTime(),
-    activeEndAt.getTime(),
-    active.shareHref,
-    active.joinHref,
-    active.id,
-  ]);
-
-  const doAddToCalendar = () => {
-    if (onAddToCalendar) return onAddToCalendar();
-    if (active.calendarHref) return safeOpen(active.calendarHref);
-    if (icsUrl) return safeOpen(icsUrl);
-  };
-
   const [copied, setCopied] = useState(false);
 
   const doShare = async () => {
@@ -597,21 +581,14 @@ export default function EventHero({
     }
   };
 
-  const joinDisabled = resolvedStatus === "ENDED";
-  const joinTone: "red" | "blue" | "grey" =
-    resolvedStatus === "LIVE" ? "red" : resolvedStatus === "SCHEDULED" ? "blue" : "grey";
-
   const accentBg = getAccentGradient(accent);
   const tiltRef = useParallaxTilt(!motionOff && showParallax);
-
-  const doJoin = () => (onJoin ? onJoin() : safeOpen(active.joinHref));
-  const doAgenda = () => (onAgenda ? onAgenda() : safeOpen(active.agendaHref));
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div
         ref={tiltRef}
-        className="card hoverable"
+        className="card hoverable event-hero-card"
         style={{
           borderRadius: 18,
           overflow: "hidden",
@@ -641,6 +618,26 @@ export default function EventHero({
               70%  { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255,82,82,0.00); }
               100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,82,82,0.00); }
             }
+            @keyframes eh_quoteIn {
+              from { opacity: 0; transform: translateY(-20px) scale(0.97); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes eh_quoteSlideLeft {
+              from { opacity: 0; transform: translateX(-70px); }
+              to { opacity: 1; transform: translateX(0); }
+            }
+            @keyframes eh_quoteSlideRight {
+              from { opacity: 0; transform: translateX(70px); }
+              to { opacity: 1; transform: translateX(0); }
+            }
+            @keyframes eh_quoteStream {
+              from { opacity: 0; clip-path: inset(0 100% 0 0); }
+              to { opacity: 1; clip-path: inset(0 0 0 0); }
+            }
+            @keyframes eh_quoteRise {
+              from { opacity: 0; transform: translateY(28px) scale(0.94); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
             .eh-bg {
               transform: scale(1.04) translate3d(var(--tx), var(--ty), 0);
               transition: ${motionOff ? "none" : "transform 350ms ease"};
@@ -653,7 +650,7 @@ export default function EventHero({
           style={{
             position: "relative",
             width: "100%",
-            height: 320,
+            height: "clamp(520px, 54vw, 640px)",
             overflow: "hidden",
             background: "#eee",
           }}
@@ -758,7 +755,54 @@ export default function EventHero({
             </div>
           )}
 
+          {active.quote && activeQuote && (
+            <div
+              className="event-hero-quote"
+              key={`hero-quote-${active.id}-${quoteTreatment.animation}-${quoteTreatment.align}`}
+              style={{
+                position: "absolute",
+                top: 86,
+                left: 22,
+                right: 22,
+                width: "auto",
+                maxWidth: 920,
+                margin: "0 auto",
+                padding: quoteTreatment.marker ? "8px 22px 12px" : "8px 0 12px",
+                color: "rgba(255,255,255,0.96)",
+                textAlign: quoteTreatment.align as "left" | "right" | "center" | "justify",
+                fontSize: "clamp(24px, 3vw, 38px)",
+                fontWeight: 950,
+                lineHeight: 1.24,
+                letterSpacing: 0.1,
+                textShadow: "0 3px 14px rgba(0,0,0,0.72), 0 1px 3px rgba(0,0,0,0.80)",
+                borderLeft: quoteTreatment.marker ? "4px solid rgba(125,211,252,0.95)" : undefined,
+                opacity: quoteVisible ? 1 : 0,
+                animation: quoteVisible ? `${quoteTreatment.animation} 1100ms cubic-bezier(.16,.82,.24,1) both` : undefined,
+                willChange: "opacity, transform, clip-path",
+                zIndex: 3,
+              }}
+            >
+              <div
+                style={{
+                  marginBottom: 7,
+                  color: "rgba(125,211,252,0.95)",
+                  fontSize: 10,
+                  fontWeight: 900,
+                  letterSpacing: 2.2,
+                  textTransform: "uppercase",
+                  textAlign: quoteTreatment.align as "left" | "right" | "center" | "justify",
+                }}
+              >
+                {quoteTreatment.annotation}
+              </div>
+              <span style={{ color: "rgba(125,211,252,0.95)", fontSize: 20, verticalAlign: "-2px", marginRight: 5 }}>“</span>
+              {activeQuote}
+              <span style={{ color: "rgba(125,211,252,0.95)", fontSize: 20, verticalAlign: "-2px", marginLeft: 5 }}>”</span>
+            </div>
+          )}
+
           <div
+            className="event-hero-actions"
             style={{
               position: "absolute",
               top: 14,
@@ -777,7 +821,7 @@ export default function EventHero({
                 <IconToggle
                   icon={muteMotion ? "motion_photos_off" : "motion_photos_on"}
                   label={muteMotion ? "Motion off" : "Motion on"}
-                  active={muteMotion}
+                  active={!muteMotion}
                   onClick={() => setMuteMotion((v) => !v)}
                 />
               )}
@@ -800,6 +844,7 @@ export default function EventHero({
           </div>
 
           <div
+            className="event-hero-content"
             style={{
               position: "absolute",
               left: 18,
@@ -838,6 +883,7 @@ export default function EventHero({
               </div>
 
               <div
+                className="event-hero-meta-chips"
                 style={{
                   marginTop: 10,
                   display: "flex",
@@ -852,7 +898,7 @@ export default function EventHero({
               </div>
 
               {!!active.tags?.length && (
-                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <div className="event-hero-tag-chips" style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {active.tags.slice(0, 6).map((t) => (
                     <TagPill key={t} text={t} />
                   ))}
@@ -1007,39 +1053,6 @@ export default function EventHero({
           </div>
         )}
 
-        <div style={{ padding: 16 }}>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ color: "rgba(0,0,0,0.70)", fontSize: 13 }}>
-              {resolvedStatus === "SCHEDULED" ? (
-                <>Join on time — updates, roadmap, and Q&amp;A.</>
-              ) : resolvedStatus === "LIVE" ? (
-                <>We’re live. Jump in and ask questions in chat.</>
-              ) : (
-                <>Event ended. Use agenda for recap / notes.</>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <ActionBtn
-                tone={joinTone}
-                icon="ondemand_video"
-                label={resolvedStatus === "LIVE" ? "Join Live" : "Join Stream"}
-                disabled={joinDisabled}
-                onClick={doJoin}
-              />
-              <ActionBtn tone="grey" icon="description" label="Agenda" onClick={doAgenda} />
-              <ActionBtn tone="light" icon="event" label="Calendar (.ics)" onClick={doAddToCalendar} />
-            </div>
-          </div>
-        </div>
       </div>
 
       {showAwardsStory && <AwardsStoryPanel />}
@@ -1226,57 +1239,6 @@ function EndedRow({ when }: { when: string }) {
       <div style={{ fontWeight: 950 }}>Event ended</div>
       <div style={{ marginLeft: "auto", opacity: 0.9, fontSize: 12 }}>{when}</div>
     </div>
-  );
-}
-
-function ActionBtn({
-  tone,
-  icon,
-  label,
-  disabled,
-  onClick,
-}: {
-  tone: "red" | "blue" | "grey" | "light";
-  icon: string;
-  label: string;
-  disabled?: boolean;
-  onClick?: () => void;
-}) {
-  const className =
-    tone === "red"
-      ? "btn waves-effect waves-light red lighten-1"
-      : tone === "blue"
-      ? "btn waves-effect waves-light blue"
-      : tone === "grey"
-      ? "btn waves-effect waves-light grey lighten-1 black-text"
-      : "btn waves-effect waves-light white black-text";
-
-  const style: React.CSSProperties =
-    tone === "light" ? { border: "1px solid rgba(0,0,0,0.12)", boxShadow: "none" } : {};
-
-  return (
-    <button
-      type="button"
-      className={className}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        borderRadius: 12,
-        paddingLeft: 14,
-        paddingRight: 14,
-        ...style,
-        opacity: disabled ? 0.55 : 1,
-        cursor: disabled ? "not-allowed" : "pointer",
-      }}
-      disabled={disabled}
-      onClick={disabled ? undefined : onClick}
-    >
-      <i className="material-icons" style={{ fontSize: 18 }}>
-        {icon}
-      </i>
-      <span style={{ fontWeight: 900 }}>{label}</span>
-    </button>
   );
 }
 

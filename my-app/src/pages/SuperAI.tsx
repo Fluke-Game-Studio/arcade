@@ -17,7 +17,7 @@ type SuperAIDoc = {
 
 type LoadSource = "server" | "local" | "default";
 
-const API_BASE = "https://xtipeal88c.execute-api.us-east-1.amazonaws.com";
+const API_BASE = "https://api.flukegamestudio.com";
 const LOCAL_PREFIX = "fluke_super_ai_doc_";
 
 const QUICK_DOCS = [

@@ -9,6 +9,7 @@ type SelfInitiateWalletApi = {
 };
 
 type Props = {
+  preview?: boolean;
   api: SelfInitiateWalletApi;
   onCompleted?: (wallet?: ApiWallet) => void;
   defaultAmountFgc?: number;
@@ -94,6 +95,7 @@ function parseFgcAmount(value: string) {
 }
 
 export default function SelfInitiateWallet({
+  preview = false,
   api,
   onCompleted,
   defaultAmountFgc = 1000,
@@ -110,6 +112,7 @@ export default function SelfInitiateWallet({
   const amountValue = useMemo(() => parseFgcAmount(amountFgc), [amountFgc]);
   const amountCents = useMemo(() => Math.trunc(amountValue * 100), [amountValue]);
   const qrPayload = useMemo(() => {
+    if (preview) return "ONBOARDING PREVIEW — no payment destination";
     const params = new URLSearchParams({
       pa: "fluke.games@upi",
       pn: "Fluke Games",
@@ -118,17 +121,17 @@ export default function SelfInitiateWallet({
       tn: "Wallet commitment",
     });
     return `upi://pay?${params.toString()}`;
-  }, [amountValue]);
+  }, [amountValue, preview]);
   const qrMatrix = useMemo(() => buildWalletQrMatrix(qrPayload), [qrPayload]);
   const paymentPreviewRows = useMemo(
     () => [
-      { label: "Pay to", value: "Fluke Games" },
-      { label: "UPI ID", value: "fluke.games@upi" },
+      { label: "Pay to", value: preview ? "Simulated payment" : "Fluke Games" },
+      { label: "UPI ID", value: preview ? "Preview only — no payment destination" : "fluke.games@upi" },
       { label: "Amount", value: formatFgc(amountValue) },
       { label: "Currency", value: "INR" },
       { label: "Note", value: "Wallet commitment" },
     ],
-    [amountValue]
+    [amountValue, preview]
   );
 
   useEffect(() => {

@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import Navbar from "../components/Navbar";
 import { useAuth } from "../auth/AuthContext";
 import { PROD_API_BASE, resolveDefaultApiBase, setApiBase } from "../api/config";
 import M from "materialize-css";
@@ -373,13 +372,13 @@ export default function Login() {
     <style>{`
       * { margin: 0; padding: 0; box-sizing: border-box; }
 
-      .cpWrap { position: relative; min-height: calc(100vh - 64px); overflow: hidden; background: #000; }
+      .cpWrap { position: relative; min-height: 100dvh; overflow: hidden; background: #000; }
       .cpCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
       .cpCenter {
         position: relative;
         z-index: 10;
-        min-height: calc(100vh - 64px);
+        min-height: 100dvh;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -720,6 +719,7 @@ export default function Login() {
       .cpFoot a:hover { color: #64c8ff; text-shadow: 0 0 20px rgba(100, 200, 255, 0.60); }
 
       @media (max-width: 480px) {
+        .cpCenter { min-height: 100dvh; padding: 18px 10px 28px; }
         .cpCard { padding: 34px 22px 26px; border-radius: 20px; }
         .logoWrap { padding: 34px 22px 26px; border-radius: 20px; min-height: 410px; }
         .cpTitle { font-size: 28px; }
@@ -743,7 +743,6 @@ export default function Login() {
 
   return (
     <>
-      <Navbar />
       {styles}
 
       <div className="cpWrap">

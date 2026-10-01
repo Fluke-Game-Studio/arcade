@@ -3,7 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { AIProvider } from "../api/types/ai";
 
 // ─── API config ───────────────────────────────────────────────────────────────
-const API_BASE = "https://xtipeal88c.execute-api.us-east-1.amazonaws.com";
+const API_BASE = "https://api.flukegamestudio.com";
 const WS_URL = "wss://nxlqrs6xd2.execute-api.us-east-1.amazonaws.com/production";
 const CHAT_URL = `${API_BASE}/ai/chat/internal`;
 const TTS_URL = `${API_BASE}/ai/tts/internal`;

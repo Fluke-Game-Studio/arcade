@@ -10,7 +10,7 @@ import type { AIProvider } from "../api/types/ai";
    ========================================================= */
 
 const CHAT_URL =
-  "https://xtipeal88c.execute-api.us-east-1.amazonaws.com/ai/chat/internal";
+  "https://api.flukegamestudio.com/ai/chat/internal";
 
 /**
  * Replace this with your real neural TTS endpoint later.
@@ -26,7 +26,7 @@ const CHAT_URL =
  * }
  */
 const TTS_URL =
-  "https://xtipeal88c.execute-api.us-east-1.amazonaws.com/ai/tts/visemes";
+  "https://api.flukegamestudio.com/ai/tts/visemes";
 
 const PROVIDER_MODEL: Record<Exclude<AIProvider, "auto">, string> = {
   openai: "gpt-5-mini",

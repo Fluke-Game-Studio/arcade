@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 
 export type Role =
@@ -11,6 +11,7 @@ export type Role =
 
 export type SessionUser = {
   token: string;
+  access_expires_at?: number;
   username: string;
   name: string;
   role: Role;
@@ -61,6 +62,8 @@ type AuthCtx = {
   bootReason: AuthBootReason;
   login: (username: string, password: string) => Promise<boolean>;
   refreshSession: () => Promise<void>;
+  ensureAuthFresh: (force?: boolean) => Promise<boolean>;
+  isRefreshing: boolean;
   applySessionPatch: (patch: Partial<SessionUser>) => void;
   clearTransientPassword: () => void;
   logout: () => void;
@@ -106,6 +109,17 @@ function higherRole(base: LowerRole, readScope: LowerRole): LowerRole {
   return ROLE_RANK[readScope] > ROLE_RANK[base] ? readScope : base;
 }
 
+function accessExpiryFromToken(token: string) {
+  try {
+    const encoded = token.split(".")[1];
+    if (!encoded) return 0;
+    const payload = JSON.parse(atob(encoded.replace(/-/g, "+").replace(/_/g, "/")));
+    return Number(payload?.exp || 0) * 1000;
+  } catch {
+    return 0;
+  }
+}
+
 function buildSessionFromApi(user: any, fallback?: Partial<SessionUser>): SessionUser {
   const baseRole = normalizeBaseRole(user?.employee_role || user?.role || fallback?.employee_role || fallback?.role);
   const readOnlyScope = normalizeReadScope(user?.read_only_scope || fallback?.read_only_scope);
@@ -115,6 +129,7 @@ function buildSessionFromApi(user: any, fallback?: Partial<SessionUser>): Sessio
     ...(fallback || {}),
     ...(user || {}),
     token: String(user?.token || fallback?.token || ""),
+    access_expires_at: Number(user?.access_expires_at || fallback?.access_expires_at || 0) || undefined,
     username: String(user?.username || fallback?.username || ""),
     name: String(user?.name || user?.employee_name || fallback?.name || fallback?.username || ""),
     role: toUiRole(effectiveRole),
@@ -149,6 +164,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [bootReason, setBootReason] = useState<AuthBootReason>(() =>
     hadStoredToken ? "" : "no_token"
   );
+  const refreshInFlight = useRef<Promise<boolean> | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   function setSession(next: SessionUser | null, nextStatus: AuthStatus) {
     setUser(next);
@@ -166,7 +183,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function login(username: string, password: string) {
     try {
       const res = await api.login(username, password, "portal");
-      const session = buildSessionFromApi(res, { token: res.token, username: res.username, name: res.name });
+      const session = buildSessionFromApi(res, {
+        token: res.token,
+        access_expires_at: Date.now() + Number(res.expiresIn || 0) * 1000,
+        username: res.username,
+        name: res.name,
+      });
       setSession(session, "authenticated");
       setTransientPassword(password);
       return true;
@@ -188,15 +210,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   function logout() {
     clearTransientPassword();
+    void api.logoutAuth().catch(() => {});
     setSession(null, "unauthenticated");
   }
+
+  const ensureAuthFresh = useCallback(async (force = false) => {
+    const token = user?.token || "";
+    const expiresAt = user?.access_expires_at || accessExpiryFromToken(token);
+    if (!force && token && expiresAt > Date.now() + 2 * 60 * 1000) return true;
+    if (refreshInFlight.current) return refreshInFlight.current;
+
+    const task = (async () => {
+      const startedAt = Date.now();
+      setIsRefreshing(true);
+      try {
+        let refreshed;
+        try {
+          refreshed = await api.refreshAuth();
+        } catch (firstError) {
+          // A second tab may be completing the same rotation. Give the
+          // backend's rotation grace slot a moment before treating it as a
+          // real session failure.
+          await new Promise((resolve) => window.setTimeout(resolve, 250));
+          try {
+            refreshed = await api.refreshAuth();
+          } catch {
+            throw firstError;
+          }
+        }
+        const session = buildSessionFromApi(refreshed, {
+          ...(user || {}),
+          token: refreshed.token,
+          access_expires_at: Date.now() + Number(refreshed.expiresIn || 0) * 1000,
+        });
+        setSession(session, "authenticated");
+        return true;
+      } catch (error: any) {
+        // Only a definitive auth response means the refresh session is dead.
+        // Network failures, Lambda timeouts, and browser wake-up races must not
+        // destroy a still-valid local session.
+        const statusCode = Number(error?.status || 0);
+        if (user?.token && (statusCode === 401 || statusCode === 403)) {
+          setSession(null, "unauthenticated");
+        }
+        return false;
+      } finally {
+        const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+        if (remaining) await new Promise((resolve) => window.setTimeout(resolve, remaining));
+        setIsRefreshing(false);
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = task;
+    return task;
+  }, [user]);
 
   async function refreshSession() {
     if (!user?.token) return;
 
     try {
+      if (!(await ensureAuthFresh())) return;
       const me: any = await api.getMe();
-      const refreshed = buildSessionFromApi(me, user);
+      const refreshed = buildSessionFromApi(me, {
+        ...user,
+        token: api.getToken() || user.token,
+        access_expires_at: accessExpiryFromToken(api.getToken() || user.token),
+      });
       setSession(refreshed, "authenticated");
       if (!Boolean((refreshed as any)?.password_reset_required)) {
         clearTransientPassword();
@@ -222,10 +301,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const me: any = await api.getMe();
+        if (!(await ensureAuthFresh())) {
+          if (!api.getToken()) throw new Error("refresh failed (401)");
+          // Keep the existing session during a transient refresh failure. The
+          // focus listener and interval will retry without forcing a logout.
+          setStatus("authenticated");
+          setBootReason("network");
+          return;
+        }
+        let me: any;
+        try {
+          me = await api.getMe();
+        } catch (firstError) {
+          // A cached access token can be rejected even when the refresh session
+          // is still valid (for example after a coordinated secret rotation).
+          // Recover once through the HttpOnly refresh cookie before logging out.
+          const recovered = await ensureAuthFresh(true);
+          if (!recovered) throw firstError;
+          me = await api.getMe();
+        }
         if (cancelled) return;
 
-        const refreshed = buildSessionFromApi(me, user);
+        const refreshed = buildSessionFromApi(me, {
+          ...user,
+          token: api.getToken() || user.token,
+          access_expires_at: accessExpiryFromToken(api.getToken() || user.token),
+        });
 
         setSession(refreshed, "authenticated");
         if (!Boolean((refreshed as any)?.password_reset_required)) {
@@ -258,6 +359,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.token]);
 
+  useEffect(() => {
+    if (!user?.token) return;
+    // Returning to the tab refreshes only when the access token is near expiry
+    // or expired. Do not force-refresh a healthy token: a transient cookie or
+    // network problem must not log the user out just by switching tabs.
+    const refreshIfNeeded = () => { void ensureAuthFresh(); };
+    window.addEventListener("focus", refreshIfNeeded);
+    document.addEventListener("visibilitychange", refreshIfNeeded);
+    const interval = window.setInterval(() => { void ensureAuthFresh(); }, 60 * 1000);
+    return () => {
+      window.removeEventListener("focus", refreshIfNeeded);
+      document.removeEventListener("visibilitychange", refreshIfNeeded);
+      window.clearInterval(interval);
+    };
+  }, [user?.token, ensureAuthFresh]);
+
   const value = useMemo(
     () => ({
       user,
@@ -266,12 +383,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       bootReason,
       login,
       refreshSession,
+      ensureAuthFresh,
+      isRefreshing,
       applySessionPatch,
       clearTransientPassword,
       logout,
       api,
     }),
-    [user, transientPassword, status, bootReason, refreshSession]
+    [user, transientPassword, status, bootReason, refreshSession, ensureAuthFresh, isRefreshing]
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

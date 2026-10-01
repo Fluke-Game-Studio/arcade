@@ -9,6 +9,7 @@ export type ApiRole =
 export type ApiLoginResponse = {
   token: string;
   expiresIn: number;
+  refreshExpiresIn?: number;
   username: string;
   role: ApiRole;
   employee_role?: ApiRole;

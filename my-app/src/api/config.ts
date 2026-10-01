@@ -1,4 +1,4 @@
-export const PROD_API_BASE = "https://xtipeal88c.execute-api.us-east-1.amazonaws.com";
+export const PROD_API_BASE = "https://api.flukegamestudio.com";
 const API_MODE_STORAGE_KEY = "arcade_api_mode";
 
 function isLocalhost(): boolean {

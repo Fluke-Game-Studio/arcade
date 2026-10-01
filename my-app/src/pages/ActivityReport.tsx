@@ -1142,6 +1142,17 @@ export default function ActivityReport({
         opacity: 0.45,
         inDuration: 140,
         outDuration: 120,
+        // Materialize's own backdrop-click dismiss bypasses closeDetailsModal()
+        // entirely (that only runs from the explicit CLOSE button), so the
+        // selected-row/attachment-preview state never got reset when the user
+        // clicked outside — this hook fires no matter how the modal closes.
+        // onCloseEnd (not onCloseStart) so the content doesn't flash to "No
+        // employee selected" while the close animation is still playing.
+        onCloseEnd: () => {
+          setSelectedDetailRow(null);
+          setDetailAttachmentPreviewKey("");
+          setDetailSignedAttachmentUrls({});
+        },
       });
     }
   }, []);
@@ -1529,8 +1540,8 @@ export default function ActivityReport({
   }
 
   function closeDetailsModal() {
-    setDetailAttachmentPreviewKey("");
-    setDetailSignedAttachmentUrls({});
+    // State reset now happens in the Modal's onCloseStart hook, so this works
+    // identically whether triggered by this button or a backdrop click.
     if (!detailModalRef.current || typeof M === "undefined") return;
     const inst =
       M.Modal.getInstance(detailModalRef.current) || M.Modal.init(detailModalRef.current);
