@@ -6,7 +6,6 @@ import FrozenFgcAmount from "../components/credits/FrozenFgcAmount";
 import { useUpdates, startOfWeekMonday, toISODate } from "./UpdatesContext";
 import { useAuth } from "../auth/AuthContext";
 import type { UpdateSubmission } from "./UpdatesContext";
-import type { ApiProject } from "../api/types/projects";
 import type { ApiCreditConfig } from "../api/types/gamification";
 import type {
   PresignedUploadItem,
@@ -289,7 +288,6 @@ export default function WeeklyUpdate() {
   const [, setSubmissionMessage] = useState("");
   const validationTimerRef = useRef<number | null>(null);
   const successTimerRef = useRef<number | null>(null);
-  const [projects, setProjects] = useState<ApiProject[]>([]);
   const [projectId, setProjectId] = useState<string>("");
   const [creditConfig, setCreditConfig] = useState<ApiCreditConfig | null>(null);
   const [jiraTickets, setJiraTickets] = useState<
@@ -458,8 +456,7 @@ export default function WeeklyUpdate() {
   useEffect(() => {
     (async () => {
       try {
-        const list = await api.getProjects();
-        setProjects(Array.isArray(list) ? list : []);
+        await api.getProjects();
         const fromUserSingle = String((user as any)?.project_id || "").trim();
         const fromUserMulti = parseProjectIds((user as any)?.project_ids);
         // Default to "All Assigned Projects" whenever the employee has any
@@ -468,7 +465,7 @@ export default function WeeklyUpdate() {
         // to load first.
         if (fromUserMulti.length >= 1 || fromUserSingle) setProjectId(ALL_ASSIGNED_PROJECTS);
       } catch {
-        setProjects([]);
+        // no-op: project list is no longer rendered, only used to trigger the default above
       }
     })();
   }, [api, user]);
