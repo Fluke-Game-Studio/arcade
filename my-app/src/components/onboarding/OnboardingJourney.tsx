@@ -186,7 +186,7 @@ export default function OnboardingJourney({ preview }: { preview?: OnboardingPre
   // Jira is temporarily optional — the Atlassian OAuth app is still in "Development"
   // distribution status, so only its owner account can authorize it right now. Not gating
   // onboarding on it until that's fixed on Atlassian's side (unrelated to this app's code).
-  const connectedReady = localDevBypassComplete || Boolean(integrations.status.linkedin && integrations.status.discord);
+  const connectedReady = true;
 
   const nextStep: OnboardingStepId | null = useMemo(
     () =>
@@ -235,18 +235,18 @@ export default function OnboardingJourney({ preview }: { preview?: OnboardingPre
       {
         key: "linkedin",
         label: "LinkedIn",
-        subtitle: safeStr((user as any)?.linkedin_email) || "Required. This keeps profile identity and employee workflows aligned.",
+        subtitle: safeStr((user as any)?.linkedin_email) || "Optional for now. This keeps profile identity and employee workflows aligned.",
         connected: integrations.status.linkedin,
         icon: "link",
-        optional: false,
+        optional: true,
       },
       {
         key: "discord",
         label: "Discord",
-        subtitle: safeStr((user as any)?.discord_name || (user as any)?.discord_email) || "Required. Discord powers notifications and approvals.",
+        subtitle: safeStr((user as any)?.discord_name || (user as any)?.discord_email) || "Optional for now. Discord powers notifications and approvals.",
         connected: integrations.status.discord,
         icon: "sports_esports",
-        optional: false,
+        optional: true,
       },
       {
         key: "jira",
