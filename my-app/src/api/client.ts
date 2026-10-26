@@ -3219,6 +3219,8 @@ export class ApiClient {
     contextKey: string;
     answers?: Record<string, string>;
     transcript?: string;
+    conversation?: { role: "ai" | "candidate"; text: string; ts: number }[];
+    questions?: string[];
     feedback?: Record<string, any> | null;
   }): Promise<{ ok: boolean; emailSent?: boolean }> {
     const r = await fetch(`${API_BASE}/ai/intake/submit-internal`, {

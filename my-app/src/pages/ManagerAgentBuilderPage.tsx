@@ -2695,7 +2695,11 @@ function parseMcpInput(text: string) {
                 </div>
               </div>
 
-              <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+              {/* The interview runs in three phases: 1 Introduction, 2 Interview questions, 3 Fluke Games Q&A. */}
+              <div style={{ marginTop: 16, fontSize: 11, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase", color: "#a5b4fc" }}>
+                Phase 1 · Introduction
+              </div>
+              <div style={{ marginTop: 8, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
                   <input
                     type="checkbox"
@@ -2724,6 +2728,36 @@ function parseMcpInput(text: string) {
                 <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
                   <input
                     type="checkbox"
+                    checked={Boolean(intakeForm.commitmentModalEnabled)}
+                    onChange={(e) => setIntakeForm((s) => ({ ...s, commitmentModalEnabled: e.target.checked }))}
+                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
+                  />
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>Commitment model walkthrough + Q&amp;A (public intake only)</span>
+                </label>
+                <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
+                  Right after the greeting, a read-only modal walks through the commitment/vesting model (no payment step — that only happens post-hire, during onboarding) while the AI narrates each step aloud. The AI then asks if the candidate has questions about it. Spoken questions are answered strictly from the fixed commitment-model info; anything else is politely deferred. The modal only appears when this is checked, and it closes before the interview questions begin — nothing from it carries into them. Only wired into the public candidate page (website), not the internal arcade practice-interview flow.
+                </div>
+                {Boolean(intakeForm.commitmentModalEnabled) && (intakeForm.intakeLinkMode || "arcade") !== "public" && (
+                  <div style={{ fontSize: 11, color: "#fcd34d", marginTop: 6, lineHeight: 1.5 }}>
+                    This context's link mode is "arcade", so the walkthrough won't run. It only takes effect on public links.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginTop: 16, fontSize: 11, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase", color: "#a5b4fc" }}>
+                Phase 2 · Interview questions
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
+                The questions listed above (plus the job's role questions when enabled), asked one by one.
+              </div>
+
+              <div style={{ marginTop: 16, fontSize: 11, fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase", color: "#a5b4fc" }}>
+                Phase 3 · Fluke Games Q&amp;A
+              </div>
+              <div style={{ marginTop: 8, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
                     checked={Boolean(intakeForm.postSessionQAEnabled)}
                     onChange={(e) => setIntakeForm((s) => ({ ...s, postSessionQAEnabled: e.target.checked }))}
                     style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
@@ -2731,22 +2765,7 @@ function parseMcpInput(text: string) {
                   <span style={{ fontWeight: 700, fontSize: 13 }}>Post-session open Q&amp;A</span>
                 </label>
                 <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
-                  After the last fixed question, asks once if the candidate has questions for us. A short "no" ends the interview immediately — no clarify loop. If they do ask something, it's answered grounded in the "snapshot:public" doc from the Super AI Console (never internal content), capped at {5} rounds. Remove any manually-added "Do you have any questions for me?" item from your question list above if you enable this — otherwise it'll be asked twice.
-                </div>
-              </div>
-
-              <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(intakeForm.commitmentModalEnabled)}
-                    onChange={(e) => setIntakeForm((s) => ({ ...s, commitmentModalEnabled: e.target.checked }))}
-                    style={{ width: 16, height: 16, accentColor: "#6366f1", cursor: "pointer" }}
-                  />
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>Commitment model preview (public intake only)</span>
-                </label>
-                <div style={{ fontSize: 11, color: "rgba(191,219,254,0.55)", marginTop: 6, lineHeight: 1.5 }}>
-                  Right after the greeting, shows a read-only walkthrough modal of the commitment/vesting model (no payment step — that only happens post-hire, during onboarding). The AI narrates each step aloud in sync with the modal, then asks if the candidate has questions — answerable aloud or via a typed chat in the modal, both grounded in the same fixed program info. Only wired into the public candidate page (website), not the internal arcade practice-interview flow.
+                  After the last fixed question, asks once if the candidate has questions about Fluke Games{Boolean(intakeForm.commitmentModalEnabled) ? " or the commitment model" : ""}. A short "no" ends the interview immediately — no clarify loop. Questions are answered grounded in the "snapshot:public" doc from the Super AI Console (never internal content){Boolean(intakeForm.commitmentModalEnabled) ? " plus the fixed commitment-model info" : ""}, capped at {5} rounds. Remove any manually-added "Do you have any questions for me?" item from your question list above if you enable this — otherwise it'll be asked twice.
                 </div>
               </div>
 

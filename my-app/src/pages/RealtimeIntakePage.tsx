@@ -121,6 +121,24 @@ const SOFT_ELABORATE_THRESHOLD_MS = 30000;
 // candidate on one question forever.
 const SAFETY_MAX_FOLLOWUPS_PER_EPIC = 3;
 
+// How long the candidate must stay quiet before their answer counts as finished. The server
+// VAD closes a segment after well under a second of silence, which is far too eager for a
+// person who is thinking or searching for a word — so the decision waits on top of that.
+// A segment that ends like a finished sentence waits less; one that trails off (no closing
+// punctuation, a comma/ellipsis, a dangling "and"/"um", or just a filler like "let me think")
+// is treated as the candidate still working it out.
+const COMPLETE_PAUSE_MS = 2500;
+const INCOMPLETE_PAUSE_MS = 5000;
+const QA_COMPLETE_PAUSE_MS = 1500;
+const FILLER_ONLY = /^(?:(?:um+|uh+|er+|hmm+|well|so|okay|ok|like|let me think|give me a (?:sec|second|moment|minute)|one (?:sec|second|moment)|how do i (?:put|say) (?:this|it))[\s,.…-]*)+$/i;
+
+function answerPauseMs(segmentText: string, inQa: boolean): number {
+  const t = segmentText.trim();
+  if (!t || FILLER_ONLY.test(t)) return INCOMPLETE_PAUSE_MS;
+  const endsLikeSentence = /[.!?]["')\]]*$/.test(t) && !/(?:\.{2,}|…)["')\]]*$/.test(t);
+  return endsLikeSentence ? (inQa ? QA_COMPLETE_PAUSE_MS : COMPLETE_PAUSE_MS) : INCOMPLETE_PAUSE_MS;
+}
+
 
 function buildTranscript(answers: Record<string, string>, questions: string[]): string {
   const date = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -186,11 +204,15 @@ function migrateStored(raw: any): StoredIntakeContext {
       ? raw.mcpActions
       : String(raw?.mcpAction || "") ? [String(raw.mcpAction)] : [],
     includeJobQuestions: Boolean(raw?.includeJobQuestions),
+    // This result is written back to the shared localStorage cache, which the context builder
+    // and applicant composer also read — dropping fields here silently resets them there.
+    intakeLinkMode: raw?.intakeLinkMode === "public" ? "public" : "arcade",
     transcriptEmailEnabled: Boolean(raw?.transcriptEmailEnabled),
     transcriptEmailTo: String(raw?.transcriptEmailTo || ""),
     preSessionEnabled: Boolean(raw?.preSessionEnabled),
     preSessionNote: String(raw?.preSessionNote || ""),
     postSessionQAEnabled: Boolean(raw?.postSessionQAEnabled),
+    commitmentModalEnabled: Boolean(raw?.commitmentModalEnabled),
   };
 }
 
@@ -261,6 +283,15 @@ export default function RealtimeIntakePage() {
   const inOpenQaRef = useRef(false);
   const qaRoundsRef = useRef(0);
   const qaGroundingTextRef = useRef("");
+  // Both sides of the call in arrival order, built from the Realtime transcript events —
+  // `answers` only holds the candidate's replies keyed by question.
+  const conversationRef = useRef<{ role: "ai" | "candidate"; text: string; ts: number }[]>([]);
+  // End-of-answer detection: segments recorded but not yet acted on, and the timer waiting
+  // for the candidate to actually be done (see answerPauseMs).
+  const hasPendingAnswerRef = useRef(false);
+  const lastSegmentTextRef = useRef("");
+  const pendingTranscriptsRef = useRef<Set<string>>(new Set());
+  const evalTimerRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
@@ -380,6 +411,13 @@ export default function RealtimeIntakePage() {
     } catch {}
   }
 
+  function clearEvalTimer() {
+    if (evalTimerRef.current != null) {
+      window.clearTimeout(evalTimerRef.current);
+      evalTimerRef.current = null;
+    }
+  }
+
   function stopMicAnalysis() {
     cancelAnimationFrame(animFrameRef.current);
     try { audioCtxRef.current?.close(); } catch {}
@@ -467,6 +505,11 @@ export default function RealtimeIntakePage() {
         qaRoundsRef.current = 0;
         debugLogRef.current = [];
         setDebugLog([]);
+        conversationRef.current = [];
+        clearEvalTimer();
+        hasPendingAnswerRef.current = false;
+        lastSegmentTextRef.current = "";
+        pendingTranscriptsRef.current.clear();
         const qs = allQuestionsRef.current;
         const liveCtx = ctxRef.current;
         currentAskedQuestionRef.current = qs[0] || "";
@@ -571,7 +614,12 @@ export default function RealtimeIntakePage() {
             }
             return;
           }
-          if (type === "response.created") responseInProgressRef.current = true;
+          if (type === "response.created") {
+            responseInProgressRef.current = true;
+            // The AI is taking its turn, so any answer still waiting on a pause timer is moot.
+            clearEvalTimer();
+            hasPendingAnswerRef.current = false;
+          }
           if (type === "response.cancelled") {
             responseInProgressRef.current = false;
             greetedRef.current = true;
@@ -610,6 +658,8 @@ export default function RealtimeIntakePage() {
           }
           if (type === "response.audio_transcript.done" || type === "response.output_audio_transcript.done") {
             setAiSpeaking(false);
+            const aiText = String(msg?.transcript || "").trim();
+            if (aiText) conversationRef.current.push({ role: "ai", text: aiText, ts: Date.now() });
           }
           // Track how long the candidate actually spoke this turn (first speech_started to
           // last speech_stopped), so "under 30s" is measured, not guessed by the model.
@@ -619,64 +669,117 @@ export default function RealtimeIntakePage() {
           if (type === "input_audio_buffer.speech_stopped" && speechStartedAtRef.current != null) {
             lastAnswerDurationMsRef.current = Date.now() - speechStartedAtRef.current;
           }
+
+          // Turn-taking: a VAD pause is NOT the end of an answer. Each transcribed segment is
+          // recorded immediately, but the decision (advance / follow up) only runs once the
+          // candidate has stayed quiet long enough for the sentence to look finished —
+          // see answerPauseMs.
+          if (type === "input_audio_buffer.speech_started") clearEvalTimer();
+          if (type === "input_audio_buffer.speech_stopped" && hasPendingAnswerRef.current) {
+            armEvaluation(lastSegmentTextRef.current);
+          }
+          if (type === "input_audio_buffer.committed" && msg?.item_id) {
+            pendingTranscriptsRef.current.add(String(msg.item_id));
+          }
+          if (type === "conversation.item.input_audio_transcription.failed") {
+            pendingTranscriptsRef.current.delete(String(msg?.item_id || ""));
+            if (hasPendingAnswerRef.current) armEvaluation(lastSegmentTextRef.current);
+          }
           if (type === "conversation.item.input_audio_transcription.completed") {
+            pendingTranscriptsRef.current.delete(String(msg?.item_id || ""));
             const text = String(msg?.transcript || "").trim();
-            if (!text || responseInProgressRef.current) return;
+            if (text) conversationRef.current.push({ role: "candidate", text, ts: Date.now() });
+            if (!text || responseInProgressRef.current) {
+              // Nothing to record (noise / mid-response) — but a pending answer's timer was
+              // cleared by speech_started, so make sure it still gets re-armed.
+              if (hasPendingAnswerRef.current) armEvaluation(lastSegmentTextRef.current);
+              return;
+            }
 
             if (inOpenQaRef.current) {
-              // Open Q&A: deliberately NO duration/elaboration logic here — a brief "no" is a
-              // complete, valid answer by definition, unlike a fixed interview question. This
-              // is the actual fix for "AI keeps asking to clarify 'no I don't have questions'".
               setAnswers((prev) => ({ ...prev, qa: (prev.qa ? `${prev.qa} | ` : "") + text }));
-              const channel = dcRef.current;
-              if (!channel) return;
-              responseInProgressRef.current = true;
-              requestOpenQaDecision();
-              return;
+            } else {
+              const key = `q${qIdxRef.current + 1}`;
+              setAnswers((prev) => ({ ...prev, [key]: (prev[key] ? `${prev[key]} ` : "") + text }));
             }
-
-            const currentIdx = qIdxRef.current;
-            const key = `q${currentIdx + 1}`;
-            setAnswers((prev) => ({ ...prev, [key]: (prev[key] ? `${prev[key]} ` : "") + text }));
-
-            const channel = dcRef.current;
-            if (!channel) return;
-            responseInProgressRef.current = true;
-
-            const durationMs = lastAnswerDurationMsRef.current;
-            const roundsUsed = counterQuestionCountRef.current[currentIdx] || 0;
-            const safetyReached = roundsUsed >= SAFETY_MAX_FOLLOWUPS_PER_EPIC;
-            const followUpGuidance = ctxRef.current?.followUpInstructions?.trim();
-            const qs = allQuestionsRef.current;
-            const remaining = qs.length - currentIdx - 1;
-            // The model has no innate sense of how many topics are left, so left unchecked it
-            // will happily spend the whole interview drilling into one — this is the missing
-            // context that keeps its (deliberately uncapped) judgment well-informed.
-            const pacingNote = `You are covering topic ${currentIdx + 1} of ${qs.length}${remaining > 0 ? ` (${remaining} more after this one)` : " (the last one)"}. Keep the interview moving — don't over-invest in one topic at the expense of the others.`;
-
-            if (!safetyReached && durationMs != null && durationMs < HARD_ELABORATE_THRESHOLD_MS) {
-              // Under 10s: elaboration is forced, not offered.
-              addDebug("out", "response.create", `answer ${(durationMs / 1000).toFixed(1)}s < 10s → forcing elaboration (${roundsUsed + 1})`);
-              requestForcedFollowUp(
-                `The candidate's answer was very brief (under 10 seconds). Based specifically on what they just said, call ask_follow_up_question with ONE natural, targeted follow-up asking them to elaborate.${followUpGuidance ? ` Follow these guidelines from the interviewer's configuration: ${followUpGuidance}` : ""} ${pacingNote} ${ENGLISH_REMINDER}`
-              );
-              return;
-            }
-
-            const softNudge = !safetyReached && durationMs != null && durationMs < SOFT_ELABORATE_THRESHOLD_MS;
-            const decisionInstructions = [
-              softNudge ? `The candidate's answer was somewhat brief (under 30 seconds). Decide whether this topic has enough substance now, or whether one more targeted follow-up (ask_follow_up_question) would get meaningfully more useful information before moving on (advance_interview).` : "",
-              pacingNote,
-              followUpGuidance ? `Follow-up guidance from the interviewer's configuration: ${followUpGuidance}` : "",
-              ENGLISH_REMINDER,
-            ].filter(Boolean).join(" ");
-            addDebug("out", "response.create", safetyReached
-              ? "safety cap reached — forcing advance_interview/flag_off_topic only"
-              : `requesting tool decision${softNudge ? " (soft nudge toward elaboration)" : ""}`);
-            requestToolDecision({ kind: "decision", instructions: decisionInstructions, restrictTools: safetyReached });
+            hasPendingAnswerRef.current = true;
+            lastSegmentTextRef.current = text;
+            armEvaluation(text);
           }
         } catch {}
       };
+
+      // Timer lives here (not in onmessage) so it can call the request* helpers below.
+      function armEvaluation(lastText: string) {
+        clearEvalTimer();
+        if (!hasPendingAnswerRef.current) return;
+        let retries = 0;
+        const fire = () => {
+          // Wait for any audio segment still being transcribed (bounded, so a lost event
+          // can't wedge the session).
+          if (pendingTranscriptsRef.current.size > 0 && retries++ < 5) {
+            evalTimerRef.current = window.setTimeout(fire, 800);
+            return;
+          }
+          evalTimerRef.current = null;
+          hasPendingAnswerRef.current = false;
+          pendingTranscriptsRef.current.clear();
+          evaluateAnswer();
+        };
+        evalTimerRef.current = window.setTimeout(fire, answerPauseMs(lastText, inOpenQaRef.current));
+      }
+
+      // Runs once the candidate has actually finished their answer.
+      function evaluateAnswer() {
+        if (responseInProgressRef.current) return;
+        if (inOpenQaRef.current) {
+          // Open Q&A: deliberately NO duration/elaboration logic here — a brief "no" is a
+          // complete, valid answer by definition, unlike a fixed interview question. This
+          // is the actual fix for "AI keeps asking to clarify 'no I don't have questions'".
+          const channel = dcRef.current;
+          if (!channel) return;
+          responseInProgressRef.current = true;
+          requestOpenQaDecision();
+          return;
+        }
+
+        const currentIdx = qIdxRef.current;
+        const channel = dcRef.current;
+        if (!channel) return;
+        responseInProgressRef.current = true;
+
+        const durationMs = lastAnswerDurationMsRef.current;
+        const roundsUsed = counterQuestionCountRef.current[currentIdx] || 0;
+        const safetyReached = roundsUsed >= SAFETY_MAX_FOLLOWUPS_PER_EPIC;
+        const followUpGuidance = ctxRef.current?.followUpInstructions?.trim();
+        const qs = allQuestionsRef.current;
+        const remaining = qs.length - currentIdx - 1;
+        // The model has no innate sense of how many topics are left, so left unchecked it
+        // will happily spend the whole interview drilling into one — this is the missing
+        // context that keeps its (deliberately uncapped) judgment well-informed.
+        const pacingNote = `You are covering topic ${currentIdx + 1} of ${qs.length}${remaining > 0 ? ` (${remaining} more after this one)` : " (the last one)"}. Keep the interview moving — don't over-invest in one topic at the expense of the others.`;
+
+        if (!safetyReached && durationMs != null && durationMs < HARD_ELABORATE_THRESHOLD_MS) {
+          // Under 10s: elaboration is forced, not offered.
+          addDebug("out", "response.create", `answer ${(durationMs / 1000).toFixed(1)}s < 10s → forcing elaboration (${roundsUsed + 1})`);
+          requestForcedFollowUp(
+            `The candidate's answer was very brief (under 10 seconds). Based specifically on what they just said, call ask_follow_up_question with ONE natural, targeted follow-up asking them to elaborate.${followUpGuidance ? ` Follow these guidelines from the interviewer's configuration: ${followUpGuidance}` : ""} ${pacingNote} ${ENGLISH_REMINDER}`
+          );
+          return;
+        }
+
+        const softNudge = !safetyReached && durationMs != null && durationMs < SOFT_ELABORATE_THRESHOLD_MS;
+        const decisionInstructions = [
+          softNudge ? `The candidate's answer was somewhat brief (under 30 seconds). Decide whether this topic has enough substance now, or whether one more targeted follow-up (ask_follow_up_question) would get meaningfully more useful information before moving on (advance_interview).` : "",
+          pacingNote,
+          followUpGuidance ? `Follow-up guidance from the interviewer's configuration: ${followUpGuidance}` : "",
+          ENGLISH_REMINDER,
+        ].filter(Boolean).join(" ");
+        addDebug("out", "response.create", safetyReached
+          ? "safety cap reached — forcing advance_interview/flag_off_topic only"
+          : `requesting tool decision${softNudge ? " (soft nudge toward elaboration)" : ""}`);
+        requestToolDecision({ kind: "decision", instructions: decisionInstructions, restrictTools: safetyReached });
+      }
 
       // No embedded per-turn rules beyond what's passed in `instructions` — tool_choice
       // forces the model to choose among the allowed tools; it cannot free-speak past a
@@ -868,6 +971,8 @@ export default function RealtimeIntakePage() {
 
   function disconnect(invalidate = true) {
     if (invalidate) connectSeqRef.current += 1;
+    clearEvalTimer();
+    hasPendingAnswerRef.current = false;
     try { dcRef.current?.close(); } catch {}
     try { pcRef.current?.close(); } catch {}
     micRef.current?.getTracks().forEach((t) => t.stop());
@@ -897,6 +1002,8 @@ export default function RealtimeIntakePage() {
         contextKey: ctx.key,
         answers,
         transcript: buildTranscript(answers, qs),
+        conversation: conversationRef.current,
+        questions: qs,
         feedback: fb,
       });
     } catch (e: any) {
